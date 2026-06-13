@@ -401,7 +401,177 @@ services:
 
 ---
 
-## 8. 路线图
+## 8. World Rules Engine — 可配置的游戏规则
+
+Swarm 不是「一个游戏」，而是「一个可配置的游戏引擎平台」。每个世界实例可以有不同的规则集。
+
+### 8.1 核心理念
+
+Screeps 的问题是**规则硬编码**——出生点逻辑、代码更新成本、drone 控制权限都是引擎的一部分，社区服主无法修改。Swarm 把这些做成**世界级配置 + ECS Plugin**。
+
+```
+世界配置 (WorldConfig)          ECS Plugin (System 注入)
+┌─────────────────────┐        ┌──────────────────────┐
+│ spawn_policy         │        │ SpawnPolicySystem    │
+│ code_update_cost     │   →    │ CodeUpdateCostSystem │
+│ code_propagation     │        │ PropagationSystem    │
+│ manual_control       │        │ ManualControlSystem  │
+│ drone_env_vars       │        │ DroneEnvVarSystem    │
+│ ...                  │        │ ...                  │
+└─────────────────────┘        └──────────────────────┘
+         │                              │
+         └──────────┬───────────────────┘
+                    ▼
+            引擎启动时加载
+```
+
+### 8.2 规则分类
+
+#### 出生与加入
+
+| 规则 | 类型 | 说明 |
+|------|------|------|
+| `spawn_policy` | enum | `RandomRoom`（默认）\| `ManualSelect`（玩家选坐标）\| `FixedSpawn`（固定出生点）\| `Inherit`（从已有殖民地出生） |
+| `spawn_cooldown` | u32 | 新玩家加入后多少 tick 才能开始操作（默认 0） |
+| `respawn_policy` | enum | 殖民地全灭后的处理：`NewRoom` \| `SameRoom` \| `Spectate` \| `Ban` |
+
+#### 代码部署
+
+| 规则 | 类型 | 说明 |
+|------|------|------|
+| `code_update_cost` | ResourceCost | 部署新 WASM 消耗的资源（默认 `{Energy: 0}` — 免费） |
+| `code_update_cooldown` | u32 | 两次部署间的最小 tick 间隔（默认 0） |
+| `code_update_window` | (u32, u32) | 部署窗口期：每 N tick 开放 M tick（默认无限制） |
+| `code_propagation_speed` | u32 | 代码更新传播速度：0=全局即时，>0=每 tick 传播 N 格 |
+| `code_propagation_source` | enum | 传播源：`Spawn`（从出生点传播）\| `Controller`（从控制器传播）\| `AnyDrone` |
+
+#### Drone 控制
+
+| 规则 | 类型 | 说明 |
+|------|------|------|
+| `manual_control` | bool | 是否允许玩家手动给 drone 发指令（覆盖 WASM 输出） |
+| `manual_control_limit` | u32 | 每 tick 最大手动指令数（默认 0 = 不允许） |
+| `drone_env_vars` | bool | 是否允许给 drone 设置环境变量（`drone.set("role", "harvester")`） |
+| `drone_memory_size` | u32 | 每 drone 最大环境变量存储（bytes，默认 1024） |
+
+#### 资源与经济
+
+| 规则 | 类型 | 说明 |
+|------|------|------|
+| `source_regeneration_rate` | f64 | 资源点再生速率倍率（默认 1.0） |
+| `build_cost_multiplier` | f64 | 建筑成本倍率（默认 1.0） |
+| `drone_decay_rate` | f64 | drone 衰减倍率（默认 1.0） |
+
+#### 战斗与 PvP
+
+| 规则 | 类型 | 说明 |
+|------|------|------|
+| `pvp_enabled` | bool | 是否允许 PvP（默认 true） |
+| `friendly_fire` | bool | 是否允许攻击同阵营（默认 false） |
+| `damage_multiplier` | f64 | 伤害倍率（默认 1.0） |
+
+### 8.3 配置格式
+
+```toml
+# world.toml — 每个世界实例的配置文件
+
+[world]
+name = "World of Swarm"
+mode = "persistent"              # persistent | arena
+
+[spawn]
+policy = "RandomRoom"
+respawn = "NewRoom"
+cooldown = 100                   # 加入后 100 tick 才能操作
+
+[code]
+update_cost = { Energy = 500 }   # 部署消耗 500 能量
+update_cooldown = 100            # 两次部署间隔 100 tick
+update_window = { every = 1000, duration = 100 }  # 每 1000 tick 开放 100 tick 窗口
+propagation_speed = 3            # 每 tick 传播 3 格
+propagation_source = "Spawn"     # 从出生点向外传播
+
+[drone]
+manual_control = true            # 允许手动控制
+manual_control_limit = 5         # 每 tick 最多 5 条手动指令
+env_vars = true                  # 允许环境变量
+memory_size = 2048               # 每 drone 2KB 存储
+
+[resources]
+source_regeneration = 1.0
+build_cost = 1.0
+drone_decay = 1.0
+
+[combat]
+pvp = true
+friendly_fire = false
+damage = 1.0
+```
+
+### 8.4 ECS 集成方式
+
+每个规则类别对应一个可选的 ECS System。引擎启动时读取 `world.toml`，有选择地注册 System：
+
+```rust
+// engine 启动时
+fn register_rule_systems(app: &mut App, config: &WorldConfig) {
+    // 基础系统始终注册
+    app.add_systems(Update, (movement_system, harvest_system, /* ... */).chain());
+
+    // 规则系统按配置注册
+    if config.code.propagation_speed > 0 {
+        app.add_systems(Update, code_propagation_system.before(movement_system));
+    }
+    if config.code.update_window.is_some() {
+        app.add_systems(Update, code_update_window_system);
+    }
+    if config.drone.manual_control {
+        app.add_systems(Update, manual_control_system.after(combat_system));
+    }
+    if config.drone.env_vars {
+        app.add_systems(Update, drone_env_var_system);
+    }
+}
+```
+
+关键是：规则 System 的存在与否不影响核心引擎。核心引擎只关心「有 Command 进来 → 校验 → 执行」。规则 System 是**在执行前后附加逻辑**。
+
+### 8.5 WASM 侧感知
+
+玩家的 WASM 代码可以通过 host function 读取当前世界的规则：
+
+```rust
+fn host_get_world_config(key_ptr: i32, key_len: i32, out_ptr: i32, out_len: i32) -> i32;
+```
+
+```typescript
+// TypeScript SDK
+const config = Game.world.config();
+if (config.code.update_cost.Energy > 0) {
+    // 部署有成本，谨慎更新
+}
+if (config.code.propagation_speed > 0) {
+    // 代码需要时间传播，考虑分阶段部署
+}
+```
+
+这样玩家的策略可以**自适应世界规则**——同一份 WASM 在不同规则的世界中表现不同。
+
+### 8.6 World 与 Arena 的默认规则
+
+| 规则 | World 默认值 | Arena 默认值 |
+|------|------------|------------|
+| `spawn_policy` | `RandomRoom` | `FixedSpawn`（对称） |
+| `code_update_cost` | 0（免费） | 0 |
+| `code_update_window` | 无限制 | 赛前锁定 |
+| `code_propagation_speed` | 0（即时） | 0（即时） |
+| `manual_control` | false | false |
+| `drone_env_vars` | true | true |
+| `pvp_enabled` | true | true（必须） |
+
+---
+
+## 9. 路线图
 
 ### Phase 1: 核心引擎（MVP — 单人沙箱）
 
@@ -458,7 +628,7 @@ services:
 
 ---
 
-## 9. World 模式 vs Arena 模式
+## 10. World 模式 vs Arena 模式
 
 | 维度 | World（持久世界） | Arena（比赛） |
 |------|-----------------|-------------|
