@@ -81,6 +81,8 @@ manual_control = false
 manual_control_limit = 0
 env_vars = true
 memory_size = 1024
+memory_spawn_cost = {}          # 每 byte 孵化成本
+memory_upkeep_cost = {}         # 每 byte 每 tick 维护费
 max_body_parts = 50
 max_drones_per_player = 500
 
@@ -154,6 +156,9 @@ impl WorldConfig {
         }
         if self.drone.env_vars {
             app.add_systems(Update, drone_env_var_system);
+        }
+        if !self.drone.memory_upkeep_cost.is_empty() {
+            app.add_systems(Update, memory_upkeep_system.before(decay_system));
         }
 
         // === 可见性 ===
@@ -229,6 +234,33 @@ fn manual_control_system(
 }
 ```
 
+### 内存维护费
+
+```rust
+/// 当 memory_upkeep_cost 不为空时，每 tick 按使用量扣资源
+fn memory_upkeep_system(
+    config: Res<WorldConfig>,
+    mut players: Query<(&mut PlayerResources, &PlayerMemory)>,
+) {
+    let upkeep = &config.drone.memory_upkeep_cost;
+    if upkeep.is_empty() { return; }
+
+    for (mut resources, memory) in players.iter_mut() {
+        let used_bytes = memory.used_bytes() as f64;
+        for (res_name, cost_per_byte) in upkeep {
+            let total_cost = (used_bytes * cost_per_byte).ceil() as u32;
+            if total_cost > 0 {
+                resources.deduct(res_name, total_cost);
+                // 资源不足 → drone 随机失忆（减少存储）
+                if resources.get(res_name) < 0 {
+                    memory.truncate_to_fit(resources);
+                }
+            }
+        }
+    }
+}
+```
+
 ## 5. WASM 侧 API
 
 ```rust
@@ -267,6 +299,11 @@ if (cfg.code.update_window.every > 0) {
 if (cfg.drone.env_vars) {
     // 使用环境变量做角色标注
     drone.set("role", "harvester");
+}
+
+if (cfg.drone.memory_upkeep_cost.Energy > 0) {
+    // 内存有维护费——只在必要时存储状态
+    drone.memory.compact();
 }
 ```
 
