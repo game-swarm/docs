@@ -4,6 +4,17 @@
 
 REQUEST_CHANGES
 
+## 用户裁决（6 个分歧）
+
+| ID | 问题 | 裁决 |
+|----|------|------|
+| D1 | manual_control & MCP gameplay | **删除 manual_control**。MCP 不做 gameplay 指令，只做 query/plan/validate/explain/deploy。唯一例外：Tutorial 专用世界的受限引导。 |
+| D2 | World Rules 数据 vs 插件 | **Rhai 模组**。数据化 RuleConfig + 可安装 Rhai 脚本。模组源码社区分发，fork/modify/PR。 |
+| D3 | Phase 1 目标 | **单人确定性垂直切片**。目标：一玩家一 WASM → tick → validate → apply → replay hash。Phase 1 期间并行编写 World/Arena 设计 spec。 |
+| D4 | 首个外部测试 sandbox | **必须 process pool**。本地 dev 可 feature-flag 单进程；接受外部用户代码前 process pool prototype 必须完成。 |
+| D5 | 资源争用失败 refund | **分情况处理**。争用导致失败（SourceEmpty/TileOccupied/TargetFull）退 50% fuel；自身无效（OutOfRange/Fatigued/MissingBodyPart）不退。 |
+| D6 | public replay | **MVP：self-only**。Arena 赛后 omniscient（+100 tick 延迟）。World 不公开回放。 |
+
 9 份 Round 2 评审中，2 份为 CONDITIONAL_APPROVE（rev-dsv4-designer, rev-claude-designer），7 份为 REQUEST_CHANGES / REQUEST_MAJOR_CHANGES。议会共同判断：方向正确，P0 规范化进展明显，但 Game API IDL、Command Source Model、确定性合同、MCP/手动控制边界、WASM 编译/运行预算、World Rules Engine 与关键游戏循环仍未冻结，不能直接进入 Phase 2 大规模实现。
 
 本轮不是否定项目方向，而是要求先完成 Architecture Freeze / Design Hardening。尤其是：
