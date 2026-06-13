@@ -11,8 +11,8 @@ REQUEST_CHANGES
 | D1 | MCP 工具设计 | **体验优先** — 丰富 UX verbs，内部单一 validation pipeline |
 | D2 | WASM 进程隔离 | **进程隔离** — MVP 起 sandbox worker process + OS isolation |
 | D3 | Replay 公开性 | **公开** — safe view（owner/opponent/delayed omniscient），非 raw traces |
-| D4 | FoundationDB | **直接依赖** — 不用 WorldStore trait，FDB 是唯一真相来源，docker-compose 一键部署 |
-| D5 | 排行榜 | **统一榜单** — 人类和 agent 在同一世界共存 |
+| D4 | FoundationDB | **直接依赖** — FDB 是唯一真相来源，docker-compose 一键部署 |
+| D5 | 排行榜与公平性 | **公平性仅 Arena 有意义** — World 模式无排行榜，Arena 分 league（Human/AI） |
 
 ## 评审共识
 
@@ -228,15 +228,15 @@ COMPLEMENTARY：
 
 最终方案：FDB 直接集成。Dragonfly 仅作为非权威读缓存，FDB 是唯一真相来源。自托管用户需要运行 FDB（提供 docker-compose 一键部署）。
 
-### D5: 竞技公平是统一 ladder 还是分 league？
+### D5: 竞技公平需要分 league 还是统一榜？
 
-立场 A（rev-gpt-designer, rev-dsv4-architect, rev-gpt-security）：WASM 与外部 AI 的 decision-process 不等价，应分 human/WASM、AI-assisted、AI tournament、sandbox/exhibition 等 league。
+用户裁决：**公平性和排行榜仅在 Arena 模式有意义**。World 模式地图随机生成、玩家加入时机不同，天然不存在公平，不设排行榜。Arena 模式对称起点，分 league 确保公平竞争。
 
-立场 B（隐含于当前设计）：same command limits + identical validation 可能足以让它们在同一世界交互。
+原讨论：
+- 立场 A：WASM 与外部 AI 的决策过程不等价，应分 league
+- 立场 B：same command limits + identical validation 可能足以让它们在同一世界交互
 
-可能共识方案：同一世界可以互动，但 leaderboard/tournament 必须标记或分区；公开 metrics 包括 decision latency、invalid rate、model/provider label、tool usage class。
-
-需要用户裁决：Swarm 是否追求统一 global leaderboard，还是从一开始按执行模式分榜？
+最终方案：Arena 模式按执行方式分 league（Human/WASM、AI-assisted、AI tournament），World 模式不设排行榜——转而用殖民地年龄、GCL、房间数等作为趣味展示，非竞争排名。
 
 ## 行动建议
 
