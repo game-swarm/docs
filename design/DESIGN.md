@@ -1,193 +1,199 @@
-# Swarm — Design Document
+# Swarm — 设计文档
 
-> **Swarm** is an open-source programmable MMO RTS game engine.  
-> It is a spiritual successor to [Screeps](https://screeps.com/), redesigned from the ground up with modern technology and multi-language support.
+> **Swarm** 是一个开源的、可编程的 MMO RTS 游戏引擎。它是 [Screeps](https://screeps.com/) 的精神续作，用现代技术栈从零重构，支持多语言。
 >
-> — *"你的代码就是你的军队。Write once, fight forever."*
+> — *「你的代码就是你的军队。Write once, fight forever.」*
 
 ---
 
-## 1. Vision
+## 1. 愿景
 
 ### 1.1 核心理念
 
-Swarm is a **programming arena** where players write real code to control autonomous units ("drones") in a persistent, shared world. Unlike traditional RTS games where victory depends on APM (actions per minute), Swarm rewards **algorithmic thinking, system design, and resource optimization**.
+Swarm 是一个**编程竞技场**——玩家编写真实代码来控制自主单位（drone），在一个持久共享世界中运行。与传统 RTS 不同，Swarm 的胜负不取决于手速，而取决于**算法思维、系统设计和资源优化**。
+
+Swarm 支持两种玩家：
+- **人类程序员**：通过 Web UI（Monaco 编辑器 + PixiJS 渲染）编写代码，编译为 WASM 部署
+- **AI agent**：通过 MCP 接口查看世界、生成代码、部署 WASM——与人类走完全相同路径
+
+世界只认 WASM。不论代码是谁写的。
 
 ### 1.2 与 Screeps 的关键区别
 
-| Dimension | Screeps | Swarm |
-|-----------|---------|-------|
-| **Player Language** | JavaScript only | **Any language → WASM** |
-| **Sandbox** | V8 Isolate (isolated-vm) | WASM + WASI (Wasmtime) |
-| **Resource Metering** | Wall-clock CPU limit | **CPU instruction count** (fuel metering) |
-| **Game Model** | OOP script-based | **ECS** (Bevy) — deterministic, parallel, replayable |
-| **Performance** | Bound by V8 GC | WASM native speed, 10-100x faster at same quota |
-| **Extensibility** | JS mods only | WASM plugin system + language SDKs |
+| 维度 | Screeps | Swarm |
+|------|---------|-------|
+| **玩家语言** | 仅 JavaScript | **任意语言 → WASM** |
+| **沙箱** | V8 Isolate (isolated-vm) | WASM + WASI（Wasmtime，独立进程隔离） |
+| **资源计量** | 墙钟 CPU 限制 | **CPU 指令计数**（fuel metering） |
+| **游戏模型** | OOP 脚本模式 | **ECS**（Bevy）— 确定性、可并行、可回放 |
+| **性能** | 受限于 V8 GC | WASM 原生速度，同等配额快 10-100 倍 |
+| **AI 玩家** | 无原生支持 | **MCP 原生界面**——AI 写 WASM，同人类 |
+| **扩展性** | 仅 JS mod | WASM 多语言 SDK + 插件系统 |
+| **客户端** | Web + Steam 封装浏览器 | Web（Monaco + PixiJS）+ MCP（AI 界面） |
 
 ### 1.3 设计原则
 
-1. **Language Agnostic** — The game engine does not know or care what language a player's code was written in. Everything compiles to WASM.
-2. **Deterministic Core** — Same initial state + same player commands → same world state. Enables replay, debugging, and anti-cheat.
-3. **Fair Resource Accounting** — CPU quotas measured in WASM instructions, not wall time. A C player and a Python player with the same quota get the same compute.
-4. **Composable Architecture** — ECS enables new game mechanics to be added as Systems without touching existing code.
-5. **Open Source from Day 1** — MIT licensed. Community contributions welcome.
+1. **语言无关**：引擎不知道也不关心玩家代码是什么语言写的。一切编译为 WASM。
+2. **确定性核心**：相同初始状态 + 相同玩家指令 → 相同世界状态。支撑回放、调试和反作弊。
+3. **公平资源核算**：CPU 配额度量为 WASM 指令数，非墙钟。C 玩家和 Python 玩家在相同配额下获得同等算力。AI 玩家和人类玩家同走 WASM 沙箱，天然公平。
+4. **可组合架构**：ECS 允许新增游戏机制时无需触碰既有代码。
+5. **开源首日**：MIT 许可证。
 
 ---
 
-## 2. System Architecture
+## 2. 系统架构
 
 ### 2.1 整体架构图
 
 ```
 ┌──────────────────────────────────────────────────────────┐
-│                   CLIENTS                                 │
+│                        客户端                               │
 │  ┌─────────────┐  ┌──────────────┐  ┌─────────────────┐ │
 │  │ Web Client   │  │ Desktop App   │  │ CI/CD Pipeline   │ │
 │  │ (Monaco +    │  │ (Tauri)       │  │ (GitHub Actions) │ │
 │  │  PixiJS)     │  │               │  │                  │ │
 │  └──────┬───────┘  └──────┬───────┘  └────────┬────────┘ │
-└─────────┼─────────────────┼───────────────────┼──────────┘
-          │                 │                   │
-          │    WebSocket    │    WebSocket      │  gRPC
-          │    + REST       │    + REST         │
-          ▼                 ▼                   ▼
+│         │                 │                    │           │
+│  ┌──────┴─────────────────┴────────────────────┴────────┐ │
+│  │                   MCP Interface (AI 玩家)              │ │
+│  │  AI agent 查看世界 · 生成代码 · 部署 WASM · 调试       │ │
+│  └────────────────────────┬─────────────────────────────┘ │
+└───────────────────────────┼───────────────────────────────┘
+                            │
+            WebSocket + REST │ HTTPS (MCP)
+                            ▼
 ┌─────────────────────────────────────────────────────────┐
-│                   GATEWAY (Go)                            │
+│                   网关 (Go)                                │
 │  ┌──────────────┐  ┌─────────────┐  ┌───────────────┐  │
 │  │ WS Hub        │  │ Auth (OAuth) │  │ API Router     │  │
-│  │ (per-shard)   │  │              │  │                │  │
 │  └──────────────┘  └─────────────┘  └───────────────┘  │
 └────────────────────────┬────────────────────────────────┘
                          │ gRPC + NATS
                          ▼
 ┌─────────────────────────────────────────────────────────┐
-│                 TICK ENGINE (Rust)                        │
+│                Tick 引擎 (Rust)                            │
 │                                                           │
 │  ┌──────────────────────────────────────────────────┐   │
-│  │              Tick Scheduler                        │   │
-│  │  Tick N-1 done ──► Tick N dispatch ──► Tick N+1   │   │
+│  │              Tick 调度器                            │   │
+│  │  Tick N-1 完成 → Tick N 分发 → Tick N+1           │   │
 │  └──────────────────────┬───────────────────────────┘   │
 │                         │                                 │
 │          ┌──────────────┼──────────────┐                 │
 │          ▼              ▼              ▼                  │
 │  ┌─────────────┐ ┌────────────┐ ┌──────────────┐        │
-│  │ WASM Sandbox │ │ WASM       │ │ WASM         │  ...   │
-│  │ Player 1     │ │ Player 2   │ │ Player 3     │        │
-│  └──────┬───────┘ └─────┬──────┘ └──────┬───────┘        │
-│         │               │               │                 │
-│         ▼               ▼               ▼                 │
+│  │ Sandbox     │ │ Sandbox    │ │ Sandbox      │  ...   │
+│  │ Worker 1    │ │ Worker 2   │ │ Worker 3     │        │
+│  │ (独立进程)   │ │ (独立进程)  │ │ (独立进程)    │        │
+│  │ WASM 玩家 1 │ │ WASM 玩家2 │ │ WASM 玩家 3  │        │
+│  └──────┬──────┘ └─────┬──────┘ └──────┬───────┘        │
+│         │              │               │                 │
+│         ▼              ▼               ▼                 │
 │  ┌──────────────────────────────────────────────────┐   │
-│  │         Command Collector + Validator              │   │
-│  │   (dedup, conflict resolution, anti-cheat)         │   │
+│  │         指令收集器 + 校验器 + 反作弊               │   │
+│  │    (去重、冲突解决、反作弊)                        │   │
 │  └──────────────────────┬───────────────────────────┘   │
 │                         │                                 │
 │  ┌──────────────────────▼───────────────────────────┐   │
-│  │              Bevy ECS World                        │   │
+│  │              Bevy ECS 世界                         │   │
 │  │  ┌────────┐ ┌────────┐ ┌────────┐ ┌───────────┐  │   │
-│  │  │Movement│ │Combat  │ │Economy │ │Construction│  │   │
-│  │  │System  │ │System  │ │System  │ │System      │  │   │
+│  │  │ 移动   │ │ 战斗   │ │ 经济   │ │ 建造      │  │   │
+│  │  │ System │ │ System │ │ System │ │ System    │  │   │
 │  │  └────────┘ └────────┘ └────────┘ └───────────┘  │   │
 │  │  ┌────────┐ ┌────────┐ ┌────────┐ ┌───────────┐  │   │
-│  │  │Vision  │ │Resource│ │Pathfind│ │Death       │  │   │
-│  │  │System  │ │System  │ │System  │ │System      │  │   │
+│  │  │ 视野   │ │ 资源   │ │ 寻路   │ │ 死亡      │  │   │
+│  │  │ System │ │ System │ │ System │ │ System    │  │   │
 │  │  └────────┘ └────────┘ └────────┘ └───────────┘  │   │
 │  └──────────────────────────────────────────────────┘   │
+│                                                           │
+│  ┌───────────────────┐  ┌───────────────┐                 │
+│  │ MCP Server        │  │ Debug/Trace   │                 │
+│  │ (rmcp, HTTP/SSE)  │  │ Collector     │                 │
+│  └───────────────────┘  └───────────────┘                 │
 └────────────────────────┬────────────────────────────────┘
                          │
                          ▼
 ┌─────────────────────────────────────────────────────────┐
-│                   DATA LAYER                              │
+│                   数据层                                   │
 │  ┌──────────────┐  ┌─────────────┐  ┌───────────────┐  │
 │  │ FoundationDB  │  │ Dragonfly    │  │ ClickHouse     │  │
-│  │ (World State) │  │ (Hot Cache)  │  │ (Analytics)    │  │
+│  │ (世界状态)    │  │ (热缓存)     │  │ (分析 + 审计)  │  │
 │  └──────────────┘  └─────────────┘  └───────────────┘  │
 └─────────────────────────────────────────────────────────┘
 ```
 
-### 2.2 Repository 结构
+### 2.2 仓库结构
 
 ```
 swarm/
-├── docs/           # 设计文档 (this repo)
-├── engine/         # Rust 游戏引擎 — Bevy ECS, Tick调度, 世界模拟
+├── docs/           # 设计文档、P0 规范、评审报告
+│   ├── design/     #   架构设计
+│   ├── specs/      #   技术规范
+│   └── reviews/    #   评审报告
+├── engine/         # Rust 游戏引擎 — Bevy ECS, Tick 调度, 世界模拟
 ├── sandbox/        # WASM 沙箱运行时 — 编译服务, 模块管理, 安全审计
 ├── gateway/        # Go API 网关 — WebSocket, REST, gRPC, 认证
 ├── frontend/       # Web 客户端 — Monaco Editor, PixiJS 渲染
-├── sdk-ts/         # TypeScript SDK — Game API types + WASM 编译工具链
-└── sdk-rust/       # Rust SDK — Game API + wasm-bindgen 工具链
+├── sdk-ts/         # TypeScript SDK — 游戏 API 类型 + WASM 编译工具链
+└── sdk-rust/       # Rust SDK — 游戏 API + wasm-bindgen 工具链
 ```
 
 ---
 
-## 3. 各模块详细设计
+## 3. Engine（Rust）
 
-### 3.1 Engine (Rust)
+**技术栈**：Rust + Bevy ECS + Tokio + FoundationDB
 
-**技术栈：** Rust 2024 + Bevy ECS + Tokio
-
-#### 3.1.1 核心 ECS 实体模型
+### 3.1 核心 ECS 实体
 
 ```rust
-// === 世界实体 (World Entities) ===
+// 位置——所有有位置的实体都有此组件
+struct Position { x: i32, y: i32, room: RoomId }
 
-// Drone — 玩家的可编程单位
-#[derive(Component)]
+// 所有权
+struct Owner(PlayerId);
+
+// Drone——玩家的可编程单位
 struct Drone {
     owner: PlayerId,
-    body: Vec<BodyPart>,     // WORK, CARRY, MOVE, ATTACK, etc.
-    fatigue: u32,
+    body: Vec<BodyPart>,       // MOVE, WORK, CARRY, ATTACK 等
+    fatigue: u32,              // 疲劳值，0 才能行动
     hits: u32,
     hits_max: u32,
     spawning: bool,
-    age: u32,                // ticks since spawned
+    age: u32,                  // 创建后经过的 tick 数
 }
 
-// Structure — 建筑
-#[derive(Component)]
+// Structure——建筑
 struct Structure {
-    structure_type: StructureType,  // Spawn, Extension, Tower, Storage, etc.
-    owner: PlayerId,
-    hits: u32,
-    hits_max: u32,
+    structure_type: StructureType,  // Spawn, Extension, Tower, Storage 等
+    owner: Option<PlayerId>,
+    hits: u32, hits_max: u32,
     energy: Option<u32>,
     energy_capacity: Option<u32>,
     cooldown: u32,
 }
 
-// Resource — 掉落资源
-#[derive(Component)]
+// Resource——掉落资源
 struct Resource {
-    resource_type: ResourceType,  // Energy, Mineral, etc.
+    resource_type: ResourceType,  // Energy, Mineral, Power
     amount: u32,
 }
 
-// Source / Mineral — 地图上的可再生资源点
-#[derive(Component)]
+// Source——地图上可再生资源点
 struct Source {
     energy: u32,
     energy_capacity: u32,
     ticks_to_regeneration: u32,
 }
 
-// Terrain — 地形
-#[derive(Component)]
+// Terrain——地形
 struct Terrain(TerrainType);  // Plain, Swamp, Wall
 
-// Position — 所有有位置的东西都有这个
-#[derive(Component)]
-struct Position { x: i32, y: i32, room: RoomId }
-
-// Owner — 所有权
-#[derive(Component)]
-struct Owner(PlayerId);
-
-// Controller — 房间控制器 (占领/升级)
-#[derive(Component)]
+// Controller——房间控制器（占领/升级）
 struct Controller {
     owner: Option<PlayerId>,
     level: u8,
-    progress: u32,
-    progress_total: u32,
+    progress: u32, progress_total: u32,
     downgrade_timer: u32,
     safe_mode: u32,
     safe_mode_available: u32,
@@ -195,464 +201,317 @@ struct Controller {
 }
 ```
 
-#### 3.1.2 Tick 循环协议
+### 3.2 Tick 生命周期
 
 ```
-TICK LIFECYCLE (per tick, ~3s target):
+每 tick（目标 3s）：
 
-PHASE 1: COLLECT (parallel, ~2.5s)
-  ├── For each player with active code:
-  │   ├── Load player's WASM module (cached from last compilation)
-  │   ├── Serialize visible world state → JSON snapshot
-  │   ├── Instantiate WASM with fuel limit = player's CPU quota
-  │   ├── Call `tick(snapshot)` → collect Commands[]
-  │   └── Filter out invalid commands (out-of-quota, illegal actions)
-  └── Collect all commands into command queue
+阶段一：收集 (COLLECT) — 并行, ~2.5s
+  ├── 对每个活跃玩家:
+  │   ├── 加载玩家 WASM 模块（缓存在内存中）
+  │   ├── 序列化可见世界状态 → JSON 快照
+  │   ├── 在 sandbox worker 进程中实例化 WASM，fuel limit = 玩家 CPU 配额
+  │   ├── 调用 tick(snapshot) → 收集 Vec<Command>
+  │   └── 过滤无效指令（超配额、非法操作）
+  └── 收集全部指令到指令队列
 
-PHASE 2: EXECUTE (sequential, ~0.5s)
-  ├── Sort commands by game order (inter-player deterministic)
-  ├── For each command:
-  │   ├── Validate against current world state
-  │   ├── If valid: apply mutation via ECS system
-  │   └── If conflict: discard + record rejection reason
-  ├── Run intra-tick ECS systems (combat, decay, regeneration)
-  └── Increment game time
+阶段二：执行 (EXECUTE) — 串行, ~0.5s
+  ├── 指令按确定性排序（tick, player_id, sequence）
+  ├── 对每条指令:
+  │   ├── 对照当前世界状态校验
+  │   ├── 合法 → 通过 ECS system 应用变更
+  │   └── 冲突 → 丢弃 + 记录 RejectionReason
+  ├── 运行 tick 内 ECS systems（战斗、衰减、再生）
+  ├── FDB 原子提交（全或无）
+  └── tick_counter 推进
 
-PHASE 3: BROADCAST (immediate)
-  ├── Compute delta (changed entities since last snapshot)
-  ├── Publish via NATS → Gateway → WebSocket → Clients
-  └── Persist full world state snapshot to FoundationDB (every Nth tick)
-
-Hints for future optimization:
-- Shard per room — rooms that don't share borders can tick independently
-- ECS systems can run in parallel when data dependencies allow (Bevy auto-scheduling)
+阶段三：广播 (BROADCAST) — 即时
+  ├── 计算增量（与上一 tick 快照的实体差异）
+  ├── Dragonfly 缓存更新
+  ├── 通过 NATS → Gateway → WebSocket 客户端发布
+  └── 每隔 N tick 记录完整世界快照到 FDB（回放用）
 ```
 
-#### 3.1.3 确定性保证
+### 3.3 确定性保证
 
 ```
-确定性需要满足：
-1. 相同的初始 World State
-2. 相同的 Command 输入 (已排序)
-3. ECS System 的执行顺序固定
-4. 所有随机数来自确定的种子 PRNG (do not use OS entropy)
+确定性需要：
+1. 相同的初始世界状态
+2. 相同的 Command 输入（已排序）
+3. ECS System 执行顺序固定（.chain()）
+4. 所有随机数来自确定种子 PRNG（不用 OS 熵源）
 
-反作弊策略：
-- 全量 Replay：任意房间状态可完全重现
-- 异常检测：玩家 tick 间的 world delta 如果不符合物理上限 → flag
+反作弊：
+- 全量回放：任意房间状态可完整重现
+- 异常检测：玩家 tick 间的世界变化超过物理上限 → 标记
 - WASM 编译时静态分析：扫描可疑系统调用
 ```
 
 ---
 
-### 3.2 Sandbox (WASM Runtime)
+## 4. MCP 接口——AI 玩家的操作界面
 
-**目标：** 让玩家用任意语言编写 AI，编译为 WASM，安全地在服务端执行。
-
-#### 3.2.1 玩家代码的生命周期
+MCP 是 AI agent 的「屏幕和鼠标」——与人类玩家的 Web UI 完全同级。
 
 ```
-1. 玩家编写代码 (TS, Rust, Go, Python, Zig, ...)
-2. 通过 Frontend SDK 编译为 WASM
-3. 上传 WASM 模块到 Sandbox Service
-4. Sandbox 服务:
-   a. 验证 WASM 字节码合法性
-   b. 静态分析 (可疑 import, 过大二进制)
-   c. 存储到 S3/对象存储
-   d. 返回 module_id
-5. 每 Tick:
-   a. Engine 请求 "player N's module"
-   b. Sandbox 返回预热的 Wasmtime Instance (pooling)
-   c. Engine 注入 snapshot, 执行, 提取 commands
-   d. 回收 instance 到池中
+人类：Monaco 编辑器 → 编译 WASM → 上传 ─┐
+                                       ├─→ WasmSandboxExecutor → 世界
+AI：  MCP 看世界 → 生成 WASM → 部署 ───┘
 ```
 
-#### 3.2.2 WASM ABI (玩家侧)
+### 4.1 MCP 工具分类
 
-所有 SDK 导出同一个函数签名：
+| 类别 | 工具 | 用途 |
+|------|------|------|
+| **世界查看** | `swarm_get_snapshot` | 获取可见世界状态 |
+| | `swarm_get_terrain` | 查看地形 |
+| | `swarm_get_objects_in_range` | 查看范围内的实体 |
+| **部署** | `swarm_deploy` | 上传 WASM 模块 |
+| | `swarm_validate_module` | 上传前预检 |
+| | `swarm_rollback` | 回滚到之前版本 |
+| **调试** | `swarm_explain_last_tick` | 解释上 tick 发生了什么 |
+| | `swarm_inspect_entity` | 检查实体完整状态 |
+| | `swarm_profile` | 策略性能指标 |
+| **学习** | `swarm_get_docs` | API 参考和游戏规则 |
+| | `swarm_get_schema` | 游戏 API JSON Schema |
+| | `swarm_get_available_actions` | 当前可用的 API 函数 |
 
-```typescript
-// TypeScript SDK — 编译目标
-export function tick(snapshot: string): string;
-```
+### 4.2 明确不在 MCP 中
+
+MCP 不做游戏动作。不存在 `swarm_move`、`swarm_attack`、`swarm_build` 等工具。AI agent 必须**编写 WASM 代码**来实现策略，和人类玩家完全一样。
+
+详见 `specs/p0/03-mcp-security-contract.md`。
+
+---
+
+## 5. 游戏 API（WASM Host Function）
+
+以下是在 WASM 沙箱中唯一可调用的函数：
 
 ```rust
-// Rust SDK — 编译目标
-#[no_mangle]
-pub extern "C" fn tick(snapshot_ptr: *const u8, snapshot_len: usize) -> *mut u8;
+// 移动
+fn host_move(object_id: i64, direction: i32) -> i32;
+fn host_move_to(object_id: i64, x: i32, y: i32) -> i32;
+
+// 采集 / 资源
+fn host_harvest(object_id: i64, target_id: i64) -> i32;
+fn host_transfer(object_id: i64, target_id: i64, resource: i32, amount: i32) -> i32;
+fn host_withdraw(object_id: i64, target_id: i64, resource: i32, amount: i32) -> i32;
+
+// 建造
+fn host_build(object_id: i64, x: i32, y: i32, structure_type: i32) -> i32;
+fn host_repair(object_id: i64, target_id: i64) -> i32;
+
+// 战斗
+fn host_attack(object_id: i64, target_id: i64) -> i32;
+fn host_ranged_attack(object_id: i64, target_id: i64) -> i32;
+fn host_heal(object_id: i64, target_id: i64) -> i32;
+
+// 孵化 / 回收
+fn host_spawn(spawn_id: i64, body_parts_ptr: i32, body_parts_len: i32) -> i32;
+fn host_recycle(object_id: i64, spawn_id: i64) -> i32;
+
+// 信息查询（计入 fuel 预算）
+fn host_get_terrain(x: i32, y: i32) -> i32;
+fn host_get_objects_in_range(x: i32, y: i32, range: i32, out_ptr: i32, out_len: i32) -> i32;
+fn host_path_find(from_x: i32, from_y: i32, to_x: i32, to_y: i32, out_ptr: i32, out_len: i32) -> i32;
 ```
 
-```
-snapshot (JSON): 玩家可见的世界状态
-return (JSON):   [Command, Command, ...] — 这一 tick 要执行的操作列表
+全部返回 `i32`：0 = 成功，负数 = 错误码。
 
-Command 格式:
-{
-  "action": "move",        // move, harvest, build, attack, spawn, transfer, ...
-  "target_id": "drone_a",
-  "params": { "direction": 3 }
-}
-```
+---
 
-#### 3.2.3 安全层次
+## 6. 数据模型
 
-| Layer | Mechanism | Purpose |
-|-------|-----------|---------|
-| L1 | WASM linear memory isolation | Prevent memory escape |
-| L2 | WASI minimal profile | No FS / network / clock / random |
-| L3 | Fuel metering (Wasmtime) | CPU instruction counting |
-| L4 | Host function allowlist | Only game API functions exposed |
-| L5 | Static bytecode scan | Reject known-malicious patterns |
-| L6 | Timeout (wall clock 2.5s) | Kill stuck modules |
-
-#### 3.2.4 编译服务
+### 6.1 FoundationDB — 世界状态
 
 ```
-Frontend SDK 负责本地编译:
-  sdk-ts:  AssemblyScript 或 TypeScript → WASM
-  sdk-rust:  wasm-pack → WASM
+/tick/{N}/state          → tick N 后的完整世界状态
+/tick/{N}/commands       → 全部玩家的排序指令
+/tick/{N}/rejections     → 被拒绝的指令及原因
+/tick/{N}/metrics        → tick 指标
+/player/{id}/profile     → 玩家档案
+/player/{id}/modules/    → WASM 模块历史
+```
 
-Sandbox Service 验证:
-  - wasmparser 检查 WASM 模块有效性
-  - 只接受已知且允许的 imports
-  - 拒绝 > 5MB 的模块
-  - 拒绝包含 start function 的模块 (防止预执行)
+### 6.2 Dragonfly — 热缓存
+
+- 当前 tick 世界状态快照（高频读取）
+- 玩家 session 映射（WS 连接 → player_id）
+- 排行榜缓存（每分钟刷新）
+- Rate limiting 计数器
+
+### 6.3 ClickHouse — 分析
+
+```sql
+-- tick 指标
+tick_metrics:    tick, player_id, cpu_fuel, cmd_count, cmd_success, latency_ms
+
+-- MCP 审计
+mcp_audit:       timestamp, player_id, tool_name, parameters, result
+
+-- 游戏事件
+player_events:   tick, player_id, event_type, entity_id, detail
 ```
 
 ---
 
-### 3.3 Gateway (Go)
+## 7. 部署架构
 
-**技术栈：** Go + gorilla/websocket + gRPC + NATS
-
-#### 3.3.1 职责
-
-- WebSocket 连接管理 (每 shard 一个 hub)
-- REST API (用户管理, 排行榜, 比赛历史)
-- gRPC server (Engine 内部调用)
-- Auth (OAuth2 / API Key)
-- 消息广播 (NATS consumer → WS clients)
-
-#### 3.3.2 API 设计 (REST)
-
-```
-POST   /api/v1/auth/login          # OAuth2 login
-GET    /api/v1/auth/me             # Current user
-POST   /api/v1/auth/apikey         # Generate API key for CI
-
-GET    /api/v1/world/rooms         # List all rooms
-GET    /api/v1/world/rooms/:id     # Room overview
-GET    /api/v1/world/rooms/:id/map # Terrain data
-
-POST   /api/v1/code/compile        # Upload WASM module
-GET    /api/v1/code/:id            # Module status
-
-GET    /api/v1/leaderboard         # Global ranking
-GET    /api/v1/leaderboard/season  # Current season
-
-GET    /api/v1/matches             # Match history
-GET    /api/v1/matches/:id         # Match replay
-```
-
----
-
-### 3.4 Frontend
-
-**技术栈：** React 18 + Monaco Editor + PixiJS 8 + WebSocket
-
-#### 3.4.1 核心页面
-
-```
-1. Dashboard — 多殖民地总览, 资源图表
-2. Room View — 等距地图渲染 (PixiJS), 单位动画, 实时事件
-3. Code Editor — Monaco Editor, 多文件项目, TypeScript types 内置
-4. Console — Engine 返回的日志／错误
-5. Market — 玩家间资源交易 (后期)
-```
-
-#### 3.4.2 地图渲染
-
-- **PixiJS** (WebGL) 绘制等距/俯视地图
-- 分层：Terrain → Structures → Resources → Creeps → Effects
-- 视口管理：可拖拽、缩放，只渲染可见区域 (culling)
-- 增量更新：只重新绘制 delta 实体
-
-#### 3.4.3 代码编辑器
-
-```
-┌─────────────────────────────────────────────────┐
-│ File: main.ts                           [Save] [Deploy]  │
-├─────────────────────────────────────────────────┤
-│                                               │
-│  import { tick, Snapshot, Command }           │
-│    from "@swarm/sdk"                          │
-│                                               │
-│  export function tick(snap: Snapshot):        │
-│    Command[] {                                 │
-│    const cmds: Command[] = []                 │
-│                                               │
-│    for (const drone of snap.drones) {         │
-│      if (drone.fatigue === 0) {               │
-│        cmds.push({                             │
-│          action: "move",                      │
-│          target_id: drone.id,                 │
-│          params: { direction: 3 }              │
-│        })                                      │
-│      }                                         │
-│    }                                           │
-│                                               │
-│    return cmds                                │
-│  }                                             │
-│                                               │
-├─────────────────────────────────────────────────┤
-│ Console: [Tick 4521] drone_a moved E3         │
-│ [Tick 4522] drone_b harvested +5 energy        │
-└─────────────────────────────────────────────────┘
-```
-
----
-
-### 3.5 SDK Design
-
-#### 3.5.1 TypeScript SDK (`sdk-ts`)
-
-```
-@sdk-ts/
-├── src/
-│   ├── types.ts          # Snapshot, Command, Entity 类型定义
-│   ├── sim.ts            # 本地模拟器 (用于离线测试)
-│   ├── utils.ts          # 路径规划, 距离计算, 缓存工具
-│   └── index.ts
-├── examples/
-│   ├── basic-harvester/
-│   ├── tower-defense/
-│   └── trade-bot/
-├── package.json
-└── tsconfig.json
-```
-
-#### 3.5.2 Rust SDK (`sdk-rust`)
-
-```
-@sdk-rust/
-├── src/
-│   ├── types.rs          # Snapshot, Command, Entity
-│   ├── sim.rs            # 本地模拟器
-│   ├── pathfinding.rs    # A* 等路径规划
-│   └── lib.rs
-├── examples/
-│   ├── basic-harvester/
-│   └── combat-squad/
-├── Cargo.toml
-└── README.md
-```
-
-#### 3.5.3 Game API (Host Functions)
-
-These are the ONLY functions available inside the WASM sandbox:
-
-```typescript
-// 宿主提供给 WASM 的 API — 最小化设计
-// (inside the sandbox, player code calls these to issue commands)
-
-// Movement
-move(target_id, direction) : Result
-move_to(target_id, x, y)  : Result  // uses built-in pathfinder
-
-// Harvesting / Resources
-harvest(target_id, source_id)    : Result
-transfer(target_id, target_id, resource, amount) : Result
-withdraw(target_id, target_id, resource, amount) : Result
-
-// Building
-build(target_id, x, y, structure_type) : Result
-repair(target_id, structure_id)        : Result
-
-// Combat
-attack(target_id, target_id)       : Result
-ranged_attack(target_id, target_id): Result
-heal(target_id, target_id)         : Result
-
-// Spawning
-spawn(spawn_id, body_parts[])     : Result
-recycle(target_id, spawn_id)      : Result
-
-// Information
-get_terrain(x, y)                : TerrainType
-get_objects_in_range(x, y, range): ObjectSummary[]
-path_find(from, to)              : PathResult
-```
-
----
-
-## 4. 数据模型
-
-### 4.1 FoundationDB — 世界状态
-
-```
-Key schema:
-  /world/{shard}/room/{room_id}/terrain     → 地形数据 (static, 256KB max)
-  /world/{shard}/room/{room_id}/entities    → 实体列表 (变动频繁)
-  /world/{shard}/room/{room_id}/tick        → 当前 tick 号
-  /player/{id}/profile                       → 玩家档案
-  /player/{id}/modules/{module_id}           → WASM 模块元数据
-  /player/{id}/stats                         → 统计信息
-```
-
-### 4.2 Dragonfly — 热缓存
-
-```
-用途：
-- 当前 tick 的世界状态快照 (频繁读写)
-- Player session 映射 (WS connection → player_id)
-- 排行榜缓存 (每分钟刷新)
-- Rate limiting counters
-```
-
-### 4.3 ClickHouse — 分析
-
-```
-表:
-  tick_metrics     — 每 tick: 玩家 CPU 消耗, 命令数, 延迟
-  player_events    — 日志: spawn, death, attack, build
-  room_events      — 日志: 占领, 升级, 毁灭
-  economy_events   — 日志: harvest, transfer, market trade
-```
-
----
-
-## 5. 部署架构
-
-### 5.1 开发环境 (docker-compose)
+### 7.1 开发环境（docker-compose）
 
 ```yaml
 services:
-  fdb:        # FoundationDB
-  dragonfly:  # Redis 兼容缓存
-  gateway:    # Go 服务
-  engine:     # Rust 引擎
-  sandbox:    # WASM 运行时
-  frontend:   # Vite dev server
+  fdb:          # FoundationDB
+  dragonfly:    # Redis 兼容缓存
+  engine:       # Rust 引擎
+  gateway:      # Go 网关
+  frontend:     # Vite dev server
 ```
 
-### 5.2 生产环境
+### 7.2 生产环境
 
 ```
 ┌──────────────────────────────────────────────┐
-│              Load Balancer                    │
-│           (nginx / Traefik)                   │
+│              负载均衡 (nginx / Traefik)         │
 └──────┬───────────────────────┬───────────────┘
        │                       │
        ▼                       ▼
 ┌──────────────┐      ┌──────────────┐
-│ Gateway-1    │      │ Gateway-2    │ ...  (Go, stateless, horizontal scale)
+│ Gateway-1    │      │ Gateway-2    │ ...  (Go, 无状态, 水平扩展)
 └──────┬───────┘      └──────┬───────┘
        │                     │
        └──────────┬──────────┘
                   ▼
 ┌─────────────────────────────────┐
-│         NATS Cluster             │
+│         NATS 集群                │
 └──────────┬──────────────────────┘
            │
            ▼
 ┌─────────────────────────────────┐
 │     Engine (Rust)                │
-│     (1 instance per shard)       │
+│     (每 shard 一个实例)           │
 └──────────┬──────────────────────┘
            │
            ▼
 ┌─────────────────────────────────┐
-│   FoundationDB Cluster           │
+│   FoundationDB 集群               │
 └─────────────────────────────────┘
 ```
 
 ---
 
-## 6. 路线图 (Roadmap)
+## 8. 路线图
 
-### Phase 1: 核心引擎 (MVP — 单人沙箱)
+### Phase 1: 核心引擎（MVP — 单人沙箱）
 
-- [ ] Bevy ECS 世界模拟 (地形, 资源, 基础单位)
-- [ ] WASM 沙箱执行 (单 tick)
-- [ ] 基础 Game API (move, harvest, build, spawn)
+- [ ] Bevy ECS 世界模拟（地形、资源、基础单位）
+- [ ] WASM 沙箱 + sandbox worker 进程（进程隔离）
+- [ ] 基础游戏 API（move, harvest, build, spawn）
+- [ ] MCP server 脚手架（swarm_get_snapshot, swarm_deploy）
 - [ ] 本地 docker-compose 开发环境
-- [ ] TypeScript SDK + Rust SDK (基础 API)
+- [ ] TypeScript SDK + Rust SDK（基础 API）
 
-### Phase 2: 多人世界
+### Phase 2: MCP 完整界面 + 多人世界
 
-- [ ] Tick 调度器 (多玩家并行)
-- [ ] 命令冲突解决
-- [ ] 持久化 (FoundationDB)
-- [ ] WebSocket 实时推送 (增量 delta)
-- [ ] Room 边界 + 多房间
+- [ ] MCP 完整工具集（世界查看、调试、部署）
+- [ ] MCP 认证与限流
+- [ ] Tick 调度器（多玩家并行）
+- [ ] 指令冲突解决
+- [ ] WebSocket 实时推送
 
-### Phase 3: 客户端
+### Phase 3: 持久化 + 多房间
 
-- [ ] Web 客户端 (React + Monaco + PixiJS)
+- [ ] FoundationDB 持久化（N=1，每 tick 原子提交）
+- [ ] Dragonfly 热缓存
+- [ ] ClickHouse 指标管线
+- [ ] 房间边界 + 多房间
+
+### Phase 4: 调试 + 回放
+
+- [ ] 每 tick 日志 + 回放
+- [ ] 状态检查工具
+- [ ] WASM 执行追踪
+- [ ] 策略指标仪表盘
+
+### Phase 5: 客户端
+
+- [ ] Web 客户端（React + Monaco + PixiJS）
+- [ ] 自动生成 API 参考站
 - [ ] OAuth2 登录
-- [ ] 代码编辑器 + 一键部署
-- [ ] 实时地图渲染
+- [ ] MCP 教程资源（AI 玩家上手指南）
 
-### Phase 4: 游戏化
+### Phase 6: 游戏化
 
-- [ ] 控制器 (Controller) + 房间占领
-- [ ] 战斗系统 (melee/ranged/heal)
-- [ ] 市场 (玩家间交易)
+- [ ] Controller + 房间占领
+- [ ] 战斗系统
+- [ ] 市场（玩家间交易）
 - [ ] 排行榜 + 赛季
+- [ ] Arena 模式（1v1 比赛制）
 
-### Phase 5: 生产化
+### Phase 7: 生产化
 
-- [ ] 性能优化 (sharding, ECS 并行化)
+- [ ] 性能优化（sharding, ECS 并行化）
 - [ ] 反作弊系统
+- [ ] AI 锦标赛编排
 - [ ] 自动化测试框架
-- [ ] 文档 + 教程
-- [ ] CI/CD Pipeline (GitHub Actions)
+- [ ] CI/CD Pipeline
 
 ---
 
-## 7. 贡献指南
+## 9. World 模式 vs Arena 模式
 
-### 7.1 开发环境搭建
+| 维度 | World（持久世界） | Arena（比赛） |
+|------|-----------------|-------------|
+| **运行方式** | 7×24 tick 循环 | 固定时长（例：5000 tick） |
+| **地貌** | 持久殖民地、房间占领 | 对称初始条件、独立地图 |
+| **代码** | 随时更新（热重载） | 比赛开始时锁定 |
+| **交互** | PvE + PvP 共存 | 1v1 或团队对决 |
+| **胜利条件** | 排行榜排名（GCL、房间数） | 摧毁敌方 Spawn 或最高分 |
+| **回放** | 自身可见 | 赛后自动公开 |
+| **玩家** | 人类和 AI agent 在同一世界共存 | |
+
+---
+
+## 10. 贡献指南
+
+### 10.1 开发环境搭建
 
 ```bash
-# 克隆所有仓库
 git clone git@git.kagurazakalan.com:swarm/engine.git
-git clone git@git.kagurazakalan.com:swarm/sandbox.git
-# ... etc
-
-# 启动开发环境
 cd engine && docker-compose up
 ```
 
-### 7.2 代码规范
+### 10.2 代码规范
 
-- Rust: `cargo fmt` + `cargo clippy` (strict)
+- Rust: `cargo fmt` + `cargo clippy`（严格）
 - Go: `gofmt` + `golangci-lint`
-- TypeScript: `prettier` + `eslint` (strict)
+- TypeScript: `prettier` + `eslint`（严格）
 - Commit: [Conventional Commits](https://www.conventionalcommits.org/)
 
 ---
 
 ## 附录 A: 与 Screeps 的 API 兼容性
 
-Swarm does NOT aim for API compatibility with Screeps. The design philosophy is different:
+Swarm 不追求与 Screeps API 兼容。设计哲学不同：
 
-- Screeps API is object-oriented (`creep.moveTo()`, `Game.spawns['Spawn1']`)
-- Swarm API is functional/data-oriented (`move(creep_id, direction)`, return commands)
+- Screeps API 是面向对象的（`creep.moveTo()`, `Game.spawns['Spawn1']`）
+- Swarm API 是功能/数据导向的（`move(creep_id, direction)`, return commands）
 
-However, a **compatibility layer** could be built as a community project that wraps Screeps-style API calls into Swarm commands.
+但可以通过社区项目构建兼容层，将 Screeps 风格 API 调用包装为 Swarm 指令。
 
-## 附录 B: 为什么不用现有 Screeps 方案?
+## 附录 B: 为什么不用现有 Screeps 方案？
 
-| Concern | Screeps | Swarm |
-|---------|---------|-------|
-| JavaScript lock-in | Only JS | Any WASM language |
-| Performance ceiling | V8 + GC pauses | WASM native speed |
-| CPU metering accuracy | Wall clock (system-dependent) | Fuel metering (deterministic) |
-| Determinism | Not guaranteed | Designed for |
-| Codebase age | Started 2014, Node.js 8 era | 2026, Rust + WASM |
-| Licensing | Mixed (server open, client proprietary) | MIT (fully open) |
+| 关注点 | Screeps | Swarm |
+|--------|---------|-------|
+| 语言锁定 | 仅 JS | 任意 WASM 语言 |
+| 性能上限 | V8 + GC 停顿 | WASM 原生速度 |
+| CPU 计量精度 | 墙钟（系统依赖） | Fuel metering（确定性） |
+| 确定性 | 不保证 | 设计目标 |
+| AI 玩家 | 无 | MCP 原生界面 |
+| 代码年代 | 2014 起步，Node.js 8 | 2026，Rust + WASM |
+| 许可证 | 混合（server 开源，client 专有） | MIT（完全开源） |
 
 ---
 
-*Last updated: 2026-06-13*
+*最后更新: 2026-06-14*

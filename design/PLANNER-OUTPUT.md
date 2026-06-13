@@ -1,98 +1,98 @@
-# Swarm Game Engine — Updated Implementation Plan (AI + MCP + Docs + Debug)
+# Swarm 游戏引擎 — 扩展实现计划（AI + MCP + 文档 + 调试）
 
-## Planner Output — Full Plan for Review
+## Planner 输出（评审前草案）
 
-This document is the Planner's output from the Ralplan Round 1 consensus process. It is being reviewed by Architect, Security Reviewer, and Game Designer agents in parallel.
+> **注意**：本文档是 Planner 在评审议会之前的输出。MCP 的定位已在 P0-3 中修正——MCP 是 AI 的操作界面（查看世界、部署 WASM），不是游戏动作接口。McpPlayerExecutor 已移除，统一为 WasmSandboxExecutor。详见 `specs/p0/` 目录下的 P0 规范。
 
 ---
 
-## 1. Summary
+## 1. 概述
 
-This plan extends the existing Swarm architecture to make AI players first-class citizens alongside human WASM-based players, with MCP (Model Context Protocol) as the native AI integration layer. The engine gains a built-in MCP server (rmcp crate) exposing game state, action tools, and API documentation as MCP resources — enabling AI agents to discover and play the game without human assistance.
+此计划在现有 Swarm 架构基础上，将 **AI 玩家作为一等公民**与人类 WASM 玩家并列，以 **MCP 作为原生 AI 集成层**。引擎内置 MCP server（rmcp crate），将游戏状态、文档作为 MCP 资源暴露——使 AI agent 无需人类帮助即可发现并参与游戏。
 
-Core architectural changes:
-- SandboxExecutor trait becomes PlayerExecutor with WasmSandboxExecutor + McpPlayerExecutor
-- MCP server is a first-class engine subsystem, not a bolt-on
-- Data model gains PlayerKind { Human, Ai { model, provider } }
-- Debug/trace primitives from Phase 1, not Phase 5
-- Schema registry for auto-generated docs feeding both human docs and MCP resources
+核心架构变更：
+- SandboxExecutor trait 抽象为 PlayerExecutor，含 WasmSandboxExecutor + McpPlayerExecutor
+- MCP server 是引擎一等子系统，非后期附加
+- 数据模型新增 PlayerKind { Human, Ai { model, provider } }
+- 调试/追踪原语从 Phase 1 开始，非 Phase 5
+- Schema registry 生成文档，同时供给人类文档和 MCP 资源
 
-## 2. 7-Phase Implementation Plan
+## 2. 七阶段实现计划
 
-### Phase 1: Foundation Hardening + MCP Scaffold
-- 1.1 Add PlayerKind (Human/Ai) and AiSession ECS components
-- 1.2 Add rmcp dependency, scaffold MCP server module with swarm_ping tool, wire into main.rs as Tokio task
-- 1.3 Extend GameConfig with MCP settings (mcp_enabled, mcp_bind_addr, max_ai_players)
-- 1.4 Define debug/trace data model: TickTrace, EntityEvent, TraceCollector with ring buffer + ClickHouse schema
-- 1.5 Add documentation generation pipeline: SchemaRegistry, exposed via cargo run -- schema
-- 1.6 Rename SandboxExecutor → PlayerExecutor, add player_kind() method, add McpPlayerExecutor stub
+### Phase 1: 基础加固 + MCP 脚手架
+- 1.1 新增 PlayerKind（Human/Ai）和 AiSession ECS 组件
+- 1.2 引入 rmcp 依赖，搭建 MCP server 模块含 swarm_ping 工具，以 Tokio 任务嵌入 main.rs
+- 1.3 扩展 GameConfig 增加 MCP 配置（mcp_enabled, mcp_bind_addr, max_ai_players）
+- 1.4 定义调试/追踪数据模型：TickTrace、EntityEvent、TraceCollector（环形缓冲 + ClickHouse schema）
+- 1.5 新增文档生成管线：SchemaRegistry，通过 `cargo run -- schema` 暴露
+- 1.6 重命名 SandboxExecutor → PlayerExecutor，添加 player_kind() 方法，新增 McpPlayerExecutor stub
 
-### Phase 2: MCP Server — Game State & Tools (AI player MVP)
-- 2.1 Implement MCP tool swarm_get_snapshot — returns visible world state per player
-- 2.2 Implement all game action MCP tools (11 tools mirroring Command enum)
-- 2.3 Implement MCP resources for API docs: swarm://schema/*, swarm://docs/*
-- 2.4 Implement MCP authentication and per-player isolation
-- 2.5 Implement McpPlayerExecutor tick integration
-- 2.6 AI player lifecycle management via gateway REST
+### Phase 2: MCP Server — 游戏状态与工具（AI 玩家 MVP）
+- 2.1 实现 MCP 工具 swarm_get_snapshot — 返回每玩家可见世界状态
+- 2.2 实现全部游戏动作 MCP 工具（11 个工具，镜像 Command 枚举）
+- 2.3 实现 API 文档的 MCP 资源：swarm://schema/*, swarm://docs/*
+- 2.4 实现 MCP 认证和每玩家隔离
+- 2.5 实现 McpPlayerExecutor tick 集成
+- 2.6 AI 玩家生命周期管理，通过 gateway REST
 
-### Phase 3: Multi-Player World + Persistence
-- 3.1 Tick scheduler with mixed player types (WASM + MCP executors in parallel)
-- 3.2 Command conflict resolution — deterministic ordering
-- 3.3 FoundationDB persistence
-- 3.4 Dragonfly hot cache
-- 3.5 ClickHouse metrics pipeline
-- 3.6 WebSocket real-time delta push
-- 3.7 Room boundaries + multi-room
+### Phase 3: 多人世界 + 持久化
+- 3.1 Tick 调度器支持混合玩家类型（WASM + MCP 执行器并行）
+- 3.2 指令冲突解决——确定性排序
+- 3.3 FoundationDB 持久化
+- 3.4 Dragonfly 热缓存
+- 3.5 ClickHouse 指标管线
+- 3.6 WebSocket 实时增量推送
+- 3.7 房间边界 + 多房间
 
-### Phase 4: Debugging Infrastructure
-- 4.1 Per-tick logging with MCP-accessible replay
-- 4.2 State inspection tools (swarm_inspect_entity, swarm_inspect_room)
-- 4.3 WASM execution traces
-- 4.4 Performance profiling per player
-- 4.5 Visual debugging overlay (frontend)
+### Phase 4: 调试基础设施
+- 4.1 每 tick 日志，MCP 可访问回放
+- 4.2 状态检查工具（swarm_inspect_entity, swarm_inspect_room）
+- 4.3 WASM 执行追踪
+- 4.4 每玩家性能分析
+- 4.5 可视化调试叠加层（前端）
 
-### Phase 5: Client + Documentation
-- 5.1 Web client — Monaco Editor + PixiJS
-- 5.2 Auto-generated API reference site
-- 5.3 TypeDoc + Rustdoc CI build
-- 5.4 MCP-accessible documentation updates
-- 5.5 OAuth2 login + player profiles
+### Phase 5: 客户端 + 文档
+- 5.1 Web 客户端 — Monaco Editor + PixiJS
+- 5.2 自动生成 API 参考站
+- 5.3 TypeDoc + Rustdoc CI 构建
+- 5.4 MCP 可访问文档更新
+- 5.5 OAuth2 登录 + 玩家档案
 
-### Phase 6: Gameplay Systems
-- 6.1 Controller + room claiming
-- 6.2 Combat system
-- 6.3 Market system
-- 6.4 Leaderboards + seasons
+### Phase 6: 游戏系统
+- 6.1 Controller + 房间占领
+- 6.2 战斗系统
+- 6.3 市场系统
+- 6.4 排行榜 + 赛季
 
-### Phase 7: Production Hardening + AI Tournament Mode
-- 7.1 AI tournament orchestration
-- 7.2 Performance optimization — sharding + ECS parallelization
-- 7.3 Anti-cheat system (including AI-specific abuse detection)
-- 7.4 MCP server production hardening
-- 7.5 CI/CD + automated testing
+### Phase 7: 生产化 + AI 锦标赛模式
+- 7.1 AI 锦标赛编排
+- 7.2 性能优化——分片 + ECS 并行化
+- 7.3 反作弊系统（含 AI 专项滥用检测）
+- 7.4 MCP server 生产加固
+- 7.5 CI/CD + 自动化测试
 
-## 3. Key Risks Identified
-- MCP protocol churn → pin rmcp, abstract via adapter
-- AI player latency → async push-based snapshot delivery, command queue
-- MCP tool explosion → proc macro code generation
-- AI vs human fairness → same command limits, identical validation
-- Prompt injection via game state → sanitize all player-generated strings
-- Schema/documentation drift → CI enforcement
-- Debug overhead → sampling
+## 3. 已识别的关键风险
+- MCP 协议变动 → 锁定 rmcp 版本，通过适配器抽象
+- AI 玩家延迟 → 基于推送的异步快照交付，指令队列
+- MCP 工具数量膨胀 → proc macro 代码生成
+- AI vs 人类公平性 → 相同指令限制，同等校验
+- 通过游戏状态的 prompt 注入 → 过滤所有玩家原创字符串
+- Schema/文档漂移 → CI 强制检查
+- 调试开销 → 采样
 
-## 4. Open Questions
-- Q1: Engine as MCP server, client, or both? → Hybrid (bidirectional)
-- Q2: AI players need WASM? → No, MCP only
-- Q3: AI sessions persist? → Yes, in FoundationDB
-- Q4: MCP embedded or sidecar? → Embedded for MVP, separate later
-- Q5: stdio or HTTP/SSE? → HTTP/SSE only (AI players are remote)
-- Q6: Schema in engine or separate crate? → Separate swarm-schema crate
-- Q7: AI player quality metrics? → Metrics-based evaluation
+## 4. 待解决问题
+- Q1: 引擎作为 MCP server、client，还是两者？→ 双向混合
+- Q2: AI 玩家需要 WASM 吗？→ 不需要，仅 MCP
+- Q3: AI 会话持久化吗？→ 是，存 FoundationDB
+- Q4: MCP 内嵌还是独立 sidecar？→ MVP 阶段内嵌，后续分离
+- Q5: stdio 还是 HTTP/SSE？→ 仅 HTTP/SSE（AI 玩家是远程的）
+- Q6: Schema 在 engine crate 还是独立 crate？→ 独立 swarm-schema crate
+- Q7: AI 玩家质量指标？→ 基于指标评估
 
-## 5. Codebase Reference
-- Engine: /data/swarm/engine/ — Phase 1 code already exists (ECS components, systems, tick outline, game API types)
-- Design doc: /data/swarm/docs/DESIGN.md — original architecture
-- SDKs: /data/swarm/sdk-ts/, /data/swarm/sdk-rust/
+## 5. 代码库参考
+- Engine: /data/swarm/engine/ — Phase 1 代码已有（ECS 组件、系统、tick 框架、游戏 API 类型）
+- 设计文档: /data/swarm/docs/design/DESIGN.md — 原始架构
+- SDK: /data/swarm/sdk-ts/, /data/swarm/sdk-rust/
 - Gateway: /data/swarm/gateway/
 - Frontend: /data/swarm/frontend/
 - Sandbox: /data/swarm/sandbox/
