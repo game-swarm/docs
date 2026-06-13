@@ -173,16 +173,15 @@ struct Structure {
     cooldown: u32,
 }
 
-// Resource——掉落资源
+// Resource——掉落资源（动态资源类型）
 struct Resource {
-    resource_type: ResourceType,  // Energy, Mineral, Power
-    amount: u32,
+    amounts: HashMap<String, u32>,    // { "Energy": 500, "Matter": 200 }
 }
 
-// Source——地图上可再生资源点
+// Source——可再生资源点
 struct Source {
-    energy: u32,
-    energy_capacity: u32,
+    produces: HashMap<String, u32>,   // { "Energy": 1 } 或 { "Energy": 1, "Matter": 1 }
+    capacity: u32,
     ticks_to_regeneration: u32,
 }
 
@@ -462,6 +461,69 @@ Screeps 的问题是**规则硬编码**——出生点逻辑、代码更新成�
 | `build_cost_multiplier` | f64 | 建筑成本倍率（默认 1.0） |
 | `drone_decay_rate` | f64 | drone 衰减倍率（默认 1.0） |
 
+#### 自定义资源类型
+
+世界可以定义任意种类和数量的资源。默认世界只有 `Energy` 一种资源——但服主可以定义 `Crystal + Gas`（星际争霸风格）、`Food + Wood + Stone + Gold`（帝国时代风格）、或 `CPU + Memory + Bandwidth`（赛博朋克主题）。
+
+| 规则 | 类型 | 说明 |
+|------|------|------|
+| `resource_types` | `[ResourceDef]` | 世界中的资源类型列表，默认 `[{name: "Energy"}]` |
+
+每类资源的定义：
+
+```toml
+[[resource_types]]
+name = "Crystal"              # 资源名（标识符）
+display_name = "水晶矿"        # 显示名
+category = "mineral"          # mineral | gas | organic | energy
+starting_amount = 0           # 新玩家初始拥有量
+max_storage = 100000          # 单玩家最大储量
+decay_rate = 0.001            # 每 tick 衰减比例（0 = 不衰减）
+tradeable = true              # 是否可在市场交易
+```
+
+定义了资源类型后，可以给不同的动作指定不同的资源消耗：
+
+```toml
+[actions.costs]
+
+# Spawn drone 消耗：水晶 + 高能瓦斯
+spawn = { Crystal = 200, Gas = 50 }
+
+# 建造建筑
+build.Extension = { Crystal = 50 }
+build.Tower = { Crystal = 100, Gas = 25 }
+
+# 生成 body part
+body_part.Move = { Crystal = 50 }
+body_part.Work = { Crystal = 100 }
+body_part.Attack = { Crystal = 80, Gas = 20 }
+body_part.Heal = { Crystal = 250, Gas = 100 }
+body_part.Claim = { Crystal = 600 }
+
+# 代码部署
+code_update = { Crystal = 500 }
+
+# 维修
+repair_per_hit = { Crystal = 1 }
+```
+
+资源点可以产出多种资源：
+
+```toml
+[[source_types]]
+name = "CrystalField"
+produces = { Crystal = 1 }     # 每 tick 产出
+capacity = 3000
+regeneration = 300             # 每 tick 再生量
+
+[[source_types]]
+name = "GasVent"
+produces = { Gas = 1 }
+capacity = 2000
+regeneration = 10
+```
+
 #### 战斗与 PvP
 
 | 规则 | 类型 | 说明 |
@@ -502,6 +564,46 @@ source_regeneration = 1.0
 build_cost = 1.0
 drone_decay = 1.0
 
+# 自定义资源类型
+[[resource_types]]
+name = "Energy"
+display_name = "能量"
+category = "energy"
+starting_amount = 1000
+max_storage = 100000
+
+[[resource_types]]
+name = "Matter"
+display_name = "物质"
+category = "mineral"
+starting_amount = 500
+max_storage = 50000
+
+# 各动作资源消耗
+[actions.costs]
+spawn = { Energy = 200, Matter = 50 }
+build.Extension = { Energy = 50 }
+build.Tower = { Energy = 100, Matter = 25 }
+body_part.Move = { Energy = 50 }
+body_part.Work = { Energy = 100 }
+body_part.Attack = { Energy = 80, Matter = 20 }
+body_part.Heal = { Energy = 250, Matter = 100 }
+code_update = { Energy = 500 }
+repair_per_hit = { Energy = 1 }
+
+# 资源点类型
+[[source_types]]
+name = "EnergyField"
+produces = { Energy = 1 }
+capacity = 3000
+regeneration = 300
+
+[[source_types]]
+name = "MatterDeposit"
+produces = { Matter = 1 }
+capacity = 2000
+regeneration = 10
+
 [combat]
 pvp = true
 friendly_fire = false
@@ -518,44 +620,85 @@ fn register_rule_systems(app: &mut App, config: &WorldConfig) {
     // 基础系统始终注册
     app.add_systems(Update, (movement_system, harvest_system, /* ... */).chain());
 
+    // 注入资源注册表——所有 System 通过它查询资源类型和消耗
+    let resource_registry = ResourceRegistry::from_config(&config);
+    app.insert_resource(resource_registry);
+
     // 规则系统按配置注册
     if config.code.propagation_speed > 0 {
         app.add_systems(Update, code_propagation_system.before(movement_system));
     }
-    if config.code.update_window.is_some() {
-        app.add_systems(Update, code_update_window_system);
-    }
-    if config.drone.manual_control {
-        app.add_systems(Update, manual_control_system.after(combat_system));
-    }
-    if config.drone.env_vars {
-        app.add_systems(Update, drone_env_var_system);
+    // ...
+}
+
+// ResourceRegistry 是运行时的资源类型字典
+struct ResourceRegistry {
+    types: HashMap<String, ResourceDef>,
+    action_costs: ActionCosts,       // spawn, build.*, body_part.*, ...
+    source_types: Vec<SourceDef>,
+}
+
+impl ResourceRegistry {
+    /// 查询某个动作的资源消耗
+    fn cost(&self, action: &str, detail: Option<&str>) -> HashMap<String, u32> {
+        // action = "build", detail = "Tower"
+        // → { "Energy": 100, "Matter": 25 }
     }
 }
 ```
 
-关键是：规则 System 的存在与否不影响核心引擎。核心引擎只关心「有 Command 进来 → 校验 → 执行」。规则 System 是**在执行前后附加逻辑**。
+关键是：**核心引擎不硬编码 Energy**。它只操作 `HashMap<ResourceName, Amount>`。资源名是配置决定的字符串。
+
+```rust
+// 之前（硬编码）
+struct Resource { energy: u32 }
+
+// 之后（动态）
+struct Resource {
+    amounts: HashMap<String, u32>,  // { "Energy": 500, "Matter": 200 }
+}
+struct ResourceDef {
+    name: String,
+    display_name: String,
+    category: ResourceCategory,
+    starting_amount: u32,
+    max_storage: u32,
+    decay_rate: f64,
+    tradeable: bool,
+}
+```
 
 ### 8.5 WASM 侧感知
 
-玩家的 WASM 代码可以通过 host function 读取当前世界的规则：
-
-```rust
-fn host_get_world_config(key_ptr: i32, key_len: i32, out_ptr: i32, out_len: i32) -> i32;
-```
+玩家的 WASM 代码通过 host function 读取当前世界的资源类型和动作消耗：
 
 ```typescript
 // TypeScript SDK
-const config = Game.world.config();
-if (config.code.update_cost.Energy > 0) {
-    // 部署有成本，谨慎更新
-}
-if (config.code.propagation_speed > 0) {
-    // 代码需要时间传播，考虑分阶段部署
-}
-```
+const registry = Game.world.resources();
 
-这样玩家的策略可以**自适应世界规则**——同一份 WASM 在不同规则的世界中表现不同。
+// 查看世界中定义了哪些资源
+for (const [name, def] of registry.types) {
+    console.log(`${name} (${def.display_name}): max ${def.max_storage}`);
+}
+
+// 查询动作消耗
+const spawnCost = registry.cost("spawn");
+// → { Energy: 200, Matter: 50 }
+
+const towerCost = registry.cost("build", "Tower");
+// → { Energy: 100, Matter: 25 }
+
+// 检查能否支付
+if (player.resources.has(spawnCost)) {
+    player.spawn(body);
+}
+
+// 采集时指定资源类型
+drone.harvest(source, "Matter");  // 采集物质
+drone.transfer(target, { Energy: 100, Matter: 50 });
+
+// 自适应——同一份 WASM 在任何资源体系的世界中都能运行
+```
 
 ### 8.6 World 与 Arena 的默认规则
 
