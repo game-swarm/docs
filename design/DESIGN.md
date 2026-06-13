@@ -727,6 +727,211 @@ drone.transfer(target, { Energy: 100, Matter: 50 });
 | `drone_env_vars` | true | true |
 | `pvp_enabled` | true | true（必须） |
 
+### 8.7 Rule Module System — 可安装的游戏模组
+
+规则模组是**可安装的 Rhai 脚本 + 声明式配置**——轻量、确定、可组合。
+
+```
+玩家代码:  WASM → 控制 drone     (不可信 → sandbox)
+规则模组:  Rhai → 修改世界规则    (服主声明 → 引擎嵌入)
+引擎核心:  Rust → 确定性模拟      (不可变)
+```
+
+#### 为什么不是 WASM
+
+| | WASM（玩家） | Rhai（规则） |
+|------|-------------|------------|
+| 信任模型 | 不可信，需要进程隔离 | 服主自行安装，可信 |
+| 编译步骤 | 需要外部工具链 | 无，引擎直接执行源码 |
+| 确定性 | 依赖 wasmtime 版本 | 同引擎版本完全确定 |
+| 语言复杂度 | 取决于源语言 | 极简，类似 Rust/JS |
+| 性能 | JIT | AST 解释（规则场景足够） |
+
+#### 模组结构
+
+一个模组是一个目录：
+
+```
+empire-upkeep/
+├── mod.toml          # 模组元数据 + 可配置参数声明
+├── init.rhai         # 加载时执行一次
+├── tick_start.rhai   # 每 tick 开始时执行
+└── tick_end.rhai     # 每 tick 结束时执行
+```
+
+##### mod.toml
+
+```toml
+[meta]
+name = "empire-upkeep"
+version = "1.2.0"
+description = "帝国规模维护费——drone 和房间越多，每 tick 消耗越大"
+author = "kagurazaka"
+license = "MIT"
+dependencies = []       # 依赖的其他模组
+conflicts = []          # 冲突的模组
+
+# 可配置参数——每项在脚本中作为全局变量可用
+[config]
+drone_cost = { type = "u32", default = 2, min = 0, max = 100, description = "每 drone 每 tick 维护费" }
+room_base = { type = "u32", default = 10, min = 0, max = 1000, description = "每房间基础维护费" }
+room_superlinear = { type = "f64", default = 0.1, min = 0.0, max = 10.0, description = "超线性系数" }
+onshortfall = { type = "enum", default = "degrade", values = ["degrade", "damage", "despawn"], description = "资源不足时的处理方式" }
+```
+
+##### init.rhai
+
+```rust
+// 模组加载时执行一次——验证配置、初始化内部状态
+fn init(config, actions) {
+    actions.log_info(`empire-upkeep v${MOD_VERSION} loaded`);
+    actions.log_info(`  drone_cost=${config.drone_cost}`);
+    actions.log_info(`  room_superlinear=${config.room_superlinear}`);
+    actions.log_info(`  onshortfall=${config.onshortfall}`);
+}
+```
+
+##### tick_end.rhai
+
+```rust
+// 每 tick 结束时执行——计算维护费并扣除
+fn on_tick_end(state, events, config, actions) {
+    for player in state.players() {
+        let drones = player.drones().len();
+        let rooms = player.rooms().len();
+
+        // 超线性：房间越多，每房间成本越高
+        let room_penalty = rooms * (config.room_base +
+            rooms as f64 * config.room_superlinear) as u32;
+
+        let total_cost = drones * config.drone_cost + room_penalty;
+
+        actions.deduct_resource(player.id, "Energy", total_cost);
+        actions.emit_event("upkeep_charged", #{
+            player: player.id,
+            drones: drones,
+            rooms: rooms,
+            cost: total_cost
+        });
+    }
+}
+```
+
+#### Rhai API：模组可用的函数
+
+```rust
+// 状态查询
+state.players()          → Iterator<Player>
+state.tick()             → u64
+player.drones()          → Iterator<Drone>
+player.rooms()           → Iterator<Room>
+player.resources()       → Map<String, u64>
+drone.body_parts()       → Vec<BodyPart>
+drone.position()         → (x, y, room_id)
+
+// 世界修改（通过 actions，不进命令管线）
+actions.deduct_resource(player_id, resource, amount)
+actions.award_resource(player_id, resource, amount)
+actions.modify_entity(entity_id, property, value)
+actions.emit_event(event_type, data)
+actions.log_info(message)
+actions.log_warn(message)
+
+// 不可用：文件 IO、网络、时钟、随机数（确定性要求）
+```
+
+所有 `actions` 操作被记录到 TickTrace——可回放、可审计。
+
+#### 安装与配置
+
+```bash
+# 从模组市场安装
+swarm mod install empire-upkeep
+
+# 查看模组的可配置项
+swarm mod config empire-upkeep
+
+# 设置参数
+swarm mod config empire-upkeep drone_cost 5
+swarm mod config empire-upkeep onshortfall "damage"
+
+# 在世界中启用
+swarm world add-mod empire-upkeep
+```
+
+世界配置中引用：
+
+```toml
+# world.toml
+[world]
+name = "Survival World"
+
+[[mods]]
+name = "empire-upkeep"
+version = "1.2.0"
+[mods.config]
+drone_cost = 5
+room_superlinear = 0.2
+onshortfall = "damage"
+
+[[mods]]
+name = "resource-decay"
+version = "0.3.0"
+[mods.config]
+decay_rate = 0.001
+```
+
+#### 引擎集成
+
+```rust
+fn register_mod_systems(app: &mut App, world_config: &WorldConfig) {
+    for mod_def in &world_config.mods {
+        let mut module = load_mod(&mod_def.name, &mod_def.version);
+        module.configure(&mod_def.config);                // 注入参数
+        module.run_init();                                 // init.rhai
+
+        // 注册 tick 钩子
+        let tick_end = module.tick_end_script.clone();
+        app.add_systems(Update, move |world: &mut World| {
+            let state = WorldState::from_world(world);
+            let mut actions = RuleActions::new();
+            let events = TickEvents::current();
+            tick_end.call(&state, &events, &module.config, &mut actions);
+            actions.apply(world);  // 经校验后写入
+        }.after(death_system));
+    }
+}
+```
+
+#### 模组市场
+
+```
+swarm-mods.kagurazakalan.com
+
+  模组              评分    安装量    描述
+  ─────────────────────────────────────────────────
+  empire-upkeep     ★4.8   1,234     帝国规模维护费
+  fog-of-war        ★4.6   892       战争迷雾
+  resource-decay    ★4.3   567       资源腐败衰减
+  territory-control ★4.5   445       连续领土要求
+  alliance-system   ★4.7   678       玩家间结盟
+  mutation          ★4.2   234       drone 进化变异
+```
+
+模组是源码——服主可以 fork、修改、提交 PR。社区 review + rating。
+
+#### 帝国维护费示例效果
+
+```
+小帝国（1 房, 20 drone）: 维护费 ≈ 40/tick     — 轻松
+中帝国（5 房, 100 drone）: 维护费 ≈ 275/tick   — 可承受
+大帝国（20 房, 500 drone）: 维护费 ≈ 2100/tick  — 需要高效经济
+巨帝国（50 房, 2000 drone）: 维护费 ≈ 12600/tick — 软天花板
+
+不是硬上限——是「你能支撑多大就有多大」。
+想维持巨帝国？你的 drone 物流必须极致优化。
+```
+
 ---
 
 ## 9. 路线图

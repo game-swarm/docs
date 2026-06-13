@@ -4,7 +4,15 @@
 
 ## 1. 定位
 
-Swarm 不是「一个游戏」，是「游戏引擎平台」。每个世界实例有独立的规则集，由服主通过 `world.toml` 配置。引擎根据配置动态注册 ECS System。
+Swarm 不是「一个游戏」，是「游戏引擎平台」。规则模组是**可安装的 Rhai 脚本 + 声明式配置**——轻量、确定、可组合。
+
+```
+玩家代码:  WASM → 控制 drone     (不可信 → sandbox)
+规则模组:  Rhai → 修改世界规则    (服主声明 → 引擎嵌入)
+引擎核心:  Rust → 确定性模拟      (不可变)
+```
+
+每个世界通过 `world.toml` 启用一组模组，每模组有独立的参数配置。模组通过 `actions` 请求引擎操作——不能绕过 Command Validation Pipeline。
 
 ## 2. 配置 Schema
 
@@ -98,6 +106,25 @@ damage_multiplier = 1.0
 
 [visibility]
 fog_of_war = true
+
+# ═════════════════════════════════════
+# 已安装模组
+# ═════════════════════════════════════
+
+[[mods]]
+name = "empire-upkeep"
+version = "1.2.0"
+[mods.config]
+drone_cost = 5
+room_superlinear = 0.2
+onshortfall = "damage"
+
+[[mods]]
+name = "resource-decay"
+version = "0.3.0"
+[mods.config]
+decay_rate = 0.001
+
 ```
 
 ## 3. ECS Plugin 注册
