@@ -22,6 +22,7 @@ game_api.idl  (单一真相)
 # game_api.idl — Swarm Game API Interface Definition
 
 version: "1.0.0"
+abi_version: 1                # 每次 host function 签名变更时递增
 generated: "2026-06-14"
 
 types:
@@ -139,14 +140,42 @@ host_functions:
     params: [snapshot_ptr: i32, snapshot_len: i32]
     returns: i32  # 0 = success, pointer to command JSON in WASM memory
 
-  # 世界配置查询
+  # 世界配置查询（只读）
   get_world_config:
-    params: []
-    returns: WorldConfig
+    params: [key_ptr: i32, key_len: i32, out_ptr: i32, out_len: i32]
+    returns: i32
 
   get_world_rules:
-    params: []
-    returns: Vec<ActiveMod>
+    params: [out_ptr: i32, out_len: i32]
+    returns: i32
+
+  # 地形与寻路查询（只读，计入 fuel）
+  get_terrain:
+    params: [x: i32, y: i32]
+    returns: i32  # terrain_type as i32 (0=plain, 1=wall, 2=swamp, 3=lava)
+
+  get_objects_in_range:
+    params: [x: i32, y: i32, range: i32, out_ptr: i32, out_len: i32]
+    returns: i32  # 写入 object_id 列表到 out_ptr
+    limit: 5 calls/tick
+
+  path_find:
+    params: [from_x: i32, from_y: i32, to_x: i32, to_y: i32, out_ptr: i32, out_len: i32]
+    returns: i32  # 写入路径坐标列表到 out_ptr
+    limit: 10 calls/tick
+
+global_storage_commands:
+  TransferToGlobal:
+    params: { resource: ResourceName, amount: ResourceAmount }
+    validator: [global_storage_enabled, has_local_resource, under_capacity, transfer_time_remaining(0)]
+    cost: registry.transfer_to_global_cost() * amount
+    duration: transfer_to_global_time  # tick 数，运输期间资源不可用
+
+  TransferFromGlobal:
+    params: { resource: ResourceName, amount: ResourceAmount }
+    validator: [global_storage_enabled, has_global_resource, transfer_time_remaining(0)]
+    cost: registry.transfer_from_global_cost() * amount
+    duration: transfer_from_global_time
 
 refund_policy:
   contention_lost: 0.5    # SourceEmpty, TileOccupied, TargetFull
@@ -161,7 +190,7 @@ refund_policy:
 | Rust | `src/generated/host_functions.rs` — host function stubs |
 | TS SDK | `sdk-ts/src/generated/api.ts` — types + autocomplete |
 | MCP | MCP tool schemas JSON |
-| Replay | TickTrace schema |
+| Replay | TickTrace schema — 冻结于 Phase 0；格式变更需递增 ABI 版本 |
 | Docs | API reference markdown |
 
 ## 4. CI 检查

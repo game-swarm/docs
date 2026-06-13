@@ -231,7 +231,32 @@ delta = compute_delta(world_state_before, world_state_after)
 | `tick_duration_p99` | > 2800ms | 警告：接近 3s 目标 |
 | `command_rejection_rate` | > 20% 每玩家 | 标记玩家审查 |
 
-## 6. 回放协议
+## 6. Tick Failure Semantics — 失败语义
+
+### 6.1 失败模式矩阵
+
+| 失败点 | 触发条件 | 对本 tick 影响 | 对玩家影响 | 恢复策略 |
+|--------|---------|--------------|-----------|---------|
+| **WASM timeout** | 玩家 tick() 超过 collect_timeout_ms (2500ms) | 该玩家 0 指令，其他玩家正常 | 空 tick，不退 fuel | 下 tick 正常执行 |
+| **WASM crash** | 玩家 WASM 崩溃/panic/OOM | 同上 | 空 tick，不退 fuel。连续 3 tick crash → 玩家标记 degraded | 自动恢复，degraded 需人工解除 |
+| **WASM output invalid** | tick 输出不符合 JSON schema（见 P0-2 §1.1） | 该玩家所有指令丢弃 | 空 tick，不退 fuel | 下 tick 正常（需玩家修复代码） |
+| **FDB commit fail** | FoundationDB 事务冲突/网络错误 | tick 放弃（state 不变，tick_counter 不递增） | CPU fuel 退还 | 重试 3 次，失败等 1s 重试同 tick。连续 3 tick abandon → 引擎降级 |
+| **Dragonfly cache miss** | 缓存未命中/过期 | 无——回退到 FDB 直读 | 无影响 | 从 FDB 重建缓存（异步） |
+| **Dragonfly cache stale** | 缓存版本落后于 FDB | 无——FDB 为权威源 | 旧数据给查询入口，不影响 tick | 下次写入时自动刷新 |
+| **NATS publish fail** | NATS 连接断开/超时 | tick 结果已持久化到 FDB，但客户端未收到 delta | 客户端未更新，需等 polling fallback | NATS 重连；客户端 5s 未收到 delta → 主动拉取 |
+| **Broadcast partial** | 部分客户端已收到 delta，部分未收到 | 客户端间状态不一致（暂时） | 未收到的客户端显示旧状态 | 客户端通过 last_tick 字段检测 gap → 主动 fetch |
+| **TickTrace write fail** | FDB 写入 TickTrace 失败（磁盘满） | tick 执行完成但审计日志不完整 | 无 gameplay 影响 | 告警；TickTrace 丢失的 tick 标记为不可回放 |
+
+### 6.2 降级模式 (Degraded Mode)
+
+连续 3 次 tick abandon → 引擎进入降级模式：
+- 暂停新玩家加入 (`join_lock = true`)
+- 暂停 MCP_Deploy 来源（禁止代码更新，防部署丢失）
+- 保持已有玩家 WASM 执行
+- 告警升级 → 需管理员介入
+- 连续 10 tick 正常 → 自动退出降级模式
+
+### 6.3 回放协议
 
 ### 6.1 记录
 

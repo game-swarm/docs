@@ -93,9 +93,9 @@ max_body_parts = 50
 max_drones_per_player = 500
 
 [resources]
-source_regeneration_rate = 1.0
-build_cost_multiplier = 1.0
-drone_decay_rate = 1.0
+source_regeneration_rate = 10000   # fixed<u32,4>: 1.0
+build_cost_multiplier = 10000       # fixed<u32,4>: 1.0
+drone_decay_rate = 10000            # fixed<u32,4>: 1.0
 
 # 物流配置
 global_storage_enabled = true
@@ -120,7 +120,7 @@ name = "empire-upkeep"
 version = "1.2.0"
 [mods.config]
 drone_cost = 5
-room_superlinear = 0.2
+room_superlinear = 2    # fixed<u32,4>: 0.0002
 onshortfall = "damage"
 
 [[mods]]
@@ -248,9 +248,9 @@ fn memory_upkeep_system(
     if upkeep.is_empty() { return; }
 
     for (mut resources, memory) in players.iter_mut() {
-        let used_bytes = memory.used_bytes() as f64;
+        let used_bytes = memory.used_bytes();
         for (res_name, cost_per_byte) in upkeep {
-            let total_cost = (used_bytes * cost_per_byte).ceil() as u32;
+            let total_cost = (used_bytes * cost_per_byte) / FIXED_SCALE;
             if total_cost > 0 {
                 resources.deduct(res_name, total_cost);
                 // 资源不足 → drone 随机失忆（减少存储）

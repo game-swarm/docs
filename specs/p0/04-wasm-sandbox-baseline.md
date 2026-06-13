@@ -144,36 +144,49 @@ fn validate_module(wasm_bytes: &[u8]) -> Result<(), Rejection> {
 }
 ```
 
-## 3. 允许的 Host Function（游戏 API）
+## 3. Deferred Command Model — 延迟指令模型
 
-WASM 中仅可调用以下函数：
+WASM 模块采用 **deferred model**：`tick()` 接收快照 JSON，**返回指令 JSON**。引擎在校验后执行指令。WASM 中**不得直接调用 mutating host function**——所有状态变更必须通过指令 JSON 返回，由引擎统一应用。
+
+### 3.1 模块导出
 
 ```rust
-// 移动
-fn host_move(object_id: i64, direction: i32) -> i32;
+// tick() 由 WASM 模块导出，非 host function
+// tick(ptr: i32, len: i32) -> i32
+//   输入: ptr/len 指向快照 JSON（引擎写入 WASM 线性内存）
+//   返回值: 指令 JSON 的指针（WASM 分配，引擎读取后释放）
+//   指令 JSON 格式见 P0-2 Command Validation Matrix
+```
 
-// 采集
-fn host_harvest(object_id: i64, target_id: i64) -> i32;
-fn host_transfer(object_id: i64, target_id: i64, resource: i32, amount: i32) -> i32;
+### 3.2 允许的 Host Function（查询专用，只读）
 
-// 建造
-fn host_build(object_id: i64, x: i32, y: i32, structure_type: i32) -> i32;
+WASM 中**仅可调用查询类 host function**——所有函数均为只读，不计入指令预算但计入 fuel 预算：
 
-// 战斗
-fn host_attack(object_id: i64, target_id: i64) -> i32;
-fn host_heal(object_id: i64, target_id: i64) -> i32;
-
-// 信息查询（计入 fuel 预算）
+```rust
+// 信息查询（计入 fuel 预算，只读，不改变世界状态）
 fn host_get_terrain(x: i32, y: i32) -> i32;
 fn host_get_objects_in_range(x: i32, y: i32, range: i32, out_ptr: i32, out_len: i32) -> i32;
 fn host_path_find(from_x: i32, from_y: i32, to_x: i32, to_y: i32, out_ptr: i32, out_len: i32) -> i32;
 
-// 快照通过 WASM 内存传入（非 host function）
-// tick(ptr: i32, len: i32) -> i32  ← 由模块导出，接收快照 JSON，返回指令 JSON
+// 世界配置查询
+fn host_get_world_config(key_ptr: i32, key_len: i32, out_ptr: i32, out_len: i32) -> i32;
 ```
 
 全部返回 `i32`：0 = 成功，负数 = 错误码。
 `out_ptr`/`out_len`：WASM 分配缓冲区，host 写入结果后再次校验边界。
+
+### 3.3 禁止的 Host Function
+
+以下函数**不得作为 host function 暴露给 WASM**：
+
+- ❌ `host_move` — 改为 `{ "cmd": "move", ... }` JSON 指令
+- ❌ `host_harvest` — 改为 `{ "cmd": "harvest", ... }` JSON 指令
+- ❌ `host_transfer` — 改为 `{ "cmd": "transfer", ... }` JSON 指令
+- ❌ `host_build` — 改为 `{ "cmd": "build", ... }` JSON 指令
+- ❌ `host_attack` — 改为 `{ "cmd": "attack", ... }` JSON 指令
+- ❌ `host_heal` — 改为 `{ "cmd": "heal", ... }` JSON 指令
+
+所有游戏动作必须通过 `tick() → JSON` 延迟模型提交，引擎在校验后统一应用。
 
 ## 4. OS 隔离
 

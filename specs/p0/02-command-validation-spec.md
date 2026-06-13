@@ -5,18 +5,24 @@
 ## 1. 指令管线
 
 ```
-RawCommand（来自 WASM/MCP/REST）
+tick() 输出 JSON（来自 WASM 模块）
     │
     ▼
 ┌─────────────────┐
-│  反序列化         │  JSON 解析，schema 验证，边界检查
+│  Tick 输出 Schema  │  JSON schema 验证：最大 256KB、拒绝额外字段、深度≤10
+│  校验              │  超限/畸形的 tick 输出直接丢弃，不计入 refund
 └────────┬────────┘
-         │ Ok(RawCommand)
+         │ Ok(Command[])
+         ▼
+┌─────────────────┐
+│  反序列化         │  JSON 解析，逐指令 schema 验证，边界检查
+└────────┬────────┘
+         │ Ok(RawCommand[])
          ▼
 ┌─────────────────┐
 │  预校验           │  静态检查：目标存在、归属匹配、距离范围内
 └────────┬────────┘
-         │ Ok(ValidatedCommand)
+         │ Ok(ValidatedCommand[])
          ▼
 ┌─────────────────┐
 │  应用            │  修改世界状态（FDB 事务内）
@@ -26,7 +32,29 @@ RawCommand（来自 WASM/MCP/REST）
    记录到 TickTrace
 ```
 
-**单一管线**：所有入口（WASM host function、MCP tool、REST API、admin CLI）走同一 `校验 → 应用` 路径。无绕过。
+**单一管线**：所有入口（WASM tick 输出、MCP tool、REST API、admin CLI）走同一 `校验 → 应用` 路径。无绕过。
+
+### 1.1 Tick 输出 JSON Schema
+
+WASM 模块的 `tick()` 必须返回符合以下 schema 的 JSON：
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "array",
+  "maxItems": 100,
+  "items": { "$ref": "#/definitions/Command" }
+}
+```
+
+- 顶层必须是 JSON **数组**（非 object、非 null、非原始值）
+- 数组长度 ≤ MAX_COMMANDS_PER_PLAYER (100)
+- 总字节数 ≤ 256 KB
+- `additionalProperties: false` — 拒绝未知顶层字段
+- 深度限制 ≤ 10 层
+- 包含非 JSON 字节序列（二进制垃圾）→ 校验失败，整个 tick 输出丢弃
+
+> 校验失败的 tick 输出：不计入 refund（未进入指令管线），记录到 TickTrace 为 `TickValidationFailed`。
 
 ## 2. RawCommand 结构
 
@@ -269,6 +297,8 @@ Drone 在 tick 末尾创建（death_system 之后，spawn 槽位已释放）。
 
 ## 7. 资源争用 Refund 策略
 
+### 7.1 退还规则
+
 | 拒绝原因 | Refund | 理由 |
 |---------|--------|------|
 | `SourceEmpty` | 退 50% fuel | 竞争导致——非玩家过错 |
@@ -280,3 +310,27 @@ Drone 在 tick 末尾创建（death_system 之后，spawn 槽位已释放）。
 | `InsufficientResource` | 不退 | 玩家应计算资源 |
 | `ObjectNotFound` | 不退 | 目标已被销毁——信息过期 |
 | 其他所有 | 不退 | 默认不退款 |
+
+### 7.2 退还时序（Anti-Amplification）
+
+**退还的 fuel 仅作用于下一 tick 的 fuel budget**，禁止同 tick 内计算放大：
+
+- tick N 的指令在 tick N 执行阶段被拒绝 → 退还 credit 记入玩家的 `next_tick_fuel_credit`
+- tick N+1 开始时，玩家 fuel budget = `MAX_FUEL + next_tick_fuel_credit`（不超过 `MAX_FUEL × 1.1`）
+- 同 tick 内不得通过故意竞争失败来获取额外计算预算
+
+### 7.3 退还上限与滥用检测
+
+| 限制 | 值 | 说明 |
+|------|------|------|
+| 每人每 tick 退还上限 | `MAX_FUEL × 10%` | 当前为 1,000,000 fuel 上限 |
+| 同源重复失败 | 仅首次退 50%，后续 0% | 同一 `(player, source, rejection_reason)` 在同一 tick 内重复退还不累计 |
+| 连续高退还率 throttle | 退还率 > 80% 连续 3 tick | 触发 throttle：该玩家下一 tick fuel budget 降为 `MAX_FUEL × 0.5` |
+
+### 7.4 监控指标
+
+| 指标 | 阈值 | 动作 |
+|------|------|------|
+| `refund_abuse_rate` | 退还 fuel / 总消耗 fuel > 0.5 | 记录到审计日志 |
+| `source_empty_refund_pct` | SourceEmpty 占总退还 > 80% | 标记为可疑行为模式 |
+| `consecutive_high_refund_ticks` | ≥ 3 | 自动 throttle（见上表） |
