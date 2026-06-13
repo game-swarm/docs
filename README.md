@@ -16,7 +16,8 @@ docs/
 │       ├── 03-mcp-security-contract.md   # MCP 安全契约
 │       ├── 04-wasm-sandbox-baseline.md   # WASM 沙箱基线
 │       ├── 05-unified-visibility-policy.md # 统一可见性策略
-│       └── 06-mvp-feedback-loop.md       # MVP 反馈循环规范
+│       ├── 06-mvp-feedback-loop.md       # MVP 反馈循环规范
+│       └── 07-world-rules-engine.md       # World Rules Engine 配置规范
 └── reviews/           # 评审报告
     ├── CONSENSUS-REPORT.md  # 评审议会共识报告
     └── review-rev-*.md      # 6 份评审员报告
