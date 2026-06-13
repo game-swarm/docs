@@ -920,6 +920,138 @@ swarm-mods.kagurazakalan.com
 
 模组是源码——服主可以 fork、修改、提交 PR。社区 review + rating。
 
+#### 规则可见性与 i18n
+
+世界的活跃规则对所有玩家（人类和 AI）完全可见。每个配置项都有多语言描述。
+
+##### mod.toml 中的 i18n
+
+```toml
+[meta]
+name = "empire-upkeep"
+version = "1.2.0"
+description = "帝国规模维护费"
+
+# 多语言描述
+[meta.description_i18n]
+zh = "帝国规模维护费——drone 和房间越多，每 tick 消耗越大。维护费不足时效率下降。"
+en = "Empire upkeep — more drones and rooms cost more per tick. Shortfall degrades efficiency."
+ja = "帝国維持費——ドローンと部屋が多いほど毎 tick のコストが増加。不足時は効率低下。"
+
+[config]
+
+[config.drone_cost]
+type = "u32"
+default = 2
+min = 0
+max = 100
+[config.drone_cost.description_i18n]
+zh = "每架 drone 每 tick 消耗的能量"
+en = "Energy consumed per drone per tick"
+ja = "ドローン1機あたりの毎 tick エネルギー消費"
+
+[config.room_superlinear]
+type = "f64"
+default = 0.1
+min = 0.0
+max = 10.0
+[config.room_superlinear.description_i18n]
+zh = "超线性系数——房间越多，每间房的单位成本越高"
+en = "Superlinear factor — more rooms increase per-room cost"
+ja = "超線形係数——部屋が増えるほど1部屋あたりのコストが上昇"
+
+[config.onshortfall]
+type = "enum"
+default = "degrade"
+values = ["degrade", "damage", "despawn"]
+[config.onshortfall.description_i18n]
+zh = "资源不足时的处理方式：degrade=效率下降, damage=建筑受损, despawn=单位消亡"
+en = "Behavior on resource shortfall: degrade=slow, damage=hurt buildings, despawn=lose units"
+ja = "リソース不足時の動作：degrade=効率低下, damage=建物損傷, despawn=ユニット消滅"
+[config.onshortfall.values_i18n]
+degrade = { zh = "效率下降", en = "Efficiency degradation", ja = "効率低下" }
+damage = { zh = "建筑受损", en = "Building damage", ja = "建物損傷" }
+despawn = { zh = "单位消亡", en = "Unit despawn", ja = "ユニット消滅" }
+```
+
+##### 玩家可见的世界规则
+
+人类玩家在 Web UI 中看到：
+
+```
+┌─────────────────────────────────────────────┐
+│  世界规则 — Survival World                    │
+│                                               │
+│  🔧 empire-upkeep v1.2.0                      │
+│  帝国规模维护费——drone 和房间越多，每 tick    │
+│  消耗越大。维护费不足时效率下降。               │
+│                                               │
+│  当前参数:                                     │
+│    drone_cost = 5        每架 drone 每 tick   │
+│                          消耗的能量             │
+│    room_superlinear = 0.2                     │
+│                          超线性系数             │
+│    onshortfall = damage  资源不足时的处理方式    │
+│                                               │
+│  🍂 resource-decay v0.3.0                     │
+│  资源腐败衰减——储存的资源随时间缓慢减少。        │
+│                                               │
+│  当前参数:                                     │
+│    decay_rate = 0.001   每 tick 衰减比例        │
+└─────────────────────────────────────────────┘
+```
+
+AI 玩家通过 MCP 查询：
+
+```
+mcp.call("swarm_get_world_rules")
+→ {
+  "mods": [
+    {
+      "name": "empire-upkeep",
+      "version": "1.2.0",
+      "description": "帝国规模维护费——drone 和房间越多...",
+      "config": {
+        "drone_cost": { "value": 5, "type": "u32", "min": 0, "max": 100,
+                        "description": "每架 drone 每 tick 消耗的能量" },
+        "room_superlinear": { "value": 0.2, "type": "f64",
+                              "description": "超线性系数——房间越多..." },
+        "onshortfall": { "value": "damage", "type": "enum",
+                         "values": ["degrade","damage","despawn"],
+                         "description": "资源不足时的处理方式" }
+      }
+    }
+  ]
+}
+```
+
+##### WASM 侧查询
+
+玩家的 drone 代码可以查询当前世界规则：
+
+```typescript
+// TypeScript SDK
+const rules = Game.world.rules();
+
+for (const mod of rules.active_mods) {
+    console.log(`${mod.name} v${mod.version}`);
+    console.log(`  ${mod.description}`);
+    for (const [key, param] of mod.config) {
+        console.log(`  ${key} = ${param.value}  // ${param.description}`);
+    }
+}
+
+// 根据规则调整策略
+if (rules.get("empire-upkeep").config.onshortfall.value === "damage") {
+    // 维护费不足会损坏建筑——必须保持能量正流入
+    strategy.prioritize_energy_income();
+}
+```
+
+##### 语言选择
+
+引擎根据请求的 `Accept-Language` 头或 MCP 客户端的 `locale` 参数返回对应语言的描述。缺少翻译时回退到 `en`，再回退到 `description` 字段。
+
 #### 帝国维护费示例效果
 
 ```

@@ -145,6 +145,7 @@ AI 玩家令牌: `swarm:deploy swarm:read swarm:debug`。
 | `swarm_validate_module` | 上传前校验 WASM，返回潜在问题和预估 fuel 消耗 | `swarm:deploy` | 10/h |
 | `swarm_get_schema` | 获取游戏 API 的 JSON Schema | 无 | 无限制 |
 | `swarm_get_docs` | 获取游戏规则、API 参考、教程 | 无 | 无限制 |
+| `swarm_get_world_rules` | 获取当前世界的活跃模组及完整配置（含 i18n 描述） | `swarm:read` | 1/tick |
 | `swarm_get_available_actions` | 返回当前世界状态下可用的 API 函数列表 | `swarm:read` | 5/tick |
 | `swarm_simulate` | 离线模拟：给定世界快照，预测未来 N tick | `swarm:read` | 按需 |
 
