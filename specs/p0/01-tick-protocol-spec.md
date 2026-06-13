@@ -112,9 +112,10 @@ Tick N+1: 引擎自动切换到 v2
 **方案：种子洗牌 (Seeded Shuffle)**
 
 ```rust
-// 每 tick 洗牌一次，种子 = hash(tick_number, world_seed)
-let seed = hash(tick_number, world_config.seed);
-let player_order: Vec<PlayerId> = seeded_shuffle(&active_players, seed);
+// 每 tick 洗牌一次，种子 = blake3(tick_number || world_seed)
+// 使用固定 hash 算法（非 std::hash），保证跨版本确定性
+let seed = blake3::hash(&[&tick_number.to_le_bytes(), &world_seed]);
+let player_order: Vec<PlayerId> = seeded_shuffle(&active_players, &seed);
 
 // 按洗牌后的玩家顺序 + 玩家内部指令序号排序
 for (order_index, player_id) in player_order.iter().enumerate() {
@@ -198,7 +199,9 @@ txn.commit()  // 全提交 或 全回滚
 ```
 
 `txn.commit()` 失败（冲突/网络）→ 最多重试 3 次 → 全部失败则 tick 放弃。
-放弃的 tick：世界状态不变，tick 计数器不推进，触发告警。
+放弃的 tick：世界状态不变，tick_counter 不递增，消耗的 CPU fuel 退还玩家。
+放弃后等待 1s 重试同一 tick（避免立即重试导致相同的 FDB 冲突）。
+连续放弃 3 次 → 引擎进入降级模式（暂停新玩家加入），告警触发。
 
 ## 4. 阶段三：广播
 
@@ -212,14 +215,12 @@ delta = compute_delta(world_state_before, world_state_after)
 ### 4.2 持久化 → 缓存 → 发布
 
 ```
-1. FDB.commit()              // 原子提交，阻塞至持久化完成
-2. Dragonfly.update(delta)   // 非权威缓存，允许滞后
+1. FDB.commit()              // 原子提交（EXECUTE 阶段已完成，此处为状态确认）
+2. Dragonfly.update(delta)   // 非权威缓存，允许滞后。失败则从 FDB 重建
 3. NATS.publish("tick.{tick}", delta)  // 网关 → WebSocket 客户端
 ```
 
-顺序不可变: FDB 先，缓存后，广播最后。
-Dragonfly 挂了 → 从 FDB 重建。
-NATS 挂了 → 客户端丢失增量，下个 tick 发全量快照（非增量）。
+**注意**：FDB 提交发生在 EXECUTE 阶段末尾（§3.4），不在 BROADCAST。此处 `FDB.commit()` 是空操作——仅用于文档一致性标记。BROADCAST 阶段不访问 FDB。
 
 ## 5. Tick 健康指标
 

@@ -266,3 +266,17 @@ Drone 在 tick 末尾创建（death_system 之后，spawn 槽位已释放）。
 | JSON 深度 | 10 | serde_json 递归限制 |
 | 字符串最大长度（通用） | 256 字符 | 通用保护 |
 | i32 坐标范围 | [-128, 127] 每房间 | 防止溢出攻击 |
+
+## 7. 资源争用 Refund 策略
+
+| 拒绝原因 | Refund | 理由 |
+|---------|--------|------|
+| `SourceEmpty` | 退 50% fuel | 竞争导致——非玩家过错 |
+| `TileOccupied` | 退 50% fuel | 同上 |
+| `TargetFull` | 退 50% fuel | 同上 |
+| `OutOfRange` | 不退 | 玩家应检查距离 |
+| `Fatigued` | 不退 | 玩家应检查疲劳 |
+| `MissingBodyPart` | 不退 | 玩家应知道自己 drone 组成 |
+| `InsufficientResource` | 不退 | 玩家应计算资源 |
+| `ObjectNotFound` | 不退 | 目标已被销毁——信息过期 |
+| 其他所有 | 不退 | 默认不退款 |

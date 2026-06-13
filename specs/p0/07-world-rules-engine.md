@@ -85,8 +85,6 @@ regeneration = 10
 # ═════════════════════════════════════
 
 [drone]
-manual_control = false
-manual_control_limit = 0
 env_vars = true
 memory_size = 1024
 memory_spawn_cost = {}          # 每 byte 孵化成本
@@ -178,9 +176,6 @@ impl WorldConfig {
         }
 
         // === Drone 控制 ===
-        if self.drone.manual_control {
-            app.add_systems(Update, manual_control_system.after(combat_system));
-        }
         if self.drone.env_vars {
             app.add_systems(Update, drone_env_var_system);
         }
@@ -235,32 +230,6 @@ fn code_propagation_system(
 }
 ```
 
-### 手动控制
-
-```rust
-/// 当 manual_control = true 时，玩家可对指定 drone 发直接指令
-fn manual_control_system(
-    config: Res<WorldConfig>,
-    mut manual_commands: ResMut<ManualCommandQueue>,
-    mut drones: Query<(&Drone, &Owner)>,
-) {
-    let limit = config.drone.manual_control_limit;
-    for (player_id, commands) in manual_commands.drain_by_player() {
-        let mut count = 0;
-        for cmd in commands {
-            if count >= limit { break; }
-            // 手动指令跳过 WASM 输出，直接进入 Command 队列
-            if let Ok((drone, owner)) = drones.get(cmd.object_id) {
-                if owner.0 == player_id {
-                    command_queue.push(cmd);
-                    count += 1;
-                }
-            }
-        }
-    }
-}
-```
-
 ### 内存维护费
 
 ```rust
@@ -305,7 +274,7 @@ interface WorldConfig {
         update_window: { every: number; duration: number };
         propagation_speed: number;
     };
-    drone: { manual_control: boolean; env_vars: boolean; memory_size: number };
+    drone: { env_vars: boolean; memory_size: number };
     combat: { pvp_enabled: boolean; friendly_fire: boolean };
 }
 
@@ -342,7 +311,6 @@ if (cfg.drone.memory_upkeep_cost.Energy > 0) {
 | `code.update_cost` | {} | {} |
 | `code.update_window` | 无限制 | 赛前锁定 |
 | `code.propagation_speed` | 0 | 0 |
-| `drone.manual_control` | false | false |
 | `drone.env_vars` | true | true |
 | `combat.pvp_enabled` | true | true |
 | `visibility.fog_of_war` | true | false（全场可见） |

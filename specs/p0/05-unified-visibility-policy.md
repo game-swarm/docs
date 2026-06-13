@@ -118,7 +118,17 @@ GET /api/v1/world/rooms/:id/map → 仅地形（公开）
 |------|--------|
 | **裸追踪** (admin) | 全部 — 所有实体、所有指令、所有状态 |
 | **自身回放** (玩家) | `is_visible_to(玩家, tick)` — 玩家实际所见 |
-| **公开回放** (赛后) | `is_visible_to(任意玩家, tick)` 或全知视角（赛后延迟） |
+| **公开回放** (Arena 赛后) | 全知视角 — 赛后延迟 ≥100 tick 才公开 |
+| **公开回放** (World) | 不公开 — 仅自身回放 |
+
+### 数据分级
+
+| 级别 | 内容 | 谁可见 |
+|------|------|--------|
+| Public | 排行榜、房间名、Controller 等级 | 所有人 |
+| Self | 自身实体、tick 解释、rejection detail | 仅自己 |
+| Admin-only | 全量 tick trace、其他玩家指令、world_seed、RNG 状态 | 仅管理员 |
+| Delayed | Arena 全知回放 | 赛后 + ≥100 tick |
 
 ## 4. 房间 Fog of War
 

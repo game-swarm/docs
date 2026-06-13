@@ -18,6 +18,8 @@ docs/
 │       ├── 05-unified-visibility-policy.md # 统一可见性策略
 │       ├── 06-mvp-feedback-loop.md       # MVP 反馈循环规范
 │       └── 07-world-rules-engine.md       # World Rules Engine 配置规范
+│       ├── 08-game-api-idl.md             # Game API IDL 单一真相规范
+│       └── 09-command-source-model.md      # 指令来源模型规范
 └── reviews/           # 评审报告
     ├── CONSENSUS-REPORT.md  # 评审议会共识报告
     └── review-rev-*.md      # 6 份评审员报告
