@@ -97,6 +97,12 @@ source_regeneration_rate = 1.0
 build_cost_multiplier = 1.0
 drone_decay_rate = 1.0
 
+# 物流配置
+global_storage_enabled = true
+transfer_to_global_cost = { Energy = 0.01 }
+transfer_from_global_cost = { Energy = 0.05 }
+market_requires_terminal = true
+
 [combat]
 pvp_enabled = true
 friendly_fire = false
