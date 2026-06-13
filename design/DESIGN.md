@@ -215,10 +215,11 @@ struct Controller {
   └── 收集全部指令到指令队列
 
 阶段二：执行 (EXECUTE) — 串行, ~0.5s
-  ├── 指令按确定性排序（tick, player_id, sequence）
-  ├── 对每条指令:
+  ├── 玩家顺序种子洗牌（seed = hash(tick_number, world_seed)）
+  ├── 对每条指令（按洗牌后顺序 + 玩家内 sequence 排序）:
   │   ├── 对照当前世界状态校验
   │   ├── 合法 → 通过 ECS system 应用变更
+  │   ├── 资源竞争 → 先到先得（先执行者优先）
   │   └── 冲突 → 丢弃 + 记录 RejectionReason
   ├── 运行 tick 内 ECS systems（战斗、衰减、再生）
   ├── FDB 原子提交（全或无）

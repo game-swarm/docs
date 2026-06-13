@@ -105,15 +105,63 @@ Tick N+1: 引擎自动切换到 v2
 
 ## 3. 阶段二：执行
 
-### 3.1 指令排序（确定性）
+### 3.1 指令排序（确定性 + 公平）
+
+**问题**：如果排序 key 是 `(tick_number, player_id, ...)  `，同一个玩家每次都在同一位置——不公平且可被利用。
+
+**方案：种子洗牌 (Seeded Shuffle)**
+
+```rust
+// 每 tick 洗牌一次，种子 = hash(tick_number, world_seed)
+let seed = hash(tick_number, world_config.seed);
+let player_order: Vec<PlayerId> = seeded_shuffle(&active_players, seed);
+
+// 按洗牌后的玩家顺序 + 玩家内部指令序号排序
+for (order_index, player_id) in player_order.iter().enumerate() {
+    let player_commands = collected_commands[player_id].sort_by_key(|c| c.sequence);
+    for cmd in player_commands {
+        global_queue.push((order_index, player_id, cmd.sequence, cmd));
+    }
+}
+```
+
+**属性**：
+- 确定性：相同 `(tick_number, world_seed, 相同指令集)` → 相同顺序 → 相同世界状态
+- 公平性：每个 tick 玩家顺序随机轮换，长期期望均等
+- 不可预测：玩家无法提前知道自己在当前 tick 的排序位置
+
+### 3.2 资源竞争 (Resource Contention)
+
+**场景**：两个玩家的 drone 在同一 tick 试图采集同一个 Source。
+
+**规则：按排序顺序依次执行，先到先得。**
 
 ```
-sort_key = (tick_number, player_id, command_sequence_number)
+Source E1: energy = 5
+
+排序后指令队列:
+  1. Player B: harvest(E1) → 拿走 5，E1 剩余 0
+  2. Player A: harvest(E1) → 校验时发现 E1.energy = 0
+     → RejectionReason: SourceEmpty
+     → 记录到 TickTrace
 ```
 
-所有玩家的全部指令展平为一个列表，按此 key 排序。给定相同指令集，顺序始终相同。
+**应用范围**：
+| 竞争类型 | 处理方式 |
+|---------|---------|
+| 采集同一 Source | 先到先得，耗尽后 `SourceEmpty` |
+| 建造同一坐标 | 先到先得，坐标被占后 `TileOccupied` |
+| 攻击同一目标 | 全部执行——多个攻击者可以打同一目标 |
+| 治疗同一目标 | 按顺序加血，满血后 `AlreadyFullHealth` |
+| 传输资源到同一目标 | 顺序填充，容量满后 `TargetFull` |
 
-### 3.2 指令校验
+**设计意图**：
+- 先到先得简单、确定、可解释
+- 种子洗牌保证了「先到」的公平性——长期来看每个玩家都有同等概率先到
+- 创造了策略深度：要不要多个 drone 采集同一个源？万一排在后面就浪费指令
+- 不采用比例分配（太复杂且失去竞争性），不采用价高者得（需要市场机制，超出入门复杂度）
+
+### 3.3 指令校验
 
 每条指令对照当前世界状态校验。详见 P0-2 指令校验规范。
 非法指令 → 拒绝，记录 RejectionReason，写入 TickTrace。
