@@ -54,10 +54,14 @@
 
 ### 2.1 玩家执行模型
 
-| 玩家类型 | 执行器 | 完成模型 |
+唯一执行器：**WasmSandboxExecutor**。所有玩家的 drone 都通过 WASM 沙箱执行——无论是人类编写还是 AI agent 编写。没有 McpPlayerExecutor。
+
+| 输入来源 | 编译者 | 部署渠道 |
 |---------|--------|---------|
-| 人类/WASM | WasmSandboxExecutor（sandbox worker 进程） | 同步：在收集窗口内完成 |
-| AI (MCP) | McpPlayerExecutor | 异步：从预提交指令队列中读取 |
+| 人类编写代码 | 人类通过 Web UI / CLI 编译 | Web 上传 / `swarm deploy` CLI |
+| AI agent 编写代码 | AI 通过自身工具链编译 | MCP `swarm_deploy` |
+
+引擎只关心：「有 WASM 模块了吗？」——不问是谁写的。
 
 ### 2.2 收集超时
 
@@ -88,16 +92,16 @@ fn build_snapshot(player_id, tick) -> Snapshot:
 
 快照按房间序列化一次，再按玩家过滤——不是 O(P × E)。
 
-### 2.4 AI 玩家指令队列
+### 2.4 WASM 模块部署
 
-AI 玩家在 tick 之间通过 MCP 提交指令：
+AI 玩家通过 MCP `swarm_deploy` 上传 WASM 模块，引擎在下一 tick 加载新模块：
 ```
-POST /mcp/tick/{tick+1}/commands
-Body: Vec<RawCommand>
+Tick N: 引擎用 WASM 模块 v1 执行玩家代码
+Tick N: AI 调用 swarm_deploy，上传 v2
+Tick N+1: 引擎自动切换到 v2
 ```
 
-指令存储在 Dragonfly 的 `player_commands[tick][player_id]` 中。
-tick N 开始时，引擎读取预提交指令。队列为空 → `[]`。
+代码部署不影响当前 tick 执行——当前 tick 使用已加载的模块。切换是原子的。
 
 ## 3. 阶段二：执行
 

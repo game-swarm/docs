@@ -42,18 +42,26 @@
 AI agent 连接 → swarm://docs/tutorials/basic-agent
 返回逐步 MCP 交互指南:
 
-1. 调用 swarm_get_available_actions → 发现你能做什么
-2. 调用 swarm_get_snapshot → 查看当前世界状态
-3. 通过 swarm_submit_commands 提交指令
-4. 调用 swarm_explain_last_tick → 理解结果
-5. 重复
+1. 调用 swarm_get_snapshot → 查看当前世界状态（相当于人类的「看地图」）
+2. 调用 swarm_get_available_actions → 了解可用的游戏 API 函数
+3. 调用 swarm_get_docs → 学习 API 参考和游戏规则
+4. 生成代码（AI 用自己的能力写 WASM）→ 调用 swarm_validate_module 预检
+5. 调用 swarm_deploy → 上传编译好的 WASM 模块
+6. 观察世界变化（swarm_get_snapshot）→ 调试（swarm_explain_last_tick）→ 改进代码
+7. 重复 4-6
 
-示例 tick 循环（伪代码）:
-  snapshot = mcp.call("swarm_get_snapshot", {player_id: self.id})
-  commands = self.strategy.decide(snapshot)
-  mcp.call("swarm_submit_commands", {commands, tick: snapshot.tick + 1})
-  explanation = mcp.call("swarm_explain_last_tick")  // 下一 tick
+示例开发循环（伪代码）:
+  snapshot = mcp.call("swarm_get_snapshot")
+  api_docs = mcp.call("swarm_get_docs")
+  wasm_code = generate_wasm(snapshot, api_docs, strategy)  // AI 写代码
+  mcp.call("swarm_validate_module", {wasm: wasm_code})      // 预检
+  mcp.call("swarm_deploy", {wasm: wasm_code, version: "v2"}) // 部署
+  // 等待几 tick...
+  explanation = mcp.call("swarm_explain_last_tick")          // 看结果
+  // 改进代码，再部署
 ```
+
+**关键**：AI agent 不是通过 MCP 直接操作 drone——它编写 WASM 代码，drone 由代码控制。这和人类玩家完全相同。
 
 ### 2.3 Starter Bot
 
@@ -103,43 +111,28 @@ swarm sim --ticks=5000 --speed=100x
 输出：最终状态 + 指标（采集能量、建造数、战斗结果）。
 迭代周期：改代码 → `swarm sim`（10s）→ 看结果 → 再改。
 
-## 4. 行动：指令提交
+## 4. 行动：代码部署
 
-### 4.1 提交渠道
+### 4.1 部署渠道
 
 | 玩家类型 | 渠道 |
 |---------|------|
-| 人类/WASM | 代码通过 Web/CLI 上传 → 编译为 WASM → 引擎加载模块 |
-| AI (MCP) | `swarm_submit_commands` → 排入下 tick 队列 |
+| 人类 | Web UI（编辑器中一键部署）或 CLI `swarm deploy` |
+| AI (MCP) | MCP `swarm_deploy` 工具 |
 
-### 4.2 指令队列
+引擎收到新 WASM 模块后，在下一 tick 自动切换到新模块。旧模块保留作为回滚目标。
 
-AI 玩家在 tick N+1 开始前提交：
-```
-Tick N 执行中 → AI 提交 tick N+1 指令 → 存入玩家队列
-Tick N+1 开始 → 引擎读预提交指令 → 执行
-```
-
-迟到提交（tick N+1 收集阶段中到达）→ 排入 tick N+2。
-缺失提交 → `[]`（宽容失败，drone 闲置）。
-
-### 4.3 预演校验
+### 4.2 部署流程
 
 ```
-swarm validate --tick=4521 commands.json
-→ { "valid": [
-      {"command": "move", "status": "ok"},
-      {"command": "harvest", "status": "ok"}
-    ],
-    "invalid": [
-      {"command": "attack", "status": "out_of_range",
-       "detail": "target at distance 5, max 1"}
-    ]
-  }
+1. 编写代码（人类手写 / AI 生成）
+2. 编译为 WASM（本地工具链 / AI 自身编译能力）
+3. 预检（swarm_validate_module）← 可选
+4. 上传（swarm_deploy）→ 引擎加载 → 下一 tick 生效
+5. 观察结果 → 迭代
 ```
 
-MCP（`swarm_validate_plan`）和 CLI（`swarm validate`）均可调用。
-与实际执行共用同一校验管线。
+没有「直接提交指令」的通道——所有游戏动作必须经过 WASM 沙箱中的代码执行。
 
 ## 5. 理解：调试与回放
 
