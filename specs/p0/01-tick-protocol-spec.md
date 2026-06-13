@@ -215,12 +215,12 @@ delta = compute_delta(world_state_before, world_state_after)
 ### 4.2 持久化 → 缓存 → 发布
 
 ```
-1. FDB.commit()              // 原子提交（EXECUTE 阶段已完成，此处为状态确认）
+1. Read committed tick result from in-memory post-commit state or FDB versionstamp
 2. Dragonfly.update(delta)   // 非权威缓存，允许滞后。失败则从 FDB 重建
 3. NATS.publish("tick.{tick}", delta)  // 网关 → WebSocket 客户端
 ```
 
-**注意**：FDB 提交发生在 EXECUTE 阶段末尾（§3.4），不在 BROADCAST。此处 `FDB.commit()` 是空操作——仅用于文档一致性标记。BROADCAST 阶段不访问 FDB。
+**BROADCAST failure never rolls back committed tick**——tick 已在 EXECUTE 阶段持久化到 FDB。BROADCAST 阶段的任何失败（Dragonfly 未命中、NATS 断开、部分客户端未收到）都不影响世界状态。客户端通过 `last_tick` 字段检测 gap → 主动 fetch。
 
 ## 5. Tick 健康指标
 

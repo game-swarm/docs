@@ -1,6 +1,6 @@
 # P0-4: WASM 沙箱基线
 
-> **状态**: Phase 2 阻断项 | **裁决**: D2（进程隔离）
+> **状态**: Frozen for Phase 0 | **实现阶段**: Phase 2
 
 ## 1. 架构
 
@@ -274,19 +274,12 @@ cargo test --test wasm_sandbox -- --test-threads=1
 | 并发编译 | 最多 5 个 | 防止编译阶段 DoS |
 | module validation | 10ms | wasmparser 解析超时 |
 
-## 8. Host Function 单次调用成本表
+## 8. Query Host Function 单次调用成本表
+
+以下仅列出 §3.2 允许的**查询类 host function**。Mutating 操作的 cost 定义在 P0-8 IDL 各 command 的 `cost` 字段中。
 
 | 函数 | fuel 成本 | 响应大小上限 |
 |------|----------|------------|
-| `host_move` | 1,000 | 4 bytes |
-| `host_harvest` | 5,000 | 4 bytes |
-| `host_transfer` | 5,000 | 4 bytes |
-| `host_build` | 10,000 | 4 bytes |
-| `host_repair` | 10,000 | 4 bytes |
-| `host_attack` | 5,000 | 4 bytes |
-| `host_heal` | 5,000 | 4 bytes |
-| `host_spawn` | 20,000 | 4 bytes |
-| `host_recycle` | 5,000 | 4 bytes |
 | `host_get_terrain` | 500 | 4 bytes |
 | `host_get_objects_in_range` | 2,000 + 100/entity | 64 KB |
 | `host_path_find` | 10,000 + 50/tile | 8 KB |

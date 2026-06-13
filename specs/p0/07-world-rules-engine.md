@@ -334,7 +334,7 @@ fn validate_config(config: &WorldConfig) -> Result<(), Vec<String>> {
     if config.drone.memory_size > 65536 {
         errors.push("memory_size exceeds 64KB");
     }
-    if config.combat.damage_multiplier < 0.0 {
+    if config.combat.damage_multiplier < 1 {
         errors.push("damage_multiplier must be positive");
     }
 

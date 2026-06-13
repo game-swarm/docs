@@ -88,7 +88,7 @@ swarm deploy ./basic-harvester
 |------|------|
 | `swarm_get_available_actions` | "我现在能做什么？" 返回当前状态下的可能动作列表 |
 | `swarm_get_snapshot` | 完整可见世界状态 |
-| `swarm_validate_plan` | "如果我提交这些指令，会成功吗？" 预演校验 |
+| `swarm_dry_run_commands` | "如果我提交这些指令，会成功吗？" snapshot-bound non-authoritative dry-run（前称 validate_plan） |
 | `swarm://docs/api-reference` | 完整 API 参考（MCP 资源） |
 
 ### 3.2 人类 IDE 功能
@@ -243,7 +243,7 @@ Drone 1003 本 tick 未行动。原因:
 | MCP 教程资源（AI） | P0 | Phase 2 |
 | 3 个 starter bot（TS + Rust + MCP） | P0 | Phase 2 |
 | `swarm_get_available_actions` MCP 工具 | P0 | Phase 2 |
-| `swarm_validate_plan` MCP 工具 | P0 | Phase 2 |
+| `swarm_dry_run_commands` MCP 工具 | P0 | Phase 2 |
 | `swarm_explain_last_tick` MCP 工具 | P0 | Phase 2 |
 | 每 tick 指令解释 | P0 | Phase 2 |
 | 本地模拟 (`swarm sim`) | P1 | Phase 3 |

@@ -284,40 +284,47 @@ MCP 不做游戏动作。不存在 `swarm_move`、`swarm_attack`、`swarm_build`
 
 ---
 
-## 5. 游戏 API（WASM Host Function）
+## 5. 游戏 API（Deferred Command Model）
 
-以下是在 WASM 沙箱中唯一可调用的函数：
+WASM 模块通过 **deferred command model** 与引擎交互：
+
+```
+tick(snapshot_json) → Command[]
+```
+
+1. 引擎将快照 JSON 写入 WASM 线性内存
+2. 调用 `tick(ptr, len)` — WASM 模块接收快照，返回指令 JSON 列表
+3. 引擎校验所有指令 → 通过 P0-2 Command Validation Pipeline → 应用到世界
+
+### 5.1 允许的 Host Function（查询专用，只读）
+
+WASM 中**仅可调用查询类 host function**——所有函数只读，不计入指令预算但计入 fuel 预算：
 
 ```rust
-// 移动
-fn host_move(object_id: i64, direction: i32) -> i32;
-fn host_move_to(object_id: i64, x: i32, y: i32) -> i32;
-
-// 采集 / 资源
-fn host_harvest(object_id: i64, target_id: i64) -> i32;
-fn host_transfer(object_id: i64, target_id: i64, resource: i32, amount: i32) -> i32;
-fn host_withdraw(object_id: i64, target_id: i64, resource: i32, amount: i32) -> i32;
-
-// 建造
-fn host_build(object_id: i64, x: i32, y: i32, structure_type: i32) -> i32;
-fn host_repair(object_id: i64, target_id: i64) -> i32;
-
-// 战斗
-fn host_attack(object_id: i64, target_id: i64) -> i32;
-fn host_ranged_attack(object_id: i64, target_id: i64) -> i32;
-fn host_heal(object_id: i64, target_id: i64) -> i32;
-
-// 孵化 / 回收
-fn host_spawn(spawn_id: i64, body_parts_ptr: i32, body_parts_len: i32) -> i32;
-fn host_recycle(object_id: i64, spawn_id: i64) -> i32;
-
-// 信息查询（计入 fuel 预算）
+// 信息查询（只读，不改变世界状态）
 fn host_get_terrain(x: i32, y: i32) -> i32;
 fn host_get_objects_in_range(x: i32, y: i32, range: i32, out_ptr: i32, out_len: i32) -> i32;
 fn host_path_find(from_x: i32, from_y: i32, to_x: i32, to_y: i32, out_ptr: i32, out_len: i32) -> i32;
+
+// 世界配置查询
+fn host_get_world_config(key_ptr: i32, key_len: i32, out_ptr: i32, out_len: i32) -> i32;
+fn host_get_world_rules(out_ptr: i32, out_len: i32) -> i32;
 ```
 
 全部返回 `i32`：0 = 成功，负数 = 错误码。
+`out_ptr`/`out_len`：WASM 分配缓冲区，host 写入结果后再次校验边界。
+
+### 5.2 禁止的 Host Function
+
+以下**游戏动作不得作为 host function 暴露给 WASM**。所有 mutating 操作通过 `tick() → Command[]` JSON 延迟模型提交，引擎在校验后统一应用：
+
+- ❌ `host_move` / `host_move_to` — 改为 `{ "action": "Move", ... }` JSON 指令
+- ❌ `host_harvest` / `host_transfer` / `host_withdraw`
+- ❌ `host_build` / `host_repair`
+- ❌ `host_attack` / `host_ranged_attack` / `host_heal`
+- ❌ `host_spawn` / `host_recycle`
+
+> **设计合同**: WASM 模块不直接调用 mutating host function。所有状态变更通过 `tick() → JSON` 延迟模型提交。完整 IDL 见 P0-8。
 
 ---
 
