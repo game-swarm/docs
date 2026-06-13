@@ -1,34 +1,34 @@
-# P0-2: Command Validation Spec
+# P0-2: 指令校验规范
 
-> **Status**: Phase 2 blocker | **Rulings**: D1 (UX verbs OK) | **Sources**: D4, S4, D6 consensus
+> **状态**: Phase 2 阻断项
 
-## 1. Command Pipeline
+## 1. 指令管线
 
 ```
-RawCommand (from WASM/MCP/REST)
+RawCommand（来自 WASM/MCP/REST）
     │
     ▼
 ┌─────────────────┐
-│  DESERIALIZE     │  JSON parse, schema check, bounds check
+│  反序列化         │  JSON 解析，schema 验证，边界检查
 └────────┬────────┘
          │ Ok(RawCommand)
          ▼
 ┌─────────────────┐
-│  PRE-VALIDATE    │  Static checks: target exists, owner matches, in range
+│  预校验           │  静态检查：目标存在、归属匹配、距离范围内
 └────────┬────────┘
          │ Ok(ValidatedCommand)
          ▼
 ┌─────────────────┐
-│  APPLY           │  Mutate world state (inside FDB transaction)
+│  应用            │  修改世界状态（FDB 事务内）
 └────────┬────────┘
          │ Ok / Err(RejectionReason)
          ▼
-   Record in TickTrace
+   记录到 TickTrace
 ```
 
-**Single pipeline**: All entry points (WASM host functions, MCP tools, REST API, admin CLI) route through the same `validate → apply` path. No bypass.
+**单一管线**：所有入口（WASM host function、MCP tool、REST API、admin CLI）走同一 `校验 → 应用` 路径。无绕过。
 
-## 2. RawCommand Schema
+## 2. RawCommand 结构
 
 ```json
 {
@@ -43,14 +43,14 @@ RawCommand (from WASM/MCP/REST)
 }
 ```
 
-| Field | Type | Validation |
-|-------|------|------------|
-| `player_id` | u32 | Must match authenticated player |
-| `tick` | u64 | Must be current tick or next tick (for advance queue) |
-| `sequence` | u32 | Monotonically increasing per player per tick |
-| `action` | Action | See per-action validation below |
+| 字段 | 类型 | 校验规则 |
+|------|------|---------|
+| `player_id` | u32 | 必须匹配已认证玩家 |
+| `tick` | u64 | 必须是当前 tick 或下一 tick（预提交） |
+| `sequence` | u32 | 每玩家每 tick 单调递增 |
+| `action` | Action | 见下文逐指令校验 |
 
-## 3. Per-Command Validation Matrix
+## 3. 逐指令校验矩阵
 
 ### 3.1 Move
 
@@ -58,16 +58,16 @@ RawCommand (from WASM/MCP/REST)
 {"type": "Move", "object_id": 1001, "direction": "TopRight"}
 ```
 
-| Check | Failure Code |
-|-------|-------------|
-| `object_id` exists in world | `ObjectNotFound` |
+| 检查项 | 失败码 |
+|--------|--------|
+| `object_id` 存在于世界中 | `ObjectNotFound` |
 | `object_id.owner == player_id` | `NotOwner` |
-| `object_id` is a Drone (not Structure/Resource) | `NotMovable` |
+| `object_id` 是 Drone（非 Structure/Resource） | `NotMovable` |
 | `drone.fatigue == 0` | `Fatigued` |
-| `drone.body` contains `Move` part | `MissingBodyPart(Move)` |
-| Target tile is passable (not Wall, not occupied by hostile) | `TileBlocked` |
-| Direction is valid hex neighbor | `InvalidDirection` |
-| Drone is not `spawning` | `StillSpawning` |
+| `drone.body` 包含 `Move` 部件 | `MissingBodyPart(Move)` |
+| 目标格可通行（非 Wall、非敌对占据） | `TileBlocked` |
+| Direction 是合法六边形邻居 | `InvalidDirection` |
+| Drone 非 spawning 状态 | `StillSpawning` |
 
 ### 3.2 MoveTo
 
@@ -75,13 +75,13 @@ RawCommand (from WASM/MCP/REST)
 {"type": "MoveTo", "object_id": 1001, "x": 15, "y": 22}
 ```
 
-| Check | Failure Code |
-|-------|-------------|
-| All Move checks (3.1) apply | (same) |
-| `(x, y)` is within current room | `OutOfRoom` |
-| Path exists from current position to `(x, y)` | `NoPath` |
-| Path length ≤ MAX_PATH_LENGTH (100) | `PathTooLong` |
-| `drone.body` contains `Move` parts ≥ path length (1 MOVE = 1 tile/tick) | `InsufficientMoveParts` |
+| 检查项 | 失败码 |
+|--------|--------|
+| 所有 Move 检查项 (3.1) 均适用 | (同 Move) |
+| `(x, y)` 在当前房间内 | `OutOfRoom` |
+| 从当前位置到 `(x, y)` 存在路径 | `NoPath` |
+| 路径长度 ≤ MAX_PATH_LENGTH (100) | `PathTooLong` |
+| `drone.body` 含 MOVE 部件数量 ≥ 路径长度 | `InsufficientMoveParts` |
 
 ### 3.3 Harvest
 
@@ -89,15 +89,15 @@ RawCommand (from WASM/MCP/REST)
 {"type": "Harvest", "object_id": 1001, "target_id": 4001}
 ```
 
-| Check | Failure Code |
-|-------|-------------|
-| `object_id` is a Drone owned by player | `NotOwner` |
-| `drone.body` contains `Work` part | `MissingBodyPart(Work)` |
-| `drone.body` contains `Carry` part | `MissingBodyPart(Carry)` |
+| 检查项 | 失败码 |
+|--------|--------|
+| `object_id` 是玩家拥有的 Drone | `NotOwner` |
+| `drone.body` 包含 `Work` 部件 | `MissingBodyPart(Work)` |
+| `drone.body` 包含 `Carry` 部件 | `MissingBodyPart(Carry)` |
 | `drone.carry_used < drone.carry_capacity` | `CarryFull` |
-| `target_id` is a Source | `NotSource` |
+| `target_id` 是 Source | `NotSource` |
 | `target.source.energy > 0` | `SourceEmpty` |
-| `object_id` in range of `target_id` (range = 1) | `OutOfRange` |
+| `object_id` 在 `target_id` 范围内 (range = 1) | `OutOfRange` |
 | `drone.fatigue == 0` | `Fatigued` |
 
 ### 3.4 Transfer / Withdraw
@@ -107,14 +107,14 @@ RawCommand (from WASM/MCP/REST)
 {"type": "Withdraw", "object_id": 1001, "target_id": 2001, "resource": "Energy", "amount": 50}
 ```
 
-| Check | Failure Code |
-|-------|-------------|
-| `object_id` is a Drone owned by player | `NotOwner` |
-| `drone.body` contains `Carry` part | `MissingBodyPart(Carry)` |
+| 检查项 | 失败码 |
+|--------|--------|
+| `object_id` 是玩家拥有的 Drone | `NotOwner` |
+| `drone.body` 包含 `Carry` 部件 | `MissingBodyPart(Carry)` |
 | Transfer: `drone.carry[resource] >= amount` | `InsufficientResources` |
 | Withdraw: `target.carry[resource] >= amount` | `InsufficientResources` |
-| Target has capacity for resource | `TargetFull` / `TargetEmpty` |
-| `object_id` in range of `target_id` (range = 1) | `OutOfRange` |
+| 目标有该资源的容量 | `TargetFull` / `TargetEmpty` |
+| `object_id` 在范围内 (range = 1) | `OutOfRange` |
 
 ### 3.5 Build
 
@@ -122,17 +122,16 @@ RawCommand (from WASM/MCP/REST)
 {"type": "Build", "object_id": 1001, "x": 10, "y": 15, "structure": "Extension"}
 ```
 
-| Check | Failure Code |
-|-------|-------------|
-| `object_id` is a Drone owned by player | `NotOwner` |
-| `drone.body` contains `Work` part | `MissingBodyPart(Work)` |
-| `drone.body` contains `Carry` part | `MissingBodyPart(Carry)` |
+| 检查项 | 失败码 |
+|--------|--------|
+| `object_id` 是玩家拥有的 Drone | `NotOwner` |
+| `drone.body` 包含 `Work` + `Carry` 部件 | `MissingBodyPart` |
 | `drone.carry[Energy] >= build_cost(structure)` | `InsufficientEnergy` |
-| `(x, y)` is in a room with player's Controller | `NotYourRoom` |
-| Tile is empty (no existing structure) | `TileOccupied` |
-| Tile is Plain terrain (not Wall/Swamp) | `InvalidTerrain` |
-| Player has construction sites < MAX_CONSTRUCTION_SITES (100) | `TooManyConstructionSites` |
-| `object_id` in range of `(x, y)` (range = 3) | `OutOfRange` |
+| `(x, y)` 在玩家拥有 Controller 的房间 | `NotYourRoom` |
+| 该格为空（无既有建筑） | `TileOccupied` |
+| 该格是 Plain 地形 | `InvalidTerrain` |
+| 在建工程数 < MAX_CONSTRUCTION_SITES (100) | `TooManyConstructionSites` |
+| `object_id` 在 `(x, y)` 范围内 (range = 3) | `OutOfRange` |
 
 ### 3.6 Repair
 
@@ -140,13 +139,13 @@ RawCommand (from WASM/MCP/REST)
 {"type": "Repair", "object_id": 1001, "target_id": 2002}
 ```
 
-| Check | Failure Code |
-|-------|-------------|
-| `object_id` is a Drone with Work+Carry | `MissingBodyPart` |
-| `target_id` is a Structure | `NotStructure` |
+| 检查项 | 失败码 |
+|--------|--------|
+| `object_id` 是带 Work+Carry 的 Drone | `MissingBodyPart` |
+| `target_id` 是 Structure | `NotStructure` |
 | `target.hits < target.hits_max` | `AlreadyFullHealth` |
 | `drone.carry[Energy] >= repair_cost` | `InsufficientEnergy` |
-| `object_id` in range (range = 3) | `OutOfRange` |
+| `object_id` 在范围内 (range = 3) | `OutOfRange` |
 
 ### 3.7 Attack
 
@@ -154,20 +153,20 @@ RawCommand (from WASM/MCP/REST)
 {"type": "Attack", "object_id": 1001, "target_id": 1002}
 ```
 
-| Check | Failure Code |
-|-------|-------------|
-| `object_id` is a Drone owned by player | `NotOwner` |
-| `drone.body` contains `Attack` part | `MissingBodyPart(Attack)` |
-| `target_id` exists | `ObjectNotFound` |
-| `target_id.owner != player_id` OR is neutral hostile | `FriendlyTarget` |
-| `object_id` in range (range = 1) | `OutOfRange` |
+| 检查项 | 失败码 |
+|--------|--------|
+| `object_id` 是玩家拥有的 Drone | `NotOwner` |
+| `drone.body` 包含 `Attack` 部件 | `MissingBodyPart(Attack)` |
+| `target_id` 存在 | `ObjectNotFound` |
+| `target_id.owner != player_id` 或为中立敌对 | `FriendlyTarget` |
+| `object_id` 在范围内 (range = 1) | `OutOfRange` |
 | `drone.fatigue == 0` | `Fatigued` |
 
-**TOCTOU**: If target moved between snapshot and execution, range is checked against CURRENT position → `OutOfRange` if moved away. Attack does NOT follow the target.
+**TOCTOU**: 如果目标在快照和执行之间移动了，按当前位置检查范围 → 移开则 `OutOfRange`。攻击不跟踪移动目标。
 
 ### 3.8 RangedAttack
 
-Same as Attack, range = 3, requires `RangedAttack` body part.
+与 Attack 相同，range = 3，需要 `RangedAttack` 身体部件。
 
 ### 3.9 Heal
 
@@ -175,11 +174,11 @@ Same as Attack, range = 3, requires `RangedAttack` body part.
 {"type": "Heal", "object_id": 1001, "target_id": 1003}
 ```
 
-| Check | Failure Code |
-|-------|-------------|
-| `drone.body` contains `Heal` part | `MissingBodyPart(Heal)` |
+| 检查项 | 失败码 |
+|--------|--------|
+| `drone.body` 包含 `Heal` 部件 | `MissingBodyPart(Heal)` |
 | `target.hits < target.hits_max` | `AlreadyFullHealth` |
-| Target owned by player or ally | `NotFriendly` |
+| 目标属于玩家或盟友 | `NotFriendly` |
 | Range = 3 | `OutOfRange` |
 
 ### 3.10 Spawn
@@ -188,16 +187,16 @@ Same as Attack, range = 3, requires `RangedAttack` body part.
 {"type": "Spawn", "spawn_id": 2001, "body": ["Move", "Work", "Carry", "Move"]}
 ```
 
-| Check | Failure Code |
-|-------|-------------|
-| `spawn_id` is a Spawn structure owned by player | `NotYourSpawn` |
+| 检查项 | 失败码 |
+|--------|--------|
+| `spawn_id` 是玩家拥有的 Spawn | `NotYourSpawn` |
 | `spawn.cooldown == 0` | `SpawnOnCooldown` |
 | `body.len() ≤ MAX_BODY_PARTS (50)` | `BodyTooLarge` |
 | `body_cost(body) ≤ spawn.energy` | `InsufficientEnergy` |
-| `body_cost(body) ≤ player.energy_capacity` | `ExceedsRoomCapacity` |
-| Room has available spawn slot (not at room drone cap) | `RoomDroneCapReached` |
+| `body_cost(body) ≤ 玩家房间能量上限` | `ExceedsRoomCapacity` |
+| 房间有空余 spawn 槽位 | `RoomDroneCapReached` |
 
-Drone is created at end of tick (after death_system, so spawn slot is freed).
+Drone 在 tick 末尾创建（death_system 之后，spawn 槽位已释放）。
 
 ### 3.11 Recycle
 
@@ -205,65 +204,65 @@ Drone is created at end of tick (after death_system, so spawn slot is freed).
 {"type": "Recycle", "object_id": 1001, "spawn_id": 2001}
 ```
 
-| Check | Failure Code |
-|-------|-------------|
-| `object_id` is a Drone owned by player | `NotOwner` |
-| `spawn_id` is player's Spawn | `NotYourSpawn` |
-| `object_id` in range of `spawn_id` (range = 1) | `OutOfRange` |
+| 检查项 | 失败码 |
+|--------|--------|
+| `object_id` 是玩家拥有的 Drone | `NotOwner` |
+| `spawn_id` 是玩家的 Spawn | `NotYourSpawn` |
+| `object_id` 在 spawn 范围内 (range = 1) | `OutOfRange` |
 
-Returns 50% of body cost as energy to spawn.
+返还 50% 身体部件成本作为能量给 spawn。
 
-## 4. Query Commands (Read-Only)
+## 4. 查询指令（只读）
 
-Queries do NOT go through the command pipeline. They are handled during snapshot generation (Phase 1).
+查询不进指令管线。它们在快照生成阶段（阶段一）处理。
 
 ### 4.1 GetTerrain
 
-Returns terrain type at (x, y). Server-side only. No per-tick quota — static data.
+返回 (x, y) 处地形类型。纯服务端操作。不计每 tick 配额——静态数据。
 
 ### 4.2 GetObjectsInRange
 
-Returns visible entities within `range` of (x, y).
+返回 (x, y) 周围 `range` 内的可见实体。
 - `range ≤ MAX_QUERY_RANGE (10)`
-- Only returns entities visible to player (respects fog-of-war)
-- Per-player-per-tick query budget: 5 calls
+- 仅返回玩家可见的实体（遵循 fog-of-war）
+- 每玩家每 tick 查询配额：5 次
 
 ### 4.3 PathFind
 
-Returns optimal path from (from_x, from_y) to (to_x, to_y).
-- Both points within same room
-- `path_length ≤ MAX_PATH_LENGTH (100)` — pathfinding aborts if longer
-- Charged against player's compute budget (WASM fuel or MCP query budget)
-- Per-player-per-tick: 10 calls
-- Result cached per (from, to, terrain_hash) — not recomputed if unchanged
+返回 (from_x, from_y) 到 (to_x, to_y) 的最优路径。
+- 两点在同一房间内
+- `path_length ≤ MAX_PATH_LENGTH (100)` — 超出则中止
+- 计入玩家计算预算（WASM fuel 或 MCP 查询配额）
+- 每玩家每 tick：10 次
+- 结果以 `(from, to, 地形hash)` 缓存 — 地形不变不重算
 
-## 5. Rejection Response
+## 5. 拒绝响应
 
-Every rejection returns:
+每次拒绝返回：
 
 ```json
 {
-  "command": { /* original RawCommand */ },
+  "command": { /* 原始 RawCommand */ },
   "rejection": "OutOfRange",
   "detail": "object_1001 at (5,3), target_1002 at (5,6) — distance 3, require ≤ 1",
   "tick": 4521
 }
 ```
 
-AI-accessible explainability: the `detail` field is machine-readable JSON with exact positions, distances, and thresholds. See P0-6 for UX-friendly explanations.
+`detail` 字段是机器可读 JSON，含精确位置、距离和阈值。后续可基于此生成 UX 友好的解释（见 P0-6）。
 
-## 6. Bounds & Limits (Hard)
+## 6. 硬性边界与限制
 
-| Parameter | Limit | Rationale |
-|-----------|-------|-----------|
-| MAX_BODY_PARTS | 50 | Prevents spawn vector DoS |
-| MAX_PATH_LENGTH | 100 | Prevents pathfinding explosion |
-| MAX_QUERY_RANGE | 10 | Prevents GetObjectsInRange scan |
-| MAX_COMMANDS_PER_PLAYER | 100/tick | Caps MCP tool spam |
-| MAX_CONSTRUCTION_SITES | 100/room | Prevents build spam |
-| MAX_DRONES_PER_PLAYER | 500 | Prevents drone spam |
-| Player name | 32 chars, `[a-zA-Z0-9 _-]` | Prompt injection prevention |
-| Room name | 16 chars, `[A-Z][0-9]+[NS][0-9]+[EW]` | Standardized format |
-| JSON depth | 10 | serde_json recursion limit |
-| String max len (any) | 256 chars | General protection |
-| i32 coordinate range | [-128, 127] per room | Prevents overflow attacks |
+| 参数 | 限值 | 原因 |
+|------|------|------|
+| MAX_BODY_PARTS | 50 | 防止 spawn 向量膨胀攻击 |
+| MAX_PATH_LENGTH | 100 | 防止寻路计算爆炸 |
+| MAX_QUERY_RANGE | 10 | 防止范围扫描过广 |
+| MAX_COMMANDS_PER_PLAYER | 100/tick | 限制 MCP 工具滥用 |
+| MAX_CONSTRUCTION_SITES | 100/房间 | 防止建造刷屏 |
+| MAX_DRONES_PER_PLAYER | 500 | 防止单位刷屏 |
+| 玩家名称 | 32 字符, `[a-zA-Z0-9 _-]` | 防 prompt 注入 |
+| 房间名称 | 16 字符, `[A-Z][0-9]+[NS][0-9]+[EW]` | 标准化格式 |
+| JSON 深度 | 10 | serde_json 递归限制 |
+| 字符串最大长度（通用） | 256 字符 | 通用保护 |
+| i32 坐标范围 | [-128, 127] 每房间 | 防止溢出攻击 |

@@ -1,130 +1,129 @@
-# P0-6: MVP Feedback Loop Spec
+# P0-6: MVP 反馈循环规范
 
-> **Status**: Phase 2 blocker | **Rulings**: D1 (UX verbs), D3 (public replay) | **Sources**: G1, C7, C8 consensus
+> **状态**: Phase 2 阻断项 | **裁决**: D1 (UX verbs), D3 (公开 replay) | **模式**: World + Arena 双模式
 
-## 1. The MVP Feedback Loop
+## 1. MVP 反馈循环
 
-A player's experience is a loop. The MVP must close this loop for both human and AI players:
-
-```
-         LEARN           →         DECIDE          →         ACT
-    "What are the      "Given the world,      "Submit commands
-     rules? What       what should I           for this tick"
-     can I do?"        do this tick?"
-          ↑                                            │
-          │                                            │
-          └──────────── UNDERSTAND ←──────────────────┘
-                    "What happened?
-                     Did my commands work?
-                     Why did some fail? Why did I lose?"
-```
-
-If any of these 4 steps is broken, the game is unplayable.
-
-## 2. LEARN: Onboarding
-
-### 2.1 Human Programmer (5-Minute Tutorial)
+玩家的体验是一个闭环。MVP 必须为人类和 AI 玩家同时闭合：
 
 ```
-1. Open web client → Tutorial Room (private, isolated)
-2. Tutorial bot (pre-written, editable) runs automatically
-3. Step-by-step overlay:
-   - "This is your Spawn. You can create drones here."
-   - "Try changing 'spawn_count = 1' to 'spawn_count = 3'"
-   - "Your drones are harvesting! Watch them collect energy."
-   - "Add a Tower at (5,3) to defend your base."
-4. Guided code changes with instant feedback (tick interval = 1s in tutorial)
-5. Prompt: "You're ready! Deploy to the World or try Arena."
+      学习 (LEARN)    →      决策 (DECIDE)     →      行动 (ACT)
+  "规则是什么？        "看到当前世界，          "提交本 tick
+   我能做什么？"        我应该做什么？"           的指令"
+        ↑                                              │
+        │                                              │
+        └────────── 理解 (UNDERSTAND) ←────────────────┘
+                  "发生了什么？
+                   我的指令成功了吗？
+                   为什么失败？为什么输了？"
 ```
 
-### 2.2 AI Player (MCP Tutorial)
+这四步任何一步断裂，游戏就不可玩。
+
+## 2. 学习：上手引导
+
+### 2.1 人类程序员（5 分钟教程）
 
 ```
-AI agent connects → swarm://docs/tutorials/basic-agent
-Returns step-by-step MCP interaction guide:
+1. 打开 Web 客户端 → 教程房间（独立、隔离）
+2. 教程 bot（预写、可编辑）自动运行
+3. 逐步引导覆盖层:
+   - "这是你的 Spawn。你可以在这里创建 drone。"
+   - "试试把 'spawn_count = 1' 改成 'spawn_count = 3'"
+   - "你的 drone 在采集！看着它们收集能量。"
+   - "在 (5,3) 放一个 Tower 来防守。"
+4. 引导式代码修改 + 即时反馈（教程 tick 间隔 1s）
+5. 提示: "你准备好了！部署到 World 或试试 Arena。"
+```
 
-1. Call swarm_get_available_actions → discover what you can do
-2. Call swarm_get_snapshot → see your world state
-3. Issue commands via swarm_submit_commands
-4. Call swarm_explain_last_tick → understand results
-5. Repeat
+### 2.2 AI 玩家（MCP 教程）
 
-Example tick loop (pseudocode):
+```
+AI agent 连接 → swarm://docs/tutorials/basic-agent
+返回逐步 MCP 交互指南:
+
+1. 调用 swarm_get_available_actions → 发现你能做什么
+2. 调用 swarm_get_snapshot → 查看当前世界状态
+3. 通过 swarm_submit_commands 提交指令
+4. 调用 swarm_explain_last_tick → 理解结果
+5. 重复
+
+示例 tick 循环（伪代码）:
   snapshot = mcp.call("swarm_get_snapshot", {player_id: self.id})
   commands = self.strategy.decide(snapshot)
   mcp.call("swarm_submit_commands", {commands, tick: snapshot.tick + 1})
-  explanation = mcp.call("swarm_explain_last_tick")  // next tick
+  explanation = mcp.call("swarm_explain_last_tick")  // 下一 tick
 ```
 
-### 2.3 Starter Bots
+### 2.3 Starter Bot
 
-Provided in each SDK:
+各 SDK 提供：
 
-| Language | Bot | Description |
-|----------|-----|-------------|
-| TypeScript | `basic-harvester` | 3 drones, harvest nearest source, return energy |
-| TypeScript | `tower-defense` | Build towers, basic defense |
-| TypeScript | `room-claimer` | Claim a room, upgrade controller |
-| Rust | `basic-harvester` | Same as TS, in Rust |
-| MCP (AI) | `basic-agent` | Python script showing MCP tick loop |
+| 语言 | Bot | 说明 |
+|------|-----|------|
+| TypeScript | `basic-harvester` | 3 架 drone，采集最近源，运回能量 |
+| TypeScript | `tower-defense` | 建造 Tower，基础防守 |
+| TypeScript | `room-claimer` | 占领房间，升级 Controller |
+| Rust | `basic-harvester` | 同 TS 版 |
+| MCP (AI) | `basic-agent` | 演示 MCP tick 循环的 Python 脚本 |
 
-Starter bots must compile/run out of the box. One-command deploy:
+Starter bot 必须开箱即编译/运行。一键部署：
 ```
 swarm deploy ./basic-harvester
 ```
 
-## 3. DECIDE: Information & Tools
+## 3. 决策：信息与工具
 
-### 3.1 MCP Discovery Verbs
+### 3.1 MCP 发现型 Verb
 
-| Tool | Purpose |
-|------|---------|
-| `swarm_get_available_actions` | "What can I do right now?" Returns list of possible actions given current state |
-| `swarm_get_snapshot` | Full visible world state |
-| `swarm_validate_plan` | "If I submit these commands, will they work?" Dry-run validation |
-| `swarm://docs/api-reference` | Full API reference as MCP resource |
+| 工具 | 用途 |
+|------|------|
+| `swarm_get_available_actions` | "我现在能做什么？" 返回当前状态下的可能动作列表 |
+| `swarm_get_snapshot` | 完整可见世界状态 |
+| `swarm_validate_plan` | "如果我提交这些指令，会成功吗？" 预演校验 |
+| `swarm://docs/api-reference` | 完整 API 参考（MCP 资源） |
 
-### 3.2 Human IDE Features
+### 3.2 人类 IDE 功能
 
 ```
-- Monaco Editor with full TypeScript types for game API
-- Autocomplete on entity fields (drone.fatigue, source.energy, etc.)
-- Inline validation: "drone.harvest() requires WORK body part, your drone has [MOVE, CARRY]"
-- One-click deploy
-- Version history (rollback to previous bot)
+- Monaco 编辑器，内置游戏 API 的完整 TypeScript 类型
+- 实体字段自动补全（drone.fatigue, source.energy 等）
+- 行内校验："drone.harvest() 需要 WORK 部件，你的 drone 是 [MOVE, CARRY]"
+- 一键部署
+- 版本历史（回滚到之前的 bot）
 ```
 
-### 3.3 Local Simulation
+### 3.3 本地模拟
 
 ```
 swarm sim --ticks=5000 --speed=100x
 ```
 
-Runs 5000 ticks locally at 100x speed. No server connection needed.
-Output: final state + metrics (energy collected, drones built, combat results).
-Iteration cycle: edit code → `swarm sim` (10s) → see results → repeat.
+本地运行 5000 tick，100 倍速。无需连接服务器。
+输出：最终状态 + 指标（采集能量、建造数、战斗结果）。
+迭代周期：改代码 → `swarm sim`（10s）→ 看结果 → 再改。
 
-## 4. ACT: Command Submission
+## 4. 行动：指令提交
 
-### 4.1 Submission Channels
+### 4.1 提交渠道
 
-| Player Type | Channel |
-|------------|---------|
-| Human/WASM | Code uploaded via web or CLI → compiled to WASM → engine loads module |
-| AI (MCP) | `swarm_submit_commands` → queued for next tick |
+| 玩家类型 | 渠道 |
+|---------|------|
+| 人类/WASM | 代码通过 Web/CLI 上传 → 编译为 WASM → 引擎加载模块 |
+| AI (MCP) | `swarm_submit_commands` → 排入下 tick 队列 |
 
-### 4.2 Command Queuing
+### 4.2 指令队列
 
-AI players submit commands for tick N+1 before tick N+1 begins:
+AI 玩家在 tick N+1 开始前提交：
 ```
-Tick N executing → AI submits commands for tick N+1 → stored in player queue
-Tick N+1 starts → engine reads pre-submitted commands → executes
+Tick N 执行中 → AI 提交 tick N+1 指令 → 存入玩家队列
+Tick N+1 开始 → 引擎读预提交指令 → 执行
 ```
 
-Late submission (during tick N+1's collect phase) → queued for tick N+2.
-Missing submission → `[]` (fail-open, drone idles).
+迟到提交（tick N+1 收集阶段中到达）→ 排入 tick N+2。
+缺失提交 → `[]`（宽容失败，drone 闲置）。
 
-### 4.3 Dry-Run Validation
+### 4.3 预演校验
 
 ```
 swarm validate --tick=4521 commands.json
@@ -139,12 +138,12 @@ swarm validate --tick=4521 commands.json
   }
 ```
 
-Available via MCP (`swarm_validate_plan`) and CLI (`swarm validate`).
-Same validation pipeline as real execution.
+MCP（`swarm_validate_plan`）和 CLI（`swarm validate`）均可调用。
+与实际执行共用同一校验管线。
 
-## 5. UNDERSTAND: Debugging & Replay
+## 5. 理解：调试与回放
 
-### 5.1 Per-Tick Explanation
+### 5.1 每 Tick 解释
 
 ```
 GET /api/v1/ticks/4521/explanation?player=42
@@ -159,102 +158,103 @@ GET /api/v1/ticks/4521/explanation?player=42
     {
       "command": "attack target=1002",
       "reason": "OutOfRange",
-      "detail": "Your drone at (5,3), target at (5,8). Distance 5, max 1.",
-      "suggestion": "Move drone to within 1 tile of target, or use RangedAttack (range 3)."
+      "detail": "你的 drone 在 (5,3)，目标在 (5,8)。距离 5，最大 1。",
+      "suggestion": "将 drone 移至目标 1 格以内，或使用 RangedAttack（范围 3）。"
     }
   ],
   "state_changes": [
-    "drone_1001: moved (5,3) → (5,2)",
-    "drone_1001: harvested 5 energy from source_4001",
-    "drone_1002: built Extension at (12,8) — 15/100 progress"
+    "drone_1001: 移动 (5,3) → (5,2)",
+    "drone_1001: 从 source_4001 采集 5 能量",
+    "drone_1002: 在 (12,8) 建造 Extension — 15/100 进度"
   ],
   "notable_events": [
-    "source_4001 depleted — find new energy source",
-    "enemy drone_9001 entered your room at (20,1)"
+    "source_4001 枯竭 — 寻找新能量源",
+    "敌方 drone_9001 在 (20,1) 进入你的房间"
   ]
 }
 ```
 
-### 5.2 "Why Idle?" Debugging
+### 5.2 「为什么闲置？」调试
 
 ```
-Drone 1003 did nothing this tick. Why?
-- Fatigue: 5 (must be 0 to act)
-- No WORK body part (required for harvest/build/repair)
-- No target in range (nearest source at distance 8, max harvest range = 1)
+Drone 1003 本 tick 未行动。原因:
+- 疲劳值: 5（必须为 0 才能行动）
+- 无 WORK 身体部件（采集/建造/维修需要）
+- 范围内无目标（最近能量源距离 8，最大采集范围 1）
 ```
 
-### 5.3 Replay Viewer
+### 5.3 回放查看器
 
 ```
-Player view:
-  - Map with time slider (tick 4000 → 5000)
-  - Play/pause/step controls
-  - Overlay: command arrows, harvest animations, combat effects
-  - Sidebar: selected entity's state at each tick
-  - "Share replay" → public URL with safe view
+玩家视角:
+  - 地图 + 时间滑块（tick 4000 → 5000）
+  - 播放/暂停/步进控制
+  - 覆盖层：指令箭头、采集动画、战斗效果
+  - 侧边栏：选中实体每 tick 的状态
+  - "分享回放" → 公开 safe view URL
 
-Spectator view (post-match):
-  - Omniscient view (both players visible)
-  - Fog-of-war toggle (show what each player could see)
-  - Commentary overlay (add text notes at specific ticks)
+观战视角（赛后）:
+  - 全知视角（双方可见）
+  - Fog-of-war 切换（显示各玩家实际所见）
+  - 解说覆盖层（在特定 tick 添加文字注释）
 ```
 
-### 5.4 Strategy Metrics Dashboard
+### 5.4 策略指标仪表盘
 
 ```
-Per-player, per-deployment:
+每玩家、每次部署:
   ┌─────────────────────────────────────┐
-  │  Energy Efficiency:  92%            │
-  │  Command Success:    85%            │
-  │  Avg Drones Active:  8.2            │
-  │  GCL Growth Rate:    +120/tick      │
-  │  Combat Win Rate:    67%            │
+  │  能量效率:      92%                 │
+  │  指令成功率:    85%                 │
+  │  平均活跃 Drone: 8.2                │
+  │  GCL 增长率:    +120/tick           │
+  │  战斗胜率:      67%                 │
   │                                     │
-  │  Common Errors:                     │
-  │    OutOfRange:      23%             │
-  │    Fatigued:        12%             │
-  │    CarryFull:        8%             │
+  │  常见错误:                          │
+  │    OutOfRange:    23%               │
+  │    Fatigued:      12%               │
+  │    CarryFull:      8%               │
   └─────────────────────────────────────┘
 ```
 
-Available for self-inspection. Optional public sharing (competitive intelligence).
+自身可见。可选公开分享（竞技情报）。
 
-## 6. World Mode vs Arena Mode
+## 6. World 模式 与 Arena 模式
 
-### World Mode (Persistent)
+### World 模式（持久世界）
 
-- 24/7 tick cycle (3s intervals)
-- Persistent colonies, room claiming, resource economy
-- Player vs environment + player vs player
-- Leaderboard: GCL, room count, longevity
-- Code can be updated anytime (hot-reload)
+- 7×24 tick 循环（3s 间隔）
+- 持久殖民地、房间占领、资源经济
+- PvE + PvP 共存
+- 排行榜：GCL、房间数、存活时长
+- 代码随时更新（热重载）
+- 人类和 AI agent 在同一世界共存
 
-### Arena Mode (1v1 / Team)
+### Arena 模式（1v1 / 团队）
 
-- Match-based, fixed duration (e.g., 5000 ticks / ~4 hours)
-- Symmetric starting conditions
-- Isolated room/map per match
-- Win condition: destroy enemy spawn, or highest score at time limit
-- Code locked at match start (no mid-match changes)
-- Replay automatically published after match
-- Tournament brackets, seasons
+- 比赛制，固定时长（例：5000 tick ≈ 4 小时）
+- 对称初始条件
+- 独立房间/地图
+- 胜利条件：摧毁敌方 Spawn，或时限结束时分高者胜
+- 代码在比赛开始时锁定（赛中不可改）
+- 赛后自动发布回放
+- 锦标赛分组、赛季
 
-## 7. Minimum Viable Product Checklist
+## 7. MVP 达成清单
 
-| Feature | Priority | Phase |
-|---------|----------|-------|
-| Tutorial room (human) | P0 | Phase 1 |
-| MCP tutorial resource (AI) | P0 | Phase 2 |
-| 3 starter bots (TS + Rust + MCP) | P0 | Phase 2 |
-| `swarm_get_available_actions` MCP tool | P0 | Phase 2 |
-| `swarm_validate_plan` MCP tool | P0 | Phase 2 |
-| `swarm_explain_last_tick` MCP tool | P0 | Phase 2 |
-| Per-tick command explanation | P0 | Phase 2 |
-| Local simulation (`swarm sim`) | P1 | Phase 3 |
-| Replay viewer (self) | P1 | Phase 4 |
-| Replay viewer (public) | P1 | Phase 4 |
-| Strategy metrics dashboard | P1 | Phase 4 |
-| Arena mode (match-based) | P2 | Phase 6 |
-| Tournament system | P2 | Phase 7 |
-| Spectator commentary | P2 | Phase 7 |
+| 功能 | 优先级 | 阶段 |
+|------|--------|------|
+| 教程房间（人类） | P0 | Phase 1 |
+| MCP 教程资源（AI） | P0 | Phase 2 |
+| 3 个 starter bot（TS + Rust + MCP） | P0 | Phase 2 |
+| `swarm_get_available_actions` MCP 工具 | P0 | Phase 2 |
+| `swarm_validate_plan` MCP 工具 | P0 | Phase 2 |
+| `swarm_explain_last_tick` MCP 工具 | P0 | Phase 2 |
+| 每 tick 指令解释 | P0 | Phase 2 |
+| 本地模拟 (`swarm sim`) | P1 | Phase 3 |
+| 回放查看器（自身） | P1 | Phase 4 |
+| 回放查看器（公开） | P1 | Phase 4 |
+| 策略指标仪表盘 | P1 | Phase 4 |
+| Arena 模式（比赛制） | P2 | Phase 6 |
+| 锦标赛系统 | P2 | Phase 7 |
+| 观战解说 | P2 | Phase 7 |

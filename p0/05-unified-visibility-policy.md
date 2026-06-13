@@ -1,159 +1,157 @@
-# P0-5: Unified Visibility Policy
+# P0-5: 统一可见性策略
 
-> **Status**: Phase 2 blocker | **Rulings**: D3 (replay public) | **Sources**: C5, S4 consensus
+> **状态**: Phase 2 阻断项 | **裁决**: D3（公开 replay）
 
-## 1. Core Principle
+## 1. 核心原则
 
-**One function answers "what can player P see at tick T?":**
+**一个函数回答「玩家 P 在 tick T 能看到什么」：**
 
 ```rust
 fn is_visible_to(entity: &Entity, player_id: PlayerId, tick: u64) -> bool;
 ```
 
-Every output surface calls this. No bypass. No "it's just debug data so it's fine."
+所有输出面调用此函数。无绕过。不存在「这只是调试数据所以没关系」的例外。
 
-## 2. Visibility Rules
+## 2. 可见性规则
 
-### 2.1 Own Entities
-
-```
-OWNER: Always visible, anywhere, any tick.
-```
-
-A player always sees their own drones, structures, resources, construction sites, and controller.
-
-### 2.2 Visible Room Entities
+### 2.1 自身实体
 
 ```
-ROOM_VISIBLE: Visible if player has vision in that room.
-Vision source: any owned drone or structure with vision range > 0.
+OWNER: 始终可见，不限位置、不限 tick。
 ```
 
-| Vision Source | Range |
-|--------------|-------|
-| Drone | 3 (default, body-dependent) |
+玩家始终看到自己的 drone、建筑、资源、在建工程和 Controller。
+
+### 2.2 有视野的房间
+
+```
+ROOM_VISIBLE: 若玩家在该房间有视野则可见。
+视野来源: 任意拥有的 drone 或建筑，vision_range > 0。
+```
+
+| 视野来源 | 范围 |
+|---------|------|
+| Drone | 3（默认，取决于身体部件） |
 | Spawn | 3 |
-| Tower | 3 (6 when powered) |
-| Observer | 10 (when active) |
-| Controller (owned, level ≥ 1) | 1 |
+| Tower | 3（充能后 6） |
+| Observer | 10（激活时） |
+| Controller（拥有者，level ≥ 1） | 1 |
 
-### 2.3 Neutral/Hostile Entities
-
-```
-HOSTILE: Visible if within ANY friendly vision source's range.
-```
-
-Enemy drones, neutral structures, resources on ground — visible if they fall within any vision cone.
-
-### 2.4 Hidden Information
-
-| Data | Default Visibility |
-|------|-------------------|
-| Other player's resource counts | ❌ Hidden |
-| Other player's controller progress | ❌ Hidden |
-| Other player's construction sites | ✅ Visible (in vision range) |
-| Other player's cooldowns | ❌ Hidden |
-| Other player's fatigue | ❌ Hidden |
-| Other player's body composition | ✅ Visible (observable characteristic) |
-| RNG seed | ❌ Hidden (always) |
-| Rejected commands (other players) | ❌ Hidden |
-| WASM module errors (other players) | ❌ Hidden |
-
-### 2.5 Market Visibility
+### 2.3 中立/敌对实体
 
 ```
-MARKET: All active market orders visible to all players in rooms with vision.
-Order creator's identity: visible.
+HOSTILE: 若在任何友好视野源范围内则可见。
 ```
 
-### 2.6 Leaderboard Visibility
+敌方 drone、中立建筑、地上资源——落入任何视野锥内即可见。
+
+### 2.4 隐藏信息
+
+| 数据 | 默认可见性 |
+|------|-----------|
+| 其他玩家资源数量 | ❌ 隐藏 |
+| 其他玩家 Controller 进度 | ❌ 隐藏 |
+| 其他玩家在建工程 | ✅ 可见（在视野内） |
+| 其他玩家冷却时间 | ❌ 隐藏 |
+| 其他玩家疲劳值 | ❌ 隐藏 |
+| 其他玩家身体部件组成 | ✅ 可见（可观察特征） |
+| RNG 种子 | ❌ 始终隐藏 |
+| 被拒绝指令（其他玩家） | ❌ 隐藏 |
+| WASM 模块错误（其他玩家） | ❌ 隐藏 |
+
+### 2.5 市场
 
 ```
-LEADERBOARD: Public.
-Metrics: GCL, room count, drone count.
-Hidden: resource totals, current strategy, WASM module source.
+MARKET: 所有活跃订单对有视野房间的全体玩家可见。订单创建者身份可见。
 ```
 
-## 3. Output Surfaces — Visibility Enforcement
+### 2.6 排行榜
 
-### 3.1 Snapshot (WASM `tick()` input)
+```
+LEADERBOARD: 公开。指标: GCL、房间数、drone 数。
+隐藏: 资源总量、当前策略、WASM 模块源码。
+```
+
+## 3. 各输出面执行
+
+### 3.1 快照（WASM `tick()` 输入）
 
 ```json
 {
   "tick": 4521,
   "player_id": 42,
-  "entities": [/* filtered by is_visible_to */],
-  "terrain": [/* all terrain in visible rooms */],
-  "resources": { "energy": 5000, "minerals": {"H": 1200} },  // OWN only
-  "controller": { "level": 3, "progress": 4500 },            // OWN only
-  "market_orders": [/* visible orders */],
+  "entities": [/* is_visible_to 过滤 */],
+  "terrain": [/* 所有可见房间的地形 */],
+  "resources": { "energy": 5000, "minerals": {"H": 1200} },  // 仅自身
+  "controller": { "level": 3, "progress": 4500 },            // 仅自身
+  "market_orders": [/* 可见订单 */],
   "leaderboard_snapshot": { "rank": 42, "gcl": 1500000 }
 }
 ```
 
-### 3.2 MCP Tools
+### 3.2 MCP 工具
 
-| Tool | Visibility Filter |
-|------|------------------|
-| `get_snapshot` | Full `is_visible_to` filter |
-| `get_objects_in_range` | `is_visible_to` + range check |
-| `get_terrain` | Any tile — terrain is public knowledge |
-| `inspect_entity` | Only if `is_visible_to` returns true OR own entity |
-| `inspect_room` | Only rooms with own vision |
+| 工具 | 可见性过滤 |
+|------|-----------|
+| `get_snapshot` | 完整 `is_visible_to` 过滤 |
+| `get_objects_in_range` | `is_visible_to` + 范围检查 |
+| `get_terrain` | 任意格 — 地形是公开信息 |
+| `inspect_entity` | 仅当 `is_visible_to` 返回 true 或为自身实体 |
+| `inspect_room` | 仅限自身有视野的房间 |
 
-### 3.3 WebSocket Deltas
+### 3.3 WebSocket 增量
 
 ```
-Deltas pushed after each tick: only entities that changed AND are_visible_to(subscriber).
+每 tick 推送增量: 仅包含变更 且 is_visible_to(subscriber) 为 true 的实体。
 ```
 
 ### 3.4 REST API
 
 ```
-GET /api/v1/world/rooms/:id  → entities filtered by is_visible_to(requester)
-GET /api/v1/world/rooms/:id/map → terrain only (public)
+GET /api/v1/world/rooms/:id  → 实体列表经 is_visible_to(请求者) 过滤
+GET /api/v1/world/rooms/:id/map → 仅地形（公开）
 ```
 
-### 3.5 Debug/Replay
+### 3.5 调试/回放
 
-| Mode | Visibility |
-|------|-----------|
-| **Raw trace** (admin) | FULL — all entities, all commands, all state |
-| **Self replay** (player) | `is_visible_to(player, tick)` — what player actually saw |
-| **Public replay** (match complete) | `is_visible_to(any_player, tick)` OR omniscient (post-match delay) |
+| 模式 | 可见性 |
+|------|--------|
+| **裸追踪** (admin) | 全部 — 所有实体、所有指令、所有状态 |
+| **自身回放** (玩家) | `is_visible_to(玩家, tick)` — 玩家实际所见 |
+| **公开回放** (赛后) | `is_visible_to(任意玩家, tick)` 或全知视角（赛后延迟） |
 
-## 4. Room-Based Fog of War
-
-```
-Room R at tick T:
-  for player P:
-    if P has any vision source in room R:
-      visible_entities = all entities in R + adjacent rooms (within vision range)
-    else:
-      visible_entities = room_controller_owner(R) and room_level(R)  // metadata only
-```
-
-A player who loses all vision in a room still sees:
-- Who owns the room controller
-- The room level
-- The room name
-
-But NOT entity positions, drone counts, structure status.
-
-## 5. Visibility Caching
+## 4. 房间 Fog of War
 
 ```
-Per-tick, per-player visibility is computed ONCE and cached.
-Cache key: (tick, player_id)
-Cache value: HashSet<EntityId>
-Invalidated: next tick
+房间 R 在 tick T:
+  对玩家 P:
+    若 P 在房间 R 有视野源:
+      visible_entities = R 及相邻房间内所有实体（视野范围内）
+    否则:
+      visible_entities = 仅房间元数据（拥有者、等级、房间名）
 ```
 
-All output surfaces read from this cache. Prevents "snapshot says hidden but WebSocket delta leaks it" bugs.
+失去某房间全部视野的玩家仍能看到：
+- 房间 Controller 归属者
+- 房间等级
+- 房间名
 
-## 6. Testing
+但看不到实体位置、drone 数量、建筑状态。
 
-### 6.1 Unit Tests
+## 5. 可见性缓存
+
+```
+每 tick、每玩家可见性计算一次并缓存。
+缓存键: (tick, player_id)
+缓存值: HashSet<EntityId>
+失效: 下一 tick
+```
+
+所有输出面读取此缓存。防止「快照说隐藏但 WebSocket 增量泄露」的 bug。
+
+## 6. 测试
+
+### 6.1 单元测试
 
 ```rust
 #[test]
@@ -166,30 +164,30 @@ fn test_multiple_vision_sources_union() { ... }
 fn test_vision_range_boundary() { ... }
 ```
 
-### 6.2 Integration Tests
+### 6.2 集成测试
 
 ```rust
-// Set up world: Player A has drones in room W1N1, Player B has drone in W1N2
-// Assert: Player A's snapshot contains only W1N1 entities
-// Assert: Player B's WebSocket delta contains only W1N2 changes
-// Assert: Player A's replay shows only W1N1 state at each tick
+// 世界设置: 玩家 A 的 drone 在房间 W1N1，玩家 B 的 drone 在 W1N2
+// 断言: 玩家 A 的快照仅含 W1N1 实体
+// 断言: 玩家 B 的 WS 增量仅含 W1N2 变化
+// 断言: 玩家 A 的回放每 tick 仅显示 W1N1 状态
 ```
 
-### 6.3 Leak Detection Test
+### 6.3 泄露检测测试
 
 ```rust
-// For each output surface (snapshot, MCP, WS, REST, replay):
-//   1. Create world with hidden information
-//   2. Request output as player who shouldn't see it
-//   3. Assert: hidden data NOT in output
+// 对每个输出面（snapshot、MCP、WS、REST、replay）:
+//   1. 创建含隐藏信息的世界
+//   2. 以不该看到这些信息的玩家身份请求输出
+//   3. 断言: 隐藏数据不在输出中
 ```
 
-## 7. Phase-Specific Visibility
+## 7. 双模式可见性
 
-### World Mode (Persistent)
+### World 模式（持久世界）
 
-Full fog-of-war as described. Rooms retain state. Vision persists across ticks until lost.
+按上述完整 fog-of-war 规则。房间保留状态。视野跨 tick 持续至失去为止。
 
-### Arena Mode (Match)
+### Arena 模式（比赛）
 
-Simplified visibility: full information within match bounds. Both players see the entire arena. Fog-of-war disabled for competitive fairness. Timer and score visible to spectators.
+简化可见性：比赛边界内全信息。双方玩家看到整个竞技场。公平竞技禁用 fog-of-war。计时器和得分对观战者可见。
