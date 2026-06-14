@@ -6,9 +6,9 @@
 
 ```
 Phase 0  ✅  架构冻结           (已完成, 2026-06-14)
-Phase 1      核心 MVP           4-6 周    单人垂直切片
-Phase 2      MCP + 多人         6-8 周    AI/人类并行
-Phase 3      持久化 + Rhai      6-8 周    数据落地 + 模组
+Phase 1  ✅  核心 MVP           (已完成, 2026-06-14)  单人垂直切片
+Phase 2  ✅  MCP + 多人         (已完成, 2026-06-14)  AI/人类并行
+Phase 3  ✅  持久化 + Rhai      (已完成, 2026-06-14)  数据落地 + 模组
 Phase 4      教程 + 调试        4-6 周    新手上手 + 回放
 Phase 5      Web 客户端         6-8 周    完整产品体验
 Phase 6      战斗 + Arena       8-10 周   游戏化收官
@@ -189,24 +189,3 @@ Phase 7      生产化             8-12 周   公测标准
 | 7.4 | CI/CD Pipeline | P0-8 §4 | IDL gen → lint → unit test → integration test → replay test → deploy |
 | 7.5 | 负载测试 | — | 500 并发玩家 × 500 tick 稳定运行；p99 tick duration < 3s |
 | 7.6 | Wasmtime 安全补丁 SLA | P0-4 §2.1 | CVE 响应 < 7 天；版本迁移脚本 |
-| 7.7 | 运维 runbook | — | world_seed/JWT/证书/FDB credential 轮换；备份恢复；降级模式 SOP |
-
----
-
-### 阶段总览
-
-```
-Phase 0  ✅  架构冻结           (已完成, 2026-06-14)
-Phase 1  ✅  核心 MVP           (已完成, 2026-06-14)  单人垂直切片
-Phase 2  ✅  MCP + 多人         (已完成, 2026-06-14)  AI/人类并行
-Phase 3  ✅  持久化 + Rhai      (已完成, 2026-06-14)  数据落地 + 模组
-Phase 4      教程 + 调试        4-6 周    新手上手 + 回放
-Phase 5      Web 客户端         6-8 周    完整产品体验
-Phase 6      战斗 + Arena       8-10 周   游戏化收官
-Phase 7      生产化             8-12 周   公测标准
-─────────────────────────────────────────
-总计                            42-58 周
-```
-
----
-
