@@ -1,0 +1,98 @@
+[0m
+> build · claude-sonnet-4-6
+[0m
+[0m✱ [0mGlob "**/*.md"[90m in specs/p0 · 9 matches[0m
+[0m→ [0mRead design/DESIGN.md
+[0m→ [0mRead design/DESIGN.md[90m [offset=1218][0m
+[0m→ [0mRead specs/p0/01-tick-protocol-spec.md
+Let me read the remaining DESIGN.md content and all P0 specs in parallel.
+[0m→ [0mRead specs/p0/02-command-validation-spec.md
+[0m→ [0mRead specs/p0/03-mcp-security-contract.md
+[0m→ [0mRead specs/p0/04-wasm-sandbox-baseline.md
+[0m→ [0mRead specs/p0/05-unified-visibility-policy.md
+[0m→ [0mRead specs/p0/06-mvp-feedback-loop.md
+[0m→ [0mRead specs/p0/07-world-rules-engine.md
+Let me read the remaining specs in parallel.
+[0m→ [0mRead specs/p0/08-game-api-idl.md
+[0m→ [0mRead specs/p0/09-command-source-model.md
+Now I have all the material. Let me write the review.
+[0m
+[0m$ [0mls /data/swarm/docs/reviews/ 2>/dev/null || echo "directory missing"
+CONSENSUS-R2.md
+CONSENSUS-REPORT.md
+r2-rev-claude-architect.md
+r2-rev-claude-designer.md
+r2-rev-claude-security.md
+r2-rev-dsv4-architect.md
+r2-rev-dsv4-designer.md
+r2-rev-dsv4-security.md
+r2-rev-gpt-architect.md
+r2-rev-gpt-designer.md
+r2-rev-gpt-security.md
+r3-rev-claude-architect.md
+r3-rev-claude-designer.md
+r3-rev-claude-security.md
+r3-rev-dsv4-architect.md
+r3-rev-dsv4-designer.md
+r3-rev-dsv4-security.md
+r3-rev-gpt-architect.md
+r3-rev-gpt-designer.md
+r3-rev-gpt-security.md
+R3-SPEAKER-VERDICT.md
+r4-rev-dsv4-architect.md
+r4-rev-dsv4-designer.md
+r4-rev-dsv4-security.md
+r4-rev-gpt-architect.md
+r4-rev-gpt-designer.md
+r4-rev-gpt-security.md
+R4-SPEAKER-VERDICT.md
+r5-rev-claude-architect.log
+r5-rev-claude-architect.md
+r5-rev-claude-designer.log
+r5-rev-claude-designer.md
+r5-rev-claude-security.log
+r5-rev-claude-security.md
+r5-rev-dsv4-architect.md
+r5-rev-dsv4-designer.md
+r5-rev-dsv4-security.md
+r5-rev-gpt-architect.md
+r5-rev-gpt-designer.md
+r5-rev-gpt-security.md
+R5-SPEAKER-VERDICT.md
+r6-rev-claude-architect.log
+r6-rev-claude-designer.log
+r6-rev-claude-security.log
+review-rev-claude-architect.md
+review-rev-claude-security.md
+review-rev-dsv4-architect.md
+review-rev-dsv4-security.md
+review-rev-gpt-designer.md
+review-rev-gpt-security.md
+review-security.md
+ROUND3-SECURITY-AUDIT.md
+[0m
+Now I have everything I need. Writing the review.
+[0m← [0mWrite reviews/r6-rev-claude-designer.md
+Wrote file successfully.
+[0m
+Done. Review written to `/data/swarm/docs/reviews/r6-rev-claude-designer.md`.
+
+**VERDICT: CONDITIONAL_APPROVE**
+
+Summary of findings across8 issues:
+
+**HIGH (2)**
+- **D1** — 新玩家冷启动体验未闭合：Tutorial 世界的 tick 间隔、starter bot 触发机制、AI MCP 教程协议均未正式定义，仅散落在示例文字中。建议 Phase 1 清单补入。
+- **D2** — Arena 模式与 AI 玩家工作流冲突：`MCP_Deploy` 赛中禁用，但「AI 锦标赛」的比赛模型（预提交制 vs 有限部署制）从未显式声明，影响差异化定位。
+
+**MEDIUM (3)**
+- **D3** — 代码传播机制的游戏性意图模糊，且 tick 解释格式缺少 `code_version` 字段
+- **D4** — Drone `age` 字段悬空，P0-8 IDL 与 DESIGN §3.1 不一致
+- **D5** — 「运输中资源可被拦截」在 Phase 0 文档中声称已设计但完全未定义，有经济平衡返工风险
+
+**LOW (3)**
+- D6 — `MAX_DRONES_PER_PLAYER=500` 与帝国示例「2000 drone」直接矛盾
+- D7 — DESIGN.md 有两个 `## 10` 节号
+- D8 — P0-9 章节编号跳跃（缺第 4 节）
+
+**优势**：核心哲学一致性强、AI 玩家集成是真正差异化、Rhai 三层信任模型清晰、反作弊确定性合同扎实、全局存储三重反制机制有深度。

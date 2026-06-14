@@ -1184,9 +1184,9 @@ if (rules.get("empire-upkeep").config.onshortfall.value === "damage") {
 小帝国（1 房, 20 drone）: 维护费 ≈ 40/tick     — 轻松
 中帝国（5 房, 100 drone）: 维护费 ≈ 275/tick   — 可承受
 大帝国（20 房, 500 drone）: 维护费 ≈ 2100/tick  — 需要高效经济
-巨帝国（50 房, 2000 drone）: 维护费 ≈ 12600/tick — 软天花板
+巨帝国（50 房, 500 drone）: 维护费 ≈ 3150/tick — 硬上限
 
-不是硬上限——是「你能支撑多大就有多大」。
+不是不可逾越——达到上限前「你能支撑多大就有多大」。
 想维持巨帝国？你的 drone 物流必须极致优化。
 ```
 
@@ -1302,9 +1302,9 @@ if (rules.get("empire-upkeep").config.onshortfall.value === "damage") {
 
 ---
 
-## 10. 贡献指南
+## 11. 贡献指南
 
-### 10.1 开发环境搭建
+### 11.1 开发环境搭建
 
 ```bash
 git clone git@git.kagurazakalan.com:swarm/engine.git

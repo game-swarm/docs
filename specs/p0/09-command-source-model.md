@@ -72,7 +72,7 @@
 
 **禁止**：客户端在 Command body 中自报 `player_id`。如果客户端提供了 player_id，服务端用它自己的值覆盖。
 
-## 6. 校验管线
+## 4. 校验管线
 
 ```
 RawCommand (携带 auth context)
@@ -98,7 +98,7 @@ RawCommand (携带 auth context)
 
 每条指令在 TickTrace 中记录完整 auth context。Replay 使用 `Replay` source，跳过 Source Gate 但保留完整 auth 信息。
 
-## 7. World/Arena 差异
+## 6. World/Arena 差异
 
 | Source | World | Arena |
 |--------|-------|-------|
