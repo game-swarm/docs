@@ -16,6 +16,8 @@ game_api.idl  (单一真相)
     └──→ Test:   property-based test generators
 ```
 
+**IDL 定义的指令类型是 CommandIntent**——即 WASM 模块 `tick()` 的可信输出格式。CommandIntent 仅包含 `sequence` + `action` 两个字段。`player_id`、`source`、`tick` 等身份/时序字段由服务端 Source Gate 注入后形成 RawCommand（见 P0-2 §2）。IDL 不定义 RawCommand 的 envelope 字段——那些是引擎内部结构。所有校验规则（`validator` 数组）定义在 CommandIntent 的 `action` 字段上。
+
 ## 2. IDL 格式
 
 ```yaml
@@ -38,6 +40,7 @@ types:
 enums:
   Direction: [Top, TopRight, BottomRight, Bottom, BottomLeft, TopLeft]
   BodyPart:  [Move, Work, Carry, Attack, RangedAttack, Heal, Claim, Tough]
+  DamageType: [Kinetic, Thermal, EMP, Sonic, Corrosive, Psionic]
   StructureType: [Spawn, Extension, Tower, Storage, Link, Extractor, Lab,
                   Terminal, Nuker, Observer, PowerSpawn, Factory]
   RejectionReason:
@@ -134,40 +137,45 @@ commands:
     validator: [exists, owner, drone, is_spawn, in_range(1)]
     refund: registry.body_cost(body) * 0.5
 
-# ═════════════════════════════════════
-# 特殊攻击（Phase 6 实现,IDL 预留 stub）
-# ═════════════════════════════════════
+  # ═════════════════════════════════════
+  # 特殊攻击（Phase 6 实现，IDL 定义完整校验规则）
+  # ═════════════════════════════════════
 
-special_attacks:
   Hack:
     params: { object_id: ObjectId, target_id: ObjectId }
-    validator: [exists, owner, drone, body_part(Claim), target_drone, target_hits_below(0.15), not_hacked]
+    validator: [exists, owner, drone, body_part(Claim), target_drone, target_hits_below(0.15), not_hacked, in_range(1), fatigue]
     cost: { Energy: 1000 }
+    cooldown: 10          # 全局冷却
 
   Drain:
     params: { object_id: ObjectId, target_id: ObjectId, resource: ResourceName? }
-    validator: [exists, owner, drone, body_part(Work,Carry), target_structure, target_has_resource, in_range(1)]
+    validator: [exists, owner, drone, body_part(Work,Carry), target_structure, enemy_target, target_has_resource, carry_space, in_range(1), fatigue]
     cost: { Energy: 200 }
+    cooldown: 5           # 每 drone 冷却
 
   Overload:
-    params: { object_id: ObjectId, target_id: ObjectId }
-    validator: [exists, owner, drone, body_part(RangedAttack), target_player, target_fuel_above(0.2)]
+    params: { object_id: ObjectId, target_id: PlayerId }
+    validator: [exists, owner, drone, body_part(RangedAttack), target_player, enemy_target, target_fuel_above(0.2), fatigue]
     cost: { Energy: 300 }
+    cooldown: 8           # 每 drone 冷却，无 range 限制
 
   Debilitate:
-    params: { object_id: ObjectId, target_id: ObjectId, damage_type: String }
-    validator: [exists, owner, drone, body_part(Work), target_entity, valid_damage_type]
+    params: { object_id: ObjectId, target_id: ObjectId, damage_type: DamageType }
+    validator: [exists, owner, drone, body_part(Work), enemy_target, valid_damage_type, not_debilitated(damage_type), in_range(3), fatigue]
     cost: { Energy: 200 }
+    cooldown: 6           # 每 drone 冷却
 
   Disrupt:
     params: { object_id: ObjectId, target_id: ObjectId }
-    validator: [exists, owner, drone, body_part(Attack), target_drone, in_range(1)]
+    validator: [exists, owner, drone, body_part(Attack), target_drone, enemy_target, in_range(1), fatigue]
     cost: { Energy: 100 }
+    cooldown: 5           # 全局冷却
 
   Fortify:
     params: { object_id: ObjectId, target_id: ObjectId? }
-    validator: [exists, owner, drone, body_part(Tough), target_self_or_ally, in_range(1)]
+    validator: [exists, owner, drone, body_part(Tough), target_self_or_ally, not_fortified, in_range(1), fatigue]
     cost: { Energy: 400 }
+    cooldown: 4           # 每 drone 冷却
 
 # ═════════════════════════════════════
 # Body Part 默认成本表（权威来源）
@@ -178,7 +186,7 @@ body_cost:
   Work:         { Energy: 100 }
   Carry:        { Energy: 50 }
   Attack:       { Energy: 80 }
-  RangedAttack: { Energy: 150 }
+  RangedAttack: { Energy: 100 }   # 伤害 25
   Heal:         { Energy: 250 }
   Claim:        { Energy: 600 }
   Tough:        { Energy: 10 }

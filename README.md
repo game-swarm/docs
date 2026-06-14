@@ -1,6 +1,6 @@
 # Swarm — 设计文档
 
-可编程 MMO RTS 游戏引擎的设计文档仓库。Phase 0 Architecture Freeze 完成（2026-06-14）。
+可编程 MMO RTS 游戏引擎的设计文档仓库。审查状态：R13 发现 Phase 0 未真正冻结——已产出 Speaker Verdict，需 R14 闭合 Blocker 后方可进入 Phase 1。最后审查日期：2026-06-14。
 
 ## 目录结构
 
@@ -21,7 +21,7 @@ docs/
 │       ├── 07-world-rules-engine.md        # Rhai 模组 + ECS Plugin
 │       ├── 08-game-api-idl.md              # 单一 IDL + 代码生成
 │       └── 09-command-source-model.md      # 12 来源 + 证书签名 Auth
-└── reviews/                      # 评审档案 (R1-R6)
+└── reviews/                      # 评审档案 (R1-R13)
     ├── README.md                 # 轮次索引
     ├── R1/                       # 初审
     ├── R2/                       # 复审

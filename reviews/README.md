@@ -22,10 +22,12 @@
 | [R4](R4/) | 6 份评审 | R4-SPEAKER-VERDICT.md | 5 共识修正，零分歧 |
 | [R5](R5/) | 7 份评审 | R5-SPEAKER-VERDICT.md | 4 残余修正，零架构矛盾 |
 | [R6](R6/) | 8 份评审 | R6-SPEAKER-VERDICT.md | 终轮：8/8 CONDITIONAL_APPROVE，Phase 0 冻结确认 |
+| R7-R12 | — | — | 迭代细化轮，详见各轮目录 |
+| [R13](R13/) | 评审 | R13-SPEAKER-VERDICT.md | 终审，发现 30 项问题（含 10 项共识 Blocker），产出 Speaker Verdict |
 
 ## 审查状态
 
 - 审查者：hermes+kagurazaka
 - 最后审查日期：2026-06-14
-- 整体审查状态：已通过
-- 备注：Phase 0 Architecture Freeze 确认。文档契约层已闭环，可以进入 Phase 1 实现。
+- 整体审查状态：待闭合
+- 备注：R13 发现 10 项共识 Blocker，已产出 Speaker Verdict (R13-SPEAKER-VERDICT.md)。待 R14 闭合。

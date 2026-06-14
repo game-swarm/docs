@@ -28,11 +28,17 @@
                  │     阶段二：执行 (EXECUTE)          │
                  │  超时: 500ms                      │
                  │  ┌─────────────────────────┐     │
-                 │  │ 对每条指令（已排序）:      │     │
-                 │  │ 1. 校验                  │     │
-                 │  │ 2. 应用 或 拒绝           │     │
+                 │  │ Phase 2a: 命令循环        │     │
+                 │  │ 逐条校验 + 逐条应用       │     │
+                 │  │ (基于当前 Bevy World)    │     │
+                 │  │ Spawn 只校验不入队        │     │
                  │  └─────────────────────────┘     │
-                 │  按顺序运行 ECS 系统               │
+                 │  ┌─────────────────────────┐     │
+                 │  │ Phase 2b: ECS Systems     │     │
+                 │  │ death_mark → spawn →     │     │
+                 │  │ combat → regen/decay →   │     │
+                 │  │ death_cleanup            │     │
+                 │  └─────────────────────────┘     │
                  │  FDB 原子提交（全或无,权威源）   │
                  └──────────┬───────────────────────┘
                             │
@@ -41,9 +47,8 @@
                  │    阶段三：广播 (BROADCAST)         │
                  │  ┌─────────────────────────┐     │
                  │  │ 1. 计算实体增量            │     │
-                 │  │ 2. FDB 原子提交            │     │
-                 │  │ 3. Dragonfly 缓存更新      │     │
-                 │  │ 4. NATS 发布增量           │     │
+                 │  │ 2. Dragonfly 缓存更新      │     │
+                 │  │ 3. NATS 发布增量           │     │
                  │  └─────────────────────────┘     │
                  └──────────┬───────────────────────┘
                             │ tick_counter = N + 1
@@ -75,7 +80,7 @@ collect_timeout_ms = 2500  // 硬截止时间
     metrics.collect_timeouts += 1
 ```
 
-**原则**: 某个玩家卡住不会阻塞整个世界。迟到指令排入下一个 tick 的队列。
+**原则**: 某个玩家卡住不会阻塞整个世界。超时玩家当 tick 指令输出丢弃——不跨 tick 携带（防止 sequence 冲突与跨 tick 重排）。
 
 ### 2.3 快照构建
 
@@ -166,29 +171,30 @@ Source E1: energy = 5
 - 创造了策略深度：要不要多个 drone 采集同一个源？万一排在后面就浪费指令
 - 不采用比例分配（太复杂且失去竞争性），不采用价高者得（需要市场机制，超出入门复杂度）
 
-### 3.3 指令校验
+### 3.3 指令执行模型（Inline）
 
-每条指令对照当前世界状态校验。详见 P0-2 指令校验规范。
+命令循环采用 **Inline 模型**：逐条校验 + 逐条应用，校验基于**当前** Bevy World 状态（非快照）。Move/Harvest/Build/Transfer/Attack/Heal/Recycle 在命令循环中立即执行。Spawn 命令在 Phase 2a 中只校验不入队，在 Phase 2b spawn_system 中统一创建。
+
 非法指令 → 拒绝，记录 RejectionReason，写入 TickTrace。
 
-### 3.3 ECS 系统执行顺序 (Bevy)
+### 3.4 ECS 系统执行顺序 (Bevy)
+
+Phase 2b 中 ECS Systems 按 `.chain()` 严格排序：
 
 ```rust
 app.add_systems(Update, (
-    build_system,          // 建筑先出现
-    harvest_system,        // 资源被采集
-    regeneration_system,   // 资源点再生
-    movement_system,       // 单位移动
-    combat_system,         // 战斗结算
-    decay_system,          // 疲劳/冷却递减
-    death_system,          // 死亡单位清除
-    spawn_system,          // 新单位最后创建
+    death_mark_system,       // 标记待死亡 entity，释放 room cap 槽位
+    spawn_system,            // 统一创建 Phase 2a 校验通过的 drone
+    regeneration_system,     // 资源点再生
+    combat_system,           // 战斗结算（damage 先 → heal 后）
+    decay_system,            // 疲劳/冷却递减
+    death_cleanup_system,    // 实际 despawn 已标记 entity
 ).chain());
 ```
 
 `.chain()` 强制串行执行 → 确定性。后续优化用 `.before()/.after()` 实现部分并行同时保持正确性。
 
-### 3.4 Tick 原子性
+### 3.5 Tick 原子性
 
 整个阶段二包裹在 FoundationDB 事务中：
 

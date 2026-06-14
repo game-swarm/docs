@@ -309,7 +309,55 @@ if (cfg.drone.memory_upkeep_cost.Energy > 0) {
 }
 ```
 
-## 6. World vs Arena 默认值
+## 5.1 Rhai 事务性执行模型
+
+规则模组的 Rhai 脚本在每 tick 的规则注入阶段执行。所有 `actions.*` 调用（如 `actions.deduct`、`actions.award`、`actions.emit_event`）**不直接修改世界状态**，而是遵循事务性语义：
+
+```
+Rhai 脚本执行
+    │
+    ▼
+┌─────────────────────────────────┐
+│  RhaiActionBuffer (内存缓存)     │  ← 所有 actions.* 调用写入此 buffer
+│  - deducts: Vec<DeductAction>   │
+│  - awards:  Vec<AwardAction>    │
+│  - events:  Vec<GameEvent>      │
+│  - effects: Vec<WorldEffect>    │
+└────────────┬────────────────────┘
+             │ 脚本执行完毕
+             ▼
+┌─────────────────────────────────┐
+│  钩子执行完毕检查                 │  ← 所有注册的 Rhai 钩子均已返回
+│  (on_tick / on_command / etc.)  │
+└────────────┬────────────────────┘
+             │ 全部成功
+             ▼
+┌─────────────────────────────────┐
+│  统一 Apply                      │  ← 按顺序将 buffer 内容写入世界状态
+│  1. deduct（扣资源）              │     FDB 事务内 atomic commit
+│  2. award（发资源）               │
+│  3. emit_event（发事件）          │
+│  4. effect（世界效果）            │
+└────────────┬────────────────────┘
+             │
+             ▼
+       世界状态已更新
+```
+
+**超时回滚**：若任一 Rhai 脚本超过墙钟预算（默认 100ms），整个 `RhaiActionBuffer` 丢弃，世界状态不变。墙钟预算仅作为安全网，隔离脚本副作用——一个脚本超时不影响其他脚本或核心引擎。
+
+**部分失败处理**：
+- 单个 `actions.*` 调用失败（如 deduct 资源不足）→ 该 action 被跳过，不影响 buffer 中其他 action
+- 脚本 panic / 语法错误 → 该脚本的全部 buffer 丢弃，其他脚本 buffer 保留
+- 所有脚本执行完毕后，buffer 中有效的 action 一次性 apply
+
+**隔离保证**：
+- Rhai 脚本**不能**绕过 Command Validation Pipeline（见 P0-2 §1）
+- Rhai 脚本**不能**直接写入 ECS 组件——只能通过 `actions.*` API
+- Rhai 脚本**不能**访问其他玩家的私有数据
+- Buffer apply 阶段由引擎核心在 FDB 事务中执行，保证确定性
+
+## 7. World vs Arena 默认值
 
 | 规则 | World | Arena |
 |------|-------|-------|
@@ -321,7 +369,7 @@ if (cfg.drone.memory_upkeep_cost.Energy > 0) {
 | `combat.pvp_enabled` | true | true |
 | `visibility.fog_of_war` | true | false（全场可见） |
 
-## 7. 配置校验
+## 8. 配置校验
 
 ```rust
 fn validate_config(config: &WorldConfig) -> Result<(), Vec<String>> {
@@ -342,7 +390,7 @@ fn validate_config(config: &WorldConfig) -> Result<(), Vec<String>> {
 }
 ```
 
-## 8. 与核心引擎的边界
+## 9. 与核心引擎的边界
 
 核心引擎**不知道规则的存在**。规则 System 是外挂的：
 

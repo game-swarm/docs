@@ -56,12 +56,32 @@ WASM 模块的 `tick()` 必须返回符合以下 schema 的 JSON：
 
 > 校验失败的 tick 输出：不计入 refund（未进入指令管线），记录到 TickTrace 为 `TickValidationFailed`。
 
-## 2. RawCommand 结构
+## 2. 指令类型层次
+
+服务端指令管线处理三种不同的指令表示，从不可信输入逐步升级为可信的已验证指令：
+
+```
+CommandIntent (WASM 输出, 不可信)
+    │  仅含 sequence + action 两个字段
+    │  player_id / source / tick 全部由 Source Gate 服务端注入
+    ▼
+RawCommand (服务端 envelope, auth 已注入)
+    │  player_id / tick / sequence / action + auth context
+    │  通过 Source Gate 后进入校验管线
+    ▼
+ValidatedCommand (校验通过, 可安全执行)
+    │  所有静态检查已通过
+    │  携带解析后的目标引用、距离、成本等缓存数据
+    ▼
+  进入应用阶段（修改世界状态）
+```
+
+### 2.1 CommandIntent（不可信输入）
+
+WASM 模块的 `tick()` 只输出 `CommandIntent[]`，**仅允许两个字段**：
 
 ```json
 {
-  "player_id": 42,
-  "tick": 4521,
   "sequence": 3,
   "action": {
     "type": "Move",
@@ -71,12 +91,61 @@ WASM 模块的 `tick()` 必须返回符合以下 schema 的 JSON：
 }
 ```
 
-| 字段 | 类型 | 校验规则 |
-|------|------|---------|
-| `player_id` | u32 | 必须匹配已认证玩家 |
-| `tick` | u64 | 必须是当前 tick 或下一 tick（预提交） |
-| `sequence` | u32 | 每玩家每 tick 单调递增 |
-| `action` | Action | 见下文逐指令校验 |
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `sequence` | u32 | 每 tick 单调递增，WASM 自行管理 |
+| `action` | Action | 见 §3 逐指令校验矩阵 |
+
+**禁止字段**：`player_id`、`source`、`tick`、`auth` 等字段**不得**由 WASM 提供。若 CommandIntent 包含这些字段 → 整个 tick 输出被拒绝（`TickValidationFailed`），不计入 refund。
+
+### 2.2 RawCommand（服务端 envelope）
+
+Source Gate 验证 CommandIntent 后，服务端注入身份与时序上下文，形成 RawCommand：
+
+```json
+{
+  "player_id": 42,
+  "tick": 4521,
+  "sequence": 3,
+  "source": "WASM",
+  "action": {
+    "type": "Move",
+    "object_id": 1001,
+    "direction": "TopRight"
+  }
+}
+```
+
+| 字段 | 类型 | 来源 | 校验规则 |
+|------|------|------|---------|
+| `player_id` | u32 | **服务端注入** | 必须匹配已认证玩家 |
+| `tick` | u64 | **服务端注入** | 必须是当前 tick 或下一 tick（预提交） |
+| `source` | Source | **服务端注入** | 见 P0-9 §2.1 来源矩阵 |
+| `sequence` | u32 | WASM 提供 | 每玩家每 tick 单调递增 |
+| `action` | Action | WASM 提供 | 见 §3 逐指令校验 |
+
+### 2.3 ValidatedCommand（校验通过）
+
+预校验阶段（§1 管线第3步）将 RawCommand 升级为 ValidatedCommand，携带解析后的引用：
+
+```json
+{
+  "player_id": 42,
+  "tick": 4521,
+  "sequence": 3,
+  "source": "WASM",
+  "action_type": "Move",
+  "resolved": {
+    "object_ref": EntityRef(1001),
+    "object_position": { "x": 5, "y": 3, "room": 1 },
+    "target_ref": null,
+    "distance_to_target": null,
+    "cost": {}
+  }
+}
+```
+
+`resolved` 字段由预校验阶段填充，供应用阶段直接使用，避免二次查表。若预校验失败，返回 `RejectionReason`（见 §5）。
 
 ## 3. 逐指令校验矩阵
 
@@ -240,6 +309,130 @@ Drone 在 tick 末尾创建（death_system 之后，spawn 槽位已释放）。
 
 返还 50% 身体部件成本作为能量给 spawn。
 
+### 3.12 Hack（特殊攻击）
+
+```json
+{"type": "Hack", "object_id": 1001, "target_id": 1002}
+```
+
+| 检查项 | 失败码 |
+|--------|--------|
+| `object_id` 是玩家拥有的 Drone | `NotOwner` |
+| `drone.body` 包含 `Claim` 部件 | `MissingBodyPart(Claim)` |
+| `target_id` 存在且是 Drone | `ObjectNotFound` / `NotDrone` |
+| `target_id.owner != player_id`（非己方） | `FriendlyTarget` |
+| `target.hits / target.hits_max < 0.15`（目标血量低于 15%） | `TargetHitsTooHigh` |
+| `target` 未被其他玩家 Hack 中 | `AlreadyHacked` |
+| `object_id` 在范围内 (range = 1) | `OutOfRange` |
+| `drone.fatigue == 0` | `Fatigued` |
+
+**状态转换**：Hack 成功 → 目标进入 `Hacked` 状态（duration = 3 ticks）。Hacked 期间目标 drone 的 `tick()` 输出被替换为预定义 fallback 行为（原地 idle），且该 drone 的 `player_id` 暂时不可操作该 drone。冷却时间：10 ticks（全局冷却，与具体 drone 无关）。
+
+### 3.13 Drain（特殊攻击）
+
+```json
+{"type": "Drain", "object_id": 1001, "target_id": 2002, "resource": "Energy"}
+```
+
+| 检查项 | 失败码 |
+|--------|--------|
+| `object_id` 是玩家拥有的 Drone | `NotOwner` |
+| `drone.body` 包含 `Work` + `Carry` 部件 | `MissingBodyPart` |
+| `target_id` 是 Structure（非 Drone） | `NotStructure` |
+| `target_id.owner != player_id`（非己方） | `FriendlyTarget` |
+| `target` 有指定 resource 存量 > 0 | `TargetEmpty` |
+| `drone.carry_used < drone.carry_capacity` | `CarryFull` |
+| `object_id` 在范围内 (range = 1) | `OutOfRange` |
+| `drone.fatigue == 0` | `Fatigued` |
+
+**状态转换**：Drain 成功 → 从目标 Structure 转移 `min(amount, target.resource)` 到 drone carry。若目标 resource ≤ 阈值（20% 原容量），额外施加 `Drained` debuff（target 产量 -50%，持续 5 ticks）。冷却时间：5 ticks（每 drone）。
+
+### 3.14 Overload（特殊攻击）
+
+```json
+{"type": "Overload", "object_id": 1001, "target_id": 42}
+```
+
+| 检查项 | 失败码 |
+|--------|--------|
+| `object_id` 是玩家拥有的 Drone | `NotOwner` |
+| `drone.body` 包含 `RangedAttack` 部件 | `MissingBodyPart(RangedAttack)` |
+| `target_id` 是有效的 player_id | `PlayerNotFound` |
+| `target_id != player_id`（非己方） | `FriendlyTarget` |
+| `target_player.current_fuel / MAX_FUEL > 0.2` | `TargetFuelTooLow` |
+| `drone.fatigue == 0` | `Fatigued` |
+
+**状态转换**：Overload 成功 → 目标玩家的当前 tick fuel budget 乘以 1.5 倍（fuel 消耗加速），效果持续 1 tick。若目标因此超出 `MAX_FUEL × 1.1` 退还上限，多余退还作废。冷却时间：8 ticks（每 drone）。无 range 限制——Overload 是逻辑攻击。
+
+### 3.15 Debilitate（特殊攻击）
+
+```json
+{"type": "Debilitate", "object_id": 1001, "target_id": 1003, "damage_type": "EMP"}
+```
+
+| 检查项 | 失败码 |
+|--------|--------|
+| `object_id` 是玩家拥有的 Drone | `NotOwner` |
+| `drone.body` 包含 `Work` 部件 | `MissingBodyPart(Work)` |
+| `target_id` 存在（Drone 或 Structure） | `ObjectNotFound` |
+| `target_id.owner != player_id`（非己方） | `FriendlyTarget` |
+| `damage_type` ∈ DamageType 枚举 | `InvalidDamageType` |
+| `target` 未被同类型 Debilitate 叠加 | `AlreadyDebilitated(damage_type)` |
+| `object_id` 在范围内 (range = 3) | `OutOfRange` |
+| `drone.fatigue == 0` | `Fatigued` |
+
+**状态转换**：Debilitate 成功 → 目标获得 `Debilitated { damage_type }` 状态，根据 damage_type 产生不同效果：
+
+| DamageType | 效果 | 持续时间 |
+|-----------|------|---------|
+| `Kinetic` | body part 效率 -30% | 3 ticks |
+| `Thermal` | 每 tick 额外掉血 5 HP | 3 ticks |
+| `EMP` | `RangedAttack`/`Heal` 部件失效 | 4 ticks |
+| `Sonic` | 移动距离 -1（最低 1 格） | 3 ticks |
+| `Corrosive` | 护甲值 -50% | 5 ticks |
+| `Psionic` | `tick()` 输出指令数上限 -50% | 3 ticks |
+
+同一目标可同时有不同类型的 Debilitate，但同类型不可叠加。冷却时间：6 ticks（每 drone）。
+
+### 3.16 Disrupt（特殊攻击）
+
+```json
+{"type": "Disrupt", "object_id": 1001, "target_id": 1002}
+```
+
+| 检查项 | 失败码 |
+|--------|--------|
+| `object_id` 是玩家拥有的 Drone | `NotOwner` |
+| `drone.body` 包含 `Attack` 部件 | `MissingBodyPart(Attack)` |
+| `target_id` 存在且是 Drone | `ObjectNotFound` / `NotDrone` |
+| `target_id.owner != player_id`（非己方） | `FriendlyTarget` |
+| `object_id` 在范围内 (range = 1) | `OutOfRange` |
+| `drone.fatigue == 0` | `Fatigued` |
+
+**状态转换**：Disrupt 成功 → 目标 drone 进入 `Disrupted` 状态：该 drone 的 `tick()` 输出中所有 `action` 被引擎忽略（替换为空指令列表），持续 1 tick。**注意**：Disrupt 不阻止 snapshot 传递给 WASM——只是输出被丢弃。冷却时间：5 ticks（全局冷却）。
+
+### 3.17 Fortify（特殊攻击/防御）
+
+```json
+{"type": "Fortify", "object_id": 1001, "target_id": 1003}
+```
+
+| 检查项 | 失败码 |
+|--------|--------|
+| `object_id` 是玩家拥有的 Drone | `NotOwner` |
+| `drone.body` 包含 `Tough` 部件 | `MissingBodyPart(Tough)` |
+| `target_id` 存在（Drone 或 Structure） | `ObjectNotFound` |
+| `target_id.owner == player_id` 或为盟友 | `NotFriendly` |
+| `target` 未被 Fortify（同 drone 不可重复 Fortify 同一目标） | `AlreadyFortified` |
+| `object_id` 在范围内 (range = 1) | `OutOfRange` |
+| `drone.fatigue == 0` | `Fatigued` |
+
+若 `target_id` 省略，默认 fortify 自身（`object_id`）。
+
+**状态转换**：Fortify 成功 → 目标获得 `Fortified` buff：所有受到的非特殊攻击伤害 -30%，持续 3 ticks。若目标已有 `Fortified`，刷新持续时间。冷却时间：4 ticks（每 drone）。
+
+**注意**：§3.12-3.17 特殊攻击为 Phase 6 实现内容，Phase 0-2 仅需校验管线 stub（返回 `NotImplemented` rejection）。IDL 定义见 P0-8。
+
 ## 4. 查询指令（只读）
 
 查询不进指令管线。它们在快照生成阶段（阶段一）处理。
@@ -318,7 +511,7 @@ Drone 在 tick 末尾创建（death_system 之后，spawn 槽位已释放）。
 - tick N 的指令在 tick N 执行阶段被拒绝 → 退还 credit 记入玩家的 `next_tick_fuel_credit`
 - tick N+1 开始时，玩家 fuel budget = `MAX_FUEL + next_tick_fuel_credit`（不超过 `MAX_FUEL × 1.1`）
 - 同 tick 内不得通过故意竞争失败来获取额外计算预算
-- **Deploy-reset 规则**: refund credit 与产生它的 WASM 模块绑定。若玩家在 tick N+1 重新部署了不同模块（`module_hash` 变更），tick N 的 refund credit 作废。防止 v1 刷 refund → v2 消费的跨模块预算转移。**例外**: 同一 session 内的迭代部署（同 session_id）不清除 credit——不惩罚正常迭代
+- **Deploy-reset 规则**: refund credit 与玩家绑定。若玩家在 tick N+1 执行了任何部署操作（`swarm_deploy` / `MCP_Deploy` / `Deploy`），tick N 及之前累计的 refund credit 清零。防止 v1 刷 refund → v2 消费的跨模块预算转移。**例外**: 同一 session 内的迭代部署（同 session_id）不清除 credit——不惩罚正常迭代。
 
 ### 7.3 退还上限与滥用检测
 

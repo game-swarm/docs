@@ -127,21 +127,25 @@ fn validate_module(wasm_bytes: &[u8]) -> Result<(), Rejection> {
         return Err(Rejection::ModuleTooLarge);  // 最大 5MB
     }
 
-    // 2. 解析 + 校验 WASM 二进制
-    let module = wasmtime::Module::from_binary(&engine, wasm_bytes)?;
-
-    // 3. 检查导出: 必须导出 "tick" 函数
-    let tick = module.get_export("tick")
-        .ok_or(Rejection::MissingTickExport)?;
-
-    // 4. 检查无 _start 函数（防止预执行）
-    if module.export("_start").is_some() {
-        return Err(Rejection::StartFunctionForbidden);
+    // 2. 使用 wasmparser 预校验 WASM 二进制（在 wasmtime 之外）
+    let parser = wasmparser::Parser::new(0);
+    for payload in parser.parse_all(wasm_bytes) {
+        match payload? {
+            // 3. 显式拒绝 StartSection（实例化时自动执行，绕过 tick）
+            wasmparser::Payload::StartSection { .. } => {
+                return Err(Rejection::StartSectionForbidden);
+            }
+            _ => {}
+        }
     }
 
-    // 5. 检查无 init 函数（__wasm_call_ctors, active data segments 预执行）
-    if module.export("__wasm_call_ctors").is_some() {
-        return Err(Rejection::InitFunctionForbidden);
+    // 4. 编译模块（在 wasmparser 预检通过后）
+    let module = wasmtime::Module::from_binary(&engine, wasm_bytes)?;
+
+    // 5. 检查导出: 必须导出 "tick", "alloc", "free"
+    for &name in &["tick", "alloc", "free"] {
+        module.get_export(name)
+            .ok_or(Rejection::MissingExport(name))?;
     }
 
     // 6. 检查导入: 仅允许白名单 host function
@@ -151,6 +155,10 @@ fn validate_module(wasm_bytes: &[u8]) -> Result<(), Rejection> {
         }
     }
 
+    // 7. 实例化前必须设置: Store fuel、epoch deadline、memory limiter
+    //    这些在 Instance::new() 调用前生效，确保 start section 的替代品
+    //    （如 active element/data segments）也在约束内执行
+
     Ok(())
 }
 ```
@@ -159,15 +167,36 @@ fn validate_module(wasm_bytes: &[u8]) -> Result<(), Rejection> {
 
 WASM 模块采用 **deferred model**：`tick()` 接收快照 JSON，**返回指令 JSON**。引擎在校验后执行指令。WASM 中**不得直接调用 mutating host function**——所有状态变更必须通过指令 JSON 返回，由引擎统一应用。
 
-### 3.1 模块导出
+### 3.1 模块导出 (ABI)
+
+WASM 模块必须导出以下三个函数：
 
 ```rust
-// tick() 由 WASM 模块导出，非 host function
-// tick(ptr: i32, len: i32) -> i32
-//   输入: ptr/len 指向快照 JSON（引擎写入 WASM 线性内存）
-//   返回值: 指令 JSON 的指针（WASM 分配，引擎读取后释放）
-//   指令 JSON 格式见 P0-2 Command Validation Matrix
+// 内存管理（供引擎调用）
+alloc(len: i32) -> i32;           // 分配 len 字节 WASM 线性内存，返回指针
+free(ptr: i32, len: i32);         // 释放之前 alloc 的内存
+
+// 主入口
+tick(snapshot_ptr: i32, snapshot_len: i32, result_ptr: i32) -> i32;
+//   snapshot_ptr/len: 引擎写入的快照 JSON 在 WASM 内存中的位置
+//   result_ptr: 指向引擎分配的 8 字节 out struct { ptr: u32, len: u32 }
+//   返回值: 0 = 成功, 负数 = 错误码
+//
+//   调用协议:
+//   1. 引擎 alloc snapshot_len → 写入快照 JSON
+//   2. 引擎 alloc 8 bytes → 作为 result_ptr
+//   3. 调用 tick(snapshot_ptr, snapshot_len, result_ptr)
+//   4. 读取 result_ptr 处的 {ptr, len}
+//   5. 校验 len <= 256KB → 从 ptr 复制出 CommandIntent JSON
+//   6. 调用 free(ptr, len) 释放 WASM 侧分配的返回 buffer
+//   7. 调用 free(snapshot_ptr, snapshot_len) 释放快照 buffer
 ```
+
+**安全约束**:
+- 所有 pointer/len 做 bounds check、alignment check、integer overflow check
+- CommandIntent JSON 超过 256KB → 拒绝该玩家当 tick 所有输出
+- tick() 返回非 0 → 视为执行失败，当 tick 0 指令
+- 不存在的 export → 模块无效，拒绝部署
 
 ### 3.2 允许的 Host Function（查询专用，只读）
 
