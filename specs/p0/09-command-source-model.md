@@ -25,7 +25,7 @@
 | Source | 描述 | auth_context | gameplay | audit | rate_limit | visibility | budget |
 |--------|------|-------------|----------|-------|------------|------------|--------|
 | `Deploy` | 代码部署管线（非 MCP 入口） | player_id | ❌ 否 | 完整 | 1/tick | 玩家快照 | compile budget |
-| `Rollback` | 管理回滚操作 | admin_id + rollback_token | ❌ 否 | **双人审计** | 手动触发 | 历史状态 | N/A |
+| `Rollback` | 管理回滚操作 | admin_id + rollback_token | ❌ 否 | **双人审计** — 需两个不同 admin 的 Ed25519 签名，服务端在 Source Gate 前强制执行 | 手动触发 | 历史状态 | N/A |
 | `RuleMod` | Rhai 规则模组 actions | mod_id + world_owner_id | ⚠️ 仅经济 + 事件 | 完整 | 100 actions/tick | 规则作用域 | Rhai op budget |
 | `Simulate` | `swarm_simulate` 试运行 | player_id + snapshot_id | ❌ 否（snapshot-bound dry-run） | 完整 | 5/tick | 快照副本 | 0.5× MAX_FUEL |
 | `DryRun` | 部署前语法/校验试运行 | player_id | ❌ 否 | 完整 | 20/h | 无（仅编译） | compile budget |

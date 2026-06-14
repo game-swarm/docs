@@ -203,6 +203,7 @@ txn.commit()  // 全提交 或 全回滚
 放弃的 tick：世界状态不变，tick_counter 不递增，消耗的 CPU fuel 退还玩家。
 放弃后等待 1s 重试同一 tick（避免立即重试导致相同的 FDB 冲突）。
 连续放弃 3 次 → 引擎进入降级模式（暂停新玩家加入），告警触发。
+**关键**: EXECUTE 开始时对 `Bevy World` 做内存快照——FDB rollback 不自动恢复 Bevy 状态，需显式 `world.restore(snapshot)`。
 
 ## 4. 阶段三：广播
 

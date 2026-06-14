@@ -139,7 +139,12 @@ fn validate_module(wasm_bytes: &[u8]) -> Result<(), Rejection> {
         return Err(Rejection::StartFunctionForbidden);
     }
 
-    // 5. 检查导入: 仅允许白名单 host function
+    // 5. 检查无 init 函数（__wasm_call_ctors, active data segments 预执行）
+    if module.export("__wasm_call_ctors").is_some() {
+        return Err(Rejection::InitFunctionForbidden);
+    }
+
+    // 6. 检查导入: 仅允许白名单 host function
     for import in module.imports() {
         if !ALLOWED_HOST_FUNCTIONS.contains(import.name()) {
             return Err(Rejection::IllegalImport(import.name()));
@@ -276,7 +281,7 @@ cargo test --test wasm_sandbox -- --test-threads=1
 | 编译超时 | 30s | 独立超时进程 |
 | 编译内存 | 512 MB | cgroup |
 | 编译进程 | 每次部署独立 fork | 不缓存编译中间产物 |
-| 模块缓存 | 按 (module_hash, wasmtime_version) 缓存 | 编译一次，多 tick 复用 |
+| 模块缓存 | 按 (module_hash, wasmtime_version) 缓存 | 每次 tick 执行前校验 player 的 auth token 仍有效——ban/revoke 时清除缓存条目。编译一次，多 tick 复用 |
 | 并发编译 | 最多 5 个 | 防止编译阶段 DoS |
 | module validation | 10ms | wasmparser 解析超时 |
 
