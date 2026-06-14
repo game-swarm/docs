@@ -665,6 +665,25 @@ regeneration = 10
 | `friendly_fire` | bool | 是否允许攻击同阵营（默认 false） |
 | `damage_multiplier` | `fixed<u32,4>` | 伤害倍率 × 10000（默认 10000 = 1.0） |
 
+#### 伤害与武器类型
+
+| 伤害类型 | 描述 | 示例 body part | 有效目标 |
+|---------|------|--------------|---------|
+| `Physical` | 基础近战伤害 | Attack | 所有实体 |
+| `Piercing` | 穿刺伤害，对 Tough 部件穿透 | RangedAttack | 所有实体 |
+| `Siege` | 攻城伤害，对建筑倍率 ×2 | —（Tower 建筑自动攻击） | 建筑 |
+| `Heal` | 治疗（反向伤害） | Heal | 己方 drone / 建筑 |
+
+**抗性系统**（Phase 6 实现）:
+
+| Body Part | Physical | Piercing | Siege | 说明 |
+|-----------|---------|---------|-------|------|
+| Tough | 减 50% | 无减免 | 无减免 | 肉盾部件 |
+| 其余部件 | 无 | 无 | 无 | — |
+| Structure（建筑） | 无 | 无 | ×2 伤害 | 建筑弱攻城 |
+
+每种 body part 的攻击附带其基础伤害类型。伤害计算：`base_damage × damage_multiplier × resistance_multiplier`。
+
 #### 可见性与观战
 
 可见性分两层：**drone 感知**（影响游戏公平性）和**玩家视野**（影响观战体验）。
