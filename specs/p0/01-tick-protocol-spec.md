@@ -112,8 +112,9 @@ Tick N+1: 引擎自动切换到 v2
 **方案：种子洗牌 (Seeded Shuffle)**
 
 ```rust
-// 每 tick 洗牌一次，种子 = blake3(tick_number || world_seed)
-// 使用固定 hash 算法（非 std::hash），保证跨版本确定性
+// 每 tick 洗牌一次，用 Blake3 XOF 从 seed + tick 派生确定性随机序列
+// seed = Blake3(tick_number || world_seed)
+// shuffle = Blake3 XOF: for i in 0..N:  position[i] = XOF.read_u64() % (N - i)
 let seed = blake3::hash(&[&tick_number.to_le_bytes(), &world_seed]);
 let player_order: Vec<PlayerId> = seeded_shuffle(&active_players, &seed);
 

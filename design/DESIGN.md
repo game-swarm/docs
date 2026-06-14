@@ -1196,7 +1196,7 @@ if (rules.get("empire-upkeep").config.onshortfall.value === "damage") {
 
 | 组件 | 算法 | 说明 |
 |------|------|------|
-| PRNG | **ChaCha12** | 密码学安全 + 确定种子。不用 std::random / OS 熵源。 |
+| PRNG | **Blake3 XOF** | 确定种子 + offset → 随机流。与哈希同原语，消除 ChaCha 依赖，纯软件 ~6 GB/s。XOF 模式：`blake3::Hasher::update_with_seek(seed, offset)` |
 | 种子 | world_seed = Blake3(32随机字节) | 32 字节熵（256-bit），编码为 hex 字符串。不可从 tick_number 推导。 |
 | Hash | **Blake3** | 固定实现。不用 std::hash / SipHash（跨版本可变）。 |
 | 种子洗牌 | Blake3(tick_number \|\| world_seed) | 每 tick 确定但不可预测的玩家顺序 |
@@ -1217,7 +1217,7 @@ if (rules.get("empire-upkeep").config.onshortfall.value === "damage") {
 
 - [x] Game API IDL 冻结（host functions + Command + Validator + SDK ABI + MCP schema 同源）→ P0-8
 - [x] Command Source Model 冻结（12 sources: WASM/MCP_Deploy/MCP_Query/Admin/Replay/TestHarness/Tutorial/Deploy/Rollback/RuleMod/Simulate/DryRun）→ P0-9
-- [x] Determinism Contract 冻结（PRNG=ChaCha12, hash=Blake3, 禁 f64/Rhai 浮点/禁 std::hash, IndexMap, ECS .chain()）→ DESIGN §8.8
+- [x] Determinism Contract 冻结（PRNG=Blake3 XOF, hash=Blake3, 禁 f64/Rhai 浮点/禁 std::hash, IndexMap, ECS .chain()）→ DESIGN §8.8
 - [x] Tick Protocol 拉齐（FDB commit in EXECUTE, tick abandon behavior, NATS ack）→ P0-1
 - [x] World Rules Engine capability model 收敛为 Rhai 模组 → P0-7
 - [x] Deferred Command Model 统一（tick() → JSON, 禁 imperative host functions）→ P0-4 §3
