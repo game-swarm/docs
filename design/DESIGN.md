@@ -1265,7 +1265,7 @@ if (rules.get("empire-upkeep").config.onshortfall.value === "damage") {
 
 - [ ] Web 客户端（React + Monaco + PixiJS）
 - [ ] 自动生成 API 参考站
-- [ ] OAuth2 登录
+- [ ] OAuth2 登录 + 证书签发（Ed25519 短期证书，24h 自动续签，支持吊销）
 - [ ] MCP 教程资源（AI 玩家上手指南）
 
 ### Phase 6: 游戏化

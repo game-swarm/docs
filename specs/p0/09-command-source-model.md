@@ -52,7 +52,21 @@
 
 `Tutorial` 来源的指令**仅可在 `world.mode = "tutorial"` 的世界中接受**。在非 Tutorial 世界收到的 Tutorial 来源指令 → 静默丢弃 + 记录审计日志。Tutorial 世界的全局存储使用独立 namespace（`tutorial_{world_id}`），不与正式世界互通。
 
-## 3. 不可伪造的 Auth Context
+## 3. 不可伪造的 Auth Context + 代码签名
+
+### 3.1 身份模型
+
+采用**服务端签发证书**模式：
+
+```
+注册/登录:  OAuth2 (GitHub/Google) → 服务端验证身份 → 签发短期证书
+代码签名:  WASM 部署附带证书签名 → 服务端验签
+吊销:      证书过期（24h 默认）/ 手动吊销 → 凭据泄露可止损
+```
+
+**为何不用客户端 keypair**：新手友好（不需要理解密钥管理）、吊销可控（ban 玩家 = 吊销证书）、OAuth2 已有成熟的认证基础设施。
+
+### 3.2 Auth Context
 
 每条 RawCommand 携带的服务端注入字段：
 
@@ -61,14 +75,25 @@
   "command": { /* 原始指令 */ },
   "auth": {
     "source": "WASM",
-    "player_id": 42,          // 服务端注入——不可由客户端提供
+    "player_id": 42,                // 服务端注入——不可由客户端提供
+    "cert_fingerprint": "sha256:abcd1234...",  // 部署时使用的证书指纹
     "session_id": "sess_abc",
-    "module_version": "v1.2.0",
+    "module_hash": "blake3:def567...",         // WASM 模块内容哈希
     "tick_submitted": 4520,
     "tick_target": 4521
   }
 }
 ```
+
+### 3.3 代码签名验证
+
+WASM 部署 (`swarm_deploy` / MCP_Deploy / Deploy) 时：
+
+1. 客户端发送 WASM 字节 + 证书（含服务端签名）
+2. 服务端验证证书未过期、未被吊销
+3. 服务端用证书中的 player_id 覆盖任何客户端自报的 ID
+4. 服务端计算 `module_hash = Blake3(WASM bytes)`，写入 `auth.module_hash`
+5. tick 执行阶段，引擎验证 `module_hash` 匹配已部署模块
 
 **禁止**：客户端在 Command body 中自报 `player_id`。如果客户端提供了 player_id，服务端用它自己的值覆盖。
 
