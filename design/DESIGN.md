@@ -1118,7 +1118,7 @@ actions.log_warn(message)
 | AST 节点数 | 10,000/tick | 该模组本次 tick 跳过，记录警告 |
 | actions 调用次数 | 100/tick | 超出部分丢弃 |
 | `state.players()` 迭代 | 3,000 项 | 超出的玩家跳过 |
-| 墙钟执行时间 | 100ms/tick | 强制终止，模组标记为 "degraded"。**非确定性安全网**——不参与 state_checksum，仅防拖垮引擎。正常模组不应触发，触发即视为 bug |
+| 墙钟执行时间 | 100ms/tick | 强制终止当前模组，**该模组本 tick 的所有 actions 全部回滚**（事务性隔离）。仅防拖垮引擎——正常模组不应触发，触发视为 bug。回滚确保 state_checksum 不受部分执行影响 |
 
 > 连续 10 tick 超限的模组自动禁用，需服主手动重新启用。防止恶意/错误模组拖垮引擎。
 

@@ -318,7 +318,7 @@ Drone 在 tick 末尾创建（death_system 之后，spawn 槽位已释放）。
 - tick N 的指令在 tick N 执行阶段被拒绝 → 退还 credit 记入玩家的 `next_tick_fuel_credit`
 - tick N+1 开始时，玩家 fuel budget = `MAX_FUEL + next_tick_fuel_credit`（不超过 `MAX_FUEL × 1.1`）
 - 同 tick 内不得通过故意竞争失败来获取额外计算预算
-- **Deploy-reset 规则**: refund credit 与产生它的 WASM 模块绑定。若玩家在 tick N+1 重新部署了不同模块（`module_hash` 变更），tick N 的 refund credit 作废。防止 v1 刷 refund → v2 消费的跨模块预算转移
+- **Deploy-reset 规则**: refund credit 与产生它的 WASM 模块绑定。若玩家在 tick N+1 重新部署了不同模块（`module_hash` 变更），tick N 的 refund credit 作废。防止 v1 刷 refund → v2 消费的跨模块预算转移。**例外**: 同一 session 内的迭代部署（同 session_id）不清除 credit——不惩罚正常迭代
 
 ### 7.3 退还上限与滥用检测
 
