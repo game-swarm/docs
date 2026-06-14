@@ -731,6 +731,27 @@ Corrosive = 1.5        # 建筑怕腐蚀
 
 **模组扩展**: Rhai 模组可注册新伤害类型（`actions.add_damage_type("Fire", 1.0)`）、设置抗性（`actions.set_resistance("Tough", "Fire", 0.3)`）、赋予属性（`actions.set_attribute(entity_id, "Flaming", true)`）。
 
+#### 特殊攻击方式
+
+除了 HP 伤害，以下特殊攻击方式作为 Command 或 body part 能力存在：
+
+| 攻击方式 | 触发 body part | 效果 | 抗性 |
+|---------|--------------|------|------|
+| **Hack** | Claim | 尝试夺取目标 drone 控制权。成功条件：`目标剩余 hits < 最大 hits × hack_threshold`（默认 0.3）。成功后 drone.owner 变更为攻击者 | 目标 `Psionic` 抗性 |
+| **Drain** | Carry + Work | 从目标建筑/存储中窃取资源，每 tick 转移 `carry_capacity` 单位。需在目标 1 格范围内维持 N tick | 目标 `EMP` 抗性（护盾） |
+| **Overload** | RangedAttack | 消耗目标的计算配额。目标 `fuel budget` 减少 `overload_amount`（默认 500k fuel），不影响 HP | 目标 `EMP` 抗性 |
+| **Debilitate** | Work | 给目标附加易伤状态。目标的指定伤害类型抗性 × 2（承受双倍伤害），持续 `debilitate_ticks`（默认 50 tick） | 目标 `Corrosive` 抗性 |
+| **Disrupt** | Attack | 打断目标的当前动作。若目标正在执行持续动作（如 Drain/Hack），立即终止。不造成 HP 伤害 | 目标 `Sonic` 抗性 |
+| **Fortify** | Tough | 自身/友方获得护盾。目标所有抗性 × 0.5（减半伤害），持续 `fortify_ticks`（默认 100 tick） | 无——增益效果 |
+
+**通用规则**：
+- 特殊攻击与 HP 伤害互斥——同一 body part 在同一 tick 只能执行一种
+- 特殊攻击的"命中判定"取决于 body part 数量与目标防御的差值，非简单的命中/未命中
+- 持续型攻击（Drain/Hack）在 drone 移动或被 Disrupt 时中断
+- 所有特殊攻击受 `damage_multiplier` 世界规则影响（倍率作用于成功率/效果量）
+
+**Body part 扩展**：世界可通过 `[[body_part_types]]` 定义新 body part 并绑定伤害类型或特殊攻击。模组可引入 `Leech`（吸血）、`Scramble`（随机改变目标代码执行顺序）、`Fabricate`（将敌方 drone 转化为己方建筑）等。
+
 #### 可见性与观战
 
 可见性分两层：**drone 感知**（影响游戏公平性）和**玩家视野**（影响观战体验）。
