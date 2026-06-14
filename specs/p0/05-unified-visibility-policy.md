@@ -74,6 +74,10 @@ LEADERBOARD: 公开。指标: GCL、房间数、drone 数。
 
 ## 3. 各输出面执行
 
+### 3.0 Host Functions（WASM 查询）
+
+所有 query host function 的返回结果均经 `is_visible_to` 过滤——与 snapshot 使用同一可见性函数。无绕过：WASM 模块传入任意坐标调用 `get_objects_in_range` 时，仅返回对调用者可见的实体。`path_find` 仅基于可见地形计算路径。
+
 ### 3.1 快照（WASM `tick()` 输入）
 
 ```json

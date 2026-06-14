@@ -1087,12 +1087,12 @@ fn on_tick_end(state, events, config, actions) {
 #### Rhai API：模组可用的函数
 
 ```rust
-// 状态查询
-state.players()          → Iterator<Player>
+// 状态查询（经可见性过滤——模组不能看到隐藏实体）
+state.players()          → Iterator<Player>        // 聚合统计，不暴露具体玩家
 state.tick()             → u64
-player.drones()          → Iterator<Drone>
-player.rooms()           → Iterator<Room>
-player.resources()       → Map<String, u64>
+player.drones()          → Iterator<Drone>          // 仅该玩家的 drone（owner=player_id）
+player.rooms()           → Iterator<Room>           // 仅该玩家有视野的房间
+player.resources()       → Map<String, u64>         // 仅该玩家的资源
 drone.body_parts()       → Vec<BodyPart>
 drone.position()         → (x, y, room_id)
 
