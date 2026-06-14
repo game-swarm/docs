@@ -1077,10 +1077,10 @@ en = "Energy consumed per drone per tick"
 ja = "ドローン1機あたりの毎 tick エネルギー消費"
 
 [config.room_superlinear]
-type = "f64"
-default = 0.1
-min = 0.0
-max = 10.0
+type = "fixed<u32,4>"
+default = 1
+min = 0
+max = 100
 [config.room_superlinear.description_i18n]
 zh = "超线性系数——房间越多，每间房的单位成本越高"
 en = "Superlinear factor — more rooms increase per-room cost"

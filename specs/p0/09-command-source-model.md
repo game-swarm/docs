@@ -72,7 +72,7 @@
 
 **禁止**：客户端在 Command body 中自报 `player_id`。如果客户端提供了 player_id，服务端用它自己的值覆盖。
 
-## 4. 校验管线
+## 6. 校验管线
 
 ```
 RawCommand (携带 auth context)
