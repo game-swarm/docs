@@ -638,6 +638,33 @@ regeneration = 10
 | `friendly_fire` | bool | 是否允许攻击同阵营（默认 false） |
 | `damage_multiplier` | `fixed<u32,4>` | 伤害倍率 × 10000（默认 10000 = 1.0） |
 
+#### 可见性与观战
+
+可见性分两层：**drone 感知**（影响游戏公平性）和**玩家视野**（影响观战体验）。
+
+##### Drone 感知（进入 snapshot）
+
+| 规则 | 类型 | 默认 | 说明 |
+|------|------|------|------|
+| `fog_of_war` | bool | true | drone 的 WASM `tick()` snapshot 是否受可见性限制。true = drone 只能"看到"感知范围内的实体（视觉/听觉/嗅觉分层）；false = snapshot 包含全地图（合作/教学世界） |
+
+##### 玩家视野（人类屏幕 / AI MCP 查看）
+
+| 规则 | 类型 | 默认 | 说明 |
+|------|------|------|------|
+| `player_view` | enum | `"drone"` | `"drone"` = 玩家只能看到自己 drone 所见；`"full"` = 玩家实时看到全地图（无论 drone 感知范围）；`"allied"` = 看到所有同阵营 drone 的聚合视野 |
+| `public_spectate` | bool | false | 是否允许未登录用户实时旁观（只读 WebSocket）。World 默认关，Arena 默认开 |
+| `spectate_delay` | u32 | 0 | 旁观延迟（tick 数）。0 = 实时；>0 = 延迟回放，防止观众信息泄露给参赛者 |
+
+**组合示例**：
+
+| 场景 | fog_of_war | player_view | 效果 |
+|------|-----------|-------------|------|
+| 标准 World | true | drone | drone 感知有限，玩家只看自己 drone 所见 |
+| 教学世界 | false | full | 新手看到全地图，drone 也能感知全图 |
+| 竞技观战 | true | drone | drone 公平受限，但观众通过 `public_spectate` + `spectate_delay=100` 看延迟全图 |
+| 合作 PvE | true | allied | drone 各自感知，但玩家看到所有友方聚合视野 |
+
 ### 8.3 配置格式
 
 ```toml
@@ -664,6 +691,12 @@ env_vars = true                  # 允许环境变量
 memory_size = 2048               # 每 drone 2KB 存储
 memory_spawn_cost = { Energy = 0.5 }     # 每 byte 孵化成本
 memory_upkeep_cost = { Energy = 0.01 }   # 每 byte 每 tick 维护费
+
+[visibility]
+fog_of_war = true                # drone 感知受可见性限制
+player_view = "drone"            # 玩家只看自己 drone 所见
+public_spectate = false          # World 模式默认不公开旁观
+spectate_delay = 0               # 回放无延迟
 
 [resources]
 source_regeneration = 1.0
@@ -1257,6 +1290,7 @@ if (rules.get("empire-upkeep").config.onshortfall.value === "damage") {
 | **代码** | 随时更新（热重载） | 比赛开始时锁定 |
 | **排行榜** | 无意义——起点不同无法比较 | 有意义——赛季排名、锦标赛 |
 | **回放** | 自身可见，可选分享 | 赛后自动公开 |
+| **旁观** | `public_spectate` 控制，默认关闭 | 默认公开（`public_spectate=true`），未登录用户可通过 WebSocket 观看 |
 | **玩家** | 人类和 AI agent 在同一世界共存 | 1v1 或团队对决 |
 | **关注点** | 持久性、创造力、涌现玩法 | 策略深度、公平性、观赏性 |
 

@@ -112,7 +112,21 @@ GET /api/v1/world/rooms/:id  → 实体列表经 is_visible_to(请求者) 过滤
 GET /api/v1/world/rooms/:id/map → 仅地形（公开）
 ```
 
-### 3.5 调试/回放
+### 3.5 旁观者视图 (Spectator View)
+
+**两层分离**：引擎始终按 `is_visible_to` 计算 drone 的 snapshot（游戏公平性），但玩家/旁观者的「摄像头」可以有不同的可见范围（观战体验）。
+
+| 模式 | drone snapshot | 玩家屏幕 / MCP | WebSocket 旁观 |
+|------|---------------|---------------|---------------|
+| `player_view = "drone"` | `is_visible_to(player)` 过滤 | 同 snapshot | 同 snapshot |
+| `player_view = "full"` | `is_visible_to(player)` 过滤 | 全地图（无视 fog） | 全地图（如 `public_spectate=true`） |
+| `player_view = "allied"` | `is_visible_to(player)` 过滤 | 所有友方 drone 聚合视野 | N/A |
+
+**关键不变量**：无论 `player_view` 如何设置，WASM `tick()` 收到的 snapshot **始终**按 `is_visible_to(player)` 过滤——`fog_of_war` 控制。`player_view` 只影响人类屏幕和 MCP 只读查询。
+
+**旁观者 WebSocket**：当 `public_spectate = true` 时，未登录客户端可订阅世界 delta。推送内容为全地图实体（无 `is_visible_to` 过滤），但受 `spectate_delay` tick 延迟控制。此推送仅供显示——旁观者无法提交任何指令。
+
+### 3.6 调试/回放
 
 | 模式 | 可见性 |
 |------|--------|
