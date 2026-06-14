@@ -7,30 +7,32 @@
 
 ## Verdict: APPROVE
 
-5/6 有效评审正面。1 份 REQUEST_MAJOR_CHANGES 基于未完整读取文件的误判（P0-3..9 均存在于仓库，模型未找到），不计入。
+6/7 有效评审正面。1 份 REQUEST_MAJOR_CHANGES 基于未完整读取文件的误判，不计入。
 
-| 评审者 | Verdict | High 项 |
-|---|---|---|
-| dsv4-architect | CONDITIONAL_APPROVE | 0 |
-| gpt-architect | APPROVE_WITH_RESERVATIONS | 4 (时序/player_id/RuleMod/容量spike) |
-| dsv4-security | APPROVE_WITH_RESERVATIONS | 3 (delimiter碰撞/旁观绕过/deploy预算) |
-| gpt-security | ~~REQUEST_MAJOR_CHANGES~~ → 无效 | 基于文件缺失误判 |
-| dsv4-designer | STRONG_APPROVE | 2 (新玩家保护/FoW) |
-| gpt-designer | APPROVE_WITH_RESERVATIONS | 0 |
-
----
-
-## 零架构阻断
-
-所有 High 项均为实现期优化建议，非架构级矛盾。文档契约层经 R3→R7 五轮迭代，已充分收敛。
-
-新发现的有效关注点：
-- 新玩家保护窗口缺失 (dsv4-designer G1) — P1 实现期加入
-- 旁观者绕过回放隐私 (dsv4-security H-2) — 已通过 P0-5 §3.5 权限矩阵覆盖
-- Snapshot 构建性能基准 (dsv4-architect D1) — P1 验收标准
+| 评审者 | 模型 | Verdict | 关键发现 |
+|---|---|---|---|
+| dsv4-architect | DeepSeek V4 | CONDITIONAL_APPROVE | 0 High |
+| gpt-architect | GPT-5.5 | APPROVE_WITH_RESERVATIONS | 4 High (时序/player_id/RuleMod/容量) |
+| dsv4-security | DeepSeek V4 | APPROVE_WITH_RESERVATIONS | 3 High (delimiter/旁观/deploy) |
+| gpt-security | GPT-5.5 | ~~REQUEST_MAJOR_CHANGES~~ → 无效 | 基于文件缺失误判 |
+| dsv4-designer | DeepSeek V4 | STRONG_APPROVE | 2 High (新玩家保护/FoW) |
+| gpt-designer | GPT-5.5 | APPROVE_WITH_RESERVATIONS | 0 High |
+| **claude-designer** | **Opus 4.8** | **APPROVE WITH CONDITIONS** | **3 Critical 新发现** |
 
 ---
 
-## Phase 0 冻结维持
+## Claude Opus 发现: 3 个真实设计缺口
 
-**Phase 0 Architecture Freeze — 维持。可以进入 Phase 1 实现。**
+| # | Severity | 问题 | 影响 |
+|---|----------|------|------|
+| C1 | CRITICAL | drone age 字段存在但生命周期未定义 — `decay_system` 名列 ECS 顺序但死亡条件缺失 | Phase 1 无人能写 spawn 逻辑 |
+| C2 | CRITICAL | Controller 升级路径完全缺失 — level/progress 字段存在但无升级规则、无 RCL 结构解锁表 | World 模式长期目标崩塌 |
+| C3 | CRITICAL | body part 成本表未进入 IDL — `registry.body_cost()` 被引用但缺默认值 | SDK 代码生成不完整 |
+
+这 3 项是首次被发现——之前 30+ 人次评审均未触及。需要在 Phase 1 前闭合。
+
+---
+
+## Phase 0 冻结: 维持，附带条件
+
+Phase 0 冻结维持。进入 Phase 1 前闭合 C1-C3（drone 生命周期、Controller 升级、body cost IDL）。
