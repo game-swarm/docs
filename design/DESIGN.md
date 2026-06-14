@@ -724,10 +724,10 @@ Corrosive = 1.5        # 建筑怕腐蚀
 
 **Body part 伤害绑定**:
 
-| Body Part | 默认伤害类型 | 基础伤害值 |
-|-----------|------------|----------|
-| Attack | Kinetic | 30 |
-| RangedAttack | Kinetic | 20 |
+| Body Part | 默认伤害类型 | 基础伤害值 | 说明 |
+|-----------|------------|----------|------|
+| Attack | Kinetic | 30 | 近战（距离 1），低成本高伤害 |
+| RangedAttack | Kinetic | 20 | 远程（距离 3），高成本低伤害但射程优势 |
 | Tower（建筑自动攻击） | Kinetic | 50 |
 | Heal | —（反向治疗） | 12 |
 
@@ -743,12 +743,12 @@ Corrosive = 1.5        # 建筑怕腐蚀
 
 | 攻击方式 | 触发 body part | 效果 | 冷却 | 资源消耗 | 抗性 |
 |---------|--------------|------|------|---------|------|
-| **Hack** | Claim | 夺取目标 drone：连续 10 tick 维持控制信号，成功后 drone 进入休眠（停止执行 WASM，不归任何玩家）。5 tick 后自动恢复为原 owner | 200 tick | 1000 Energy | 目标 `Psionic` 抗性 |
+| **Hack** | Claim | 夺取目标 drone：连续 5 tick 维持控制信号（目标 hits < 30% 时可触发），成功后 drone 进入休眠（停止执行 WASM）。5 tick 后自动恢复。休眠期间不消耗 lifespan | 200 tick | 1000 Energy | 目标 `Psionic` 抗性 |
 | **Drain** | Carry + Work | 从目标建筑/存储中窃取资源，每 tick 转移 `carry_capacity` 单位 | 50 tick | 200 Energy/tick | 目标 `EMP` 抗性 |
-| **Overload** | RangedAttack | 消耗目标计算配额。目标 `fuel budget` 减少 500k（默认 MAX_FUEL=10M 的 5%）。**不会被叠加至低于 MAX_FUEL × 0.2**（硬下限 2M fuel，确保反制可能） | 200 tick | 300 Energy | 目标 `EMP` 抗性 |
-| **Debilitate** | Work | 给目标附加易伤状态。指定伤害类型抗性 ×2（双倍伤害），持续 50 tick | 150 tick | 200 Energy | 目标 `Corrosive` 抗性 |
+| **Overload** | RangedAttack | 消耗目标计算配额。目标 `fuel budget` 减少 500k（默认 MAX_FUEL=10M 的 5%）。**下限 MAX_FUEL × 0.2** | 200 tick | 300 Energy | 目标 `EMP` 抗性 |
+| **Debilitate** | Work | 给目标附加易伤状态。指定伤害类型抗性 ×2，持续 50 tick | 150 tick | 200 Energy | 目标 `Corrosive` 抗性 |
 | **Disrupt** | Attack | 打断目标当前动作（Drain/Hack 等持续动作立即终止）。不造成 HP 伤害 | 50 tick | 100 Energy | 目标 `Sonic` 抗性 |
-| **Fortify** | Tough | 自身/友方获得护盾。所有抗性 × 0.5（减半伤害），持续 100 tick | 300 tick | 400 Energy | 无——增益效果 |
+| **Fortify** | Tough | 自身/友方获得护盾（所有抗性 ×0.5）。**同时清除目标所有 debuff**（Debilitate/Drain/Overload），持续 100 tick | 300 tick | 400 Energy | 无——增益+净化 |
 
 **通用规则**：
 - 特殊攻击与 HP 伤害互斥——同一 body part 在同一 tick 只能执行一种
