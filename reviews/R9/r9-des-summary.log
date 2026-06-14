@@ -1,0 +1,53 @@
+[0m
+> build · claude-sonnet-4-6
+[0m
+[0m# [0mTodos
+[•] Read all source docs in parallel
+[ ] Write summary to /data/swarm/docs/reviews/r9-des-summary.md
+[0m
+[0m→ [0mRead design/DESIGN.md
+[0m→ [0mRead specs/p0/06-mvp-feedback-loop.md
+Reading all four source files in parallel now.
+[0m→ [0mRead specs/p0/07-world-rules-engine.md
+[0m→ [0mRead specs/p0/08-game-api-idl.md
+[0m
+[0m# [0mTodos
+[✓] Read all source docs in parallel
+[•] Write summary to /data/swarm/docs/reviews/r9-des-summary.md
+[0m
+Now I have all the content. Let me write the summary.
+[0m$ [0mls /data/swarm/docs/reviews/ 2>/dev/null || mkdir -p /data/swarm/docs/reviews
+R1
+R2
+R3
+R4
+R5
+R6
+R7
+R8
+r9-arch-summary.log
+r9-des-summary.log
+r9-rev-claude-architect.log
+r9-rev-claude-designer.log
+r9-rev-claude-security.log
+r9-rev-dsv4-architect.md
+r9-rev-dsv4-designer.md
+r9-rev-dsv4-security.md
+r9-rev-gpt-architect.md
+r9-rev-gpt-designer.md
+r9-rev-gpt-security.md
+r9-sec-summary.log
+README.md
+[0m
+[0m← [0mWrite reviews/r9-des-summary.md
+Wrote file successfully.
+[0m
+Done. Written to `/data/swarm/docs/reviews/r9-des-summary.md`.
+
+Here's what the summary covers and few notes on the choices made:
+
+**Coverage**: All 10 requested topics are in the doc — core loop, drone lifecycle, RCL table, body part costs (from the IDL as the authoritative source), damage types with resistance matrix, all 6 special attacks, global storage economics with the 3logistics modes and anti-hoarding mechanisms, World vs Arena comparison table, visibility/spectator rules, mod system with budget limits and Rhai API surface, and new player experience including both human and AI onboarding paths.
+
+**Additions**: A "Key Design Tensions" section at the end flags5 potential friction points a game designer reviewer would likely want to flag — drone lifespan forcing spawn automation early, body composition being irreversible, the Arena code-lock UX gap, logistics depth vs accessibility, and mod system risk surface. These weren't in the source docs but are inferences a designer reviewer should surface.
+
+**Format decisions**: Tables are used heavily since this is reference material for a reviewer scanning specific systems. The three-tier trust model (`WASM / Rhai / Rust`) is called out explicitly because it's the conceptual key to understanding how mods differ from player code.

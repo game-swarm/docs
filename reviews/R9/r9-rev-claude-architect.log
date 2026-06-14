@@ -1,0 +1,24 @@
+[0m
+> build · claude-opus-4-8
+[0m
+I'll read the architecture summary and evaluate it.
+[0m→ [0mRead reviews/r9-arch-summary.md
+I have the full summary. Let me write the architecture review.
+[0m
+[0m← [0mWrite reviews/r9-rev-claude-architect.md
+Wrote file successfully.
+[0m
+Review written to `/data/swarm/docs/reviews/r9-rev-claude-architect.md`.
+
+**VERDICT: CONDITIONAL_APPROVE**
+
+The design is coherent and unusually rigorous on determinism, sandboxing, and abuse resistance. Two HIGH issues gate it:
+
+- **H1 — FDB transaction limits.** Wrapping the whole EXECUTE phase in one transaction and writing full world state per tick will hit FDB's hard 10 MB / 5 s per-transaction ceilings, and it contradicts §1 (full snapshots only every N ticks). Needs delta commits + periodic checkpoints.
+- **H2 — Bevy intra-system iteration order.** The contract pins command ordering but not entity iteration order inside ECS systems; Bevy query order isn't stable across archetype moves/versions, so order-sensitive systems can diverge during live play. Needs a stable sort key + CI replay assertion.
+
+Plus 4 MEDIUM (seccomp whitelist starving the host runtime, per-tick fork cost, serial EXECUTE throughput, determinism-scope wording) and 3 LOW.
+
+Strengths called out: the deferred no-mutating-host-function command model with a single validation pipeline, the disciplined Blake3-based determinism contract, the unforgeable server-injected auth context, two-layer WASM isolation, IDL-as-single-source-of-truth with CI diff gating, and a notably mature fuel-refund anti-gaming model.
+
+Fix H1 and H2 and it's a clear APPROVE.

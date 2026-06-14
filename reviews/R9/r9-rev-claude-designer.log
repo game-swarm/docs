@@ -1,0 +1,20 @@
+[0m
+> build · claude-opus-4-8
+[0m
+I'll read the design summary and evaluate it.
+[0m→ [0mRead reviews/r9-des-summary.md
+I've read the full summary. Let me write the game design review.
+[0m
+[0m← [0mWrite reviews/r9-rev-claude-designer.md
+Wrote file successfully.
+[0m
+Review written to `/data/swarm/docs/reviews/r9-rev-claude-designer.md`.
+
+**VERDICT: APROVE WITH CHANGES** — solid foundation, no blocking defects, but two high-severity items must be resolved before freeze.
+
+Key findings:
+- **HIGH** — Body Part table lists costs but no effectiveness values (damage/harvest/heal per part), so balance can't be evaluated (§4). And Arena's "fairness + locked code" claim conflicts with server-installable Rhai mods and definable damage rules (§8/§10) — mods and world rules need to be frozen per-season too.
+- **MEDIUM** — RCL downgrade wipes all progress (too punishing for persistent-world retention); progressive storage tax has an undefined 30–85% gap; fatigue system has no quantified generation/recovery; linear hit-formula risks winer-take-all; the "5-minute tutorial → write WASM" cliff is the classic churn point.
+- **LOW** — lifespan vs RCL pacing mismatch, missing per-level drone caps, undefined buff/debuff stacking, placeholder spectate_delay.
+
+Strengths called out: rock-solid determinism contract, elegant two-layer resistance system, decoupled special attacks with interrupt mechanics, the three-tier logistics switch, clean World/Arena split, AI-as-first-class-citizen via MCP, and the strong observability/debug toolchain.
