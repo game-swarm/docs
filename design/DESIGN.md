@@ -655,6 +655,7 @@ regeneration = 10
 | `player_view` | enum | `"drone"` | `"drone"` = 玩家只能看到自己 drone 所见；`"full"` = 玩家实时看到全地图（无论 drone 感知范围）；`"allied"` = 看到所有同阵营 drone 的聚合视野 |
 | `public_spectate` | bool | false | 是否允许未登录用户实时旁观（只读 WebSocket）。World 默认关，Arena 默认开 |
 | `spectate_delay` | u32 | 0 | 旁观延迟（tick 数）。0 = 实时；>0 = 延迟回放，防止观众信息泄露给参赛者 |
+| `replay_privacy` | enum | `"private"` | 回放可见性：`"private"` = 仅自身；`"allies"` = 同阵营可看；`"world"` = 同世界玩家可看；`"public"` = 任何人（含未登录）。Arena 模式赛后强制 `"public"` |
 
 **组合示例**：
 
@@ -1289,8 +1290,8 @@ if (rules.get("empire-upkeep").config.onshortfall.value === "damage") {
 | **运行方式** | 7×24 tick 循环 | 固定时长（例：5000 tick ≈ 4h） |
 | **代码** | 随时更新（热重载） | 比赛开始时锁定 |
 | **排行榜** | 无意义——起点不同无法比较 | 有意义——赛季排名、锦标赛 |
-| **回放** | 自身可见，可选分享 | 赛后自动公开 |
-| **旁观** | `public_spectate` 控制，默认关闭 | 默认公开（`public_spectate=true`），未登录用户可通过 WebSocket 观看 |
+| **回放** | 自身可见，隐私分级控制 | 赛后自动公开（`replay_privacy = "public"`） |
+| **旁观** | `public_spectate` 控制，默认关闭 | 默认公开（`public_spectate=true`） |
 | **玩家** | 人类和 AI agent 在同一世界共存 | 1v1 或团队对决 |
 | **关注点** | 持久性、创造力、涌现玩法 | 策略深度、公平性、观赏性 |
 
