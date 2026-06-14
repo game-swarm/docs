@@ -134,6 +134,24 @@ commands:
     validator: [exists, owner, drone, is_spawn, in_range(1)]
     refund: registry.body_cost(body) * 0.5
 
+# ═════════════════════════════════════
+# Body Part 默认成本表（权威来源）
+# ═════════════════════════════════════
+
+body_cost:
+  Move:         { Energy: 50 }
+  Work:         { Energy: 100 }
+  Carry:        { Energy: 50 }
+  Attack:       { Energy: 80 }
+  RangedAttack: { Energy: 150 }
+  Heal:         { Energy: 250 }
+  Claim:        { Energy: 600 }
+  Tough:        { Energy: 10 }
+
+# world.toml 可覆盖以上默认值，例如:
+#   [actions.costs]
+#   body_part.Move = { Energy: 60, Crystal: 10 }
+
 host_functions:
   tick:
     export: true
