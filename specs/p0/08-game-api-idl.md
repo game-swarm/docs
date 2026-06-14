@@ -135,6 +135,41 @@ commands:
     refund: registry.body_cost(body) * 0.5
 
 # ═════════════════════════════════════
+# 特殊攻击（Phase 6 实现,IDL 预留 stub）
+# ═════════════════════════════════════
+
+special_attacks:
+  Hack:
+    params: { object_id: ObjectId, target_id: ObjectId }
+    validator: [exists, owner, drone, body_part(Claim), target_drone, target_hits_below(0.15), not_hacked]
+    cost: { Energy: 1000 }
+
+  Drain:
+    params: { object_id: ObjectId, target_id: ObjectId, resource: ResourceName? }
+    validator: [exists, owner, drone, body_part(Work,Carry), target_structure, target_has_resource, in_range(1)]
+    cost: { Energy: 200 }
+
+  Overload:
+    params: { object_id: ObjectId, target_id: ObjectId }
+    validator: [exists, owner, drone, body_part(RangedAttack), target_player, target_fuel_above(0.2)]
+    cost: { Energy: 300 }
+
+  Debilitate:
+    params: { object_id: ObjectId, target_id: ObjectId, damage_type: String }
+    validator: [exists, owner, drone, body_part(Work), target_entity, valid_damage_type]
+    cost: { Energy: 200 }
+
+  Disrupt:
+    params: { object_id: ObjectId, target_id: ObjectId }
+    validator: [exists, owner, drone, body_part(Attack), target_drone, in_range(1)]
+    cost: { Energy: 100 }
+
+  Fortify:
+    params: { object_id: ObjectId, target_id: ObjectId? }
+    validator: [exists, owner, drone, body_part(Tough), target_self_or_ally, in_range(1)]
+    cost: { Energy: 400 }
+
+# ═════════════════════════════════════
 # Body Part 默认成本表（权威来源）
 # ═════════════════════════════════════
 

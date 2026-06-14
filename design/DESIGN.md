@@ -743,7 +743,7 @@ Corrosive = 1.5        # 建筑怕腐蚀
 
 | 攻击方式 | 触发 body part | 效果 | 冷却 | 资源消耗 | 抗性 |
 |---------|--------------|------|------|---------|------|
-| **Hack** | Claim | 夺取目标 drone 控制权代价极大：成功条件为 `目标剩余 hits < 最大 hits × 0.15`（极低血量）且需连续 10 tick 维持控制信号 | 200 tick | 1000 Energy | 目标 `Psionic` 抗性。**被 Hack 的 drone 转为中立（Neutral），不归任何玩家所有，但仍执行原 owner 部署的 WASM。5 tick 内无法被再次 Hack** |
+| **Hack** | Claim | 夺取目标 drone：连续 10 tick 维持控制信号，成功后 drone 进入休眠（停止执行 WASM，不归任何玩家）。5 tick 后自动恢复为原 owner | 200 tick | 1000 Energy | 目标 `Psionic` 抗性 |
 | **Drain** | Carry + Work | 从目标建筑/存储中窃取资源，每 tick 转移 `carry_capacity` 单位 | 50 tick | 200 Energy/tick | 目标 `EMP` 抗性 |
 | **Overload** | RangedAttack | 消耗目标计算配额。目标 `fuel budget` 减少 500k（默认 MAX_FUEL=10M 的 5%）。**不会被叠加至低于 MAX_FUEL × 0.2**（硬下限 2M fuel，确保反制可能） | 200 tick | 300 Energy | 目标 `EMP` 抗性 |
 | **Debilitate** | Work | 给目标附加易伤状态。指定伤害类型抗性 ×2（双倍伤害），持续 50 tick | 150 tick | 200 Energy | 目标 `Corrosive` 抗性 |
