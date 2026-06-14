@@ -258,7 +258,7 @@ delta = compute_delta(world_state_before, world_state_after)
 
 ### 6.3 回放协议
 
-### 6.1 记录
+#### 6.3.1 记录
 
 每个 tick 写入 FDB（不可变）：
 ```
@@ -270,7 +270,7 @@ delta = compute_delta(world_state_before, world_state_after)
 
 AI 玩家：记录 ACCEPTED 指令，不是原始 LLM 输出。回放时喂记录指令——不重调 LLM。
 
-### 6.2 回放执行
+#### 6.3.2 回放执行
 
 ```
 fn replay_tick(tick_N) -> WorldState:

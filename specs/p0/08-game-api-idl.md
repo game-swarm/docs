@@ -81,7 +81,7 @@ commands:
 
   MoveTo:
     params: { object_id: ObjectId, x: i32, y: i32 }
-    validator: [Move checks, in_room, path_exists, path_length(100)]
+    validator: [Move checks, !spawning, in_room, path_exists, path_length(100)]
     cost: {}   # pathfinding 计入 fuel
 
   Harvest:

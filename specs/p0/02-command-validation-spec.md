@@ -289,7 +289,7 @@ Drone 在 tick 末尾创建（death_system 之后，spawn 槽位已释放）。
 | MAX_COMMANDS_PER_PLAYER | 100/tick | 限制 MCP 工具滥用 |
 | MAX_CONSTRUCTION_SITES | 100/房间 | 防止建造刷屏 |
 | MAX_DRONES_PER_PLAYER | 500 | 防止单位刷屏 |
-| 玩家名称 | 32 字符, `[a-zA-Z0-9 _-]` | 防 prompt 注入 |
+| 玩家名称 | 32 字符, `[a-zA-Z0-9 _-]` | 防 prompt 注入。**Prompt injection delimiter 必须使用此字符集之外的字符**（如 `[[`/`]]` 或 Unicode），确保玩家名无法伪造系统与用户内容的边界。 |
 | 房间名称 | 16 字符, `[A-Z][0-9]+[NS][0-9]+[EW]` | 标准化格式 |
 | JSON 深度 | 10 | serde_json 递归限制 |
 | 字符串最大长度（通用） | 256 字符 | 通用保护 |
