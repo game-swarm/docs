@@ -153,16 +153,14 @@ impl WorldConfig {
         let registry = ResourceRegistry::from_config(self);
         app.insert_resource(registry);
 
-        // 基础系统始终注册
+        // 基础系统始终注册（Phase 2b: Inline 命令执行后的系统链）
         app.add_systems(Update, (
-            build_system,
-            harvest_system,
-            regeneration_system,
-            movement_system,
-            combat_system,
-            decay_system,
-            death_system,
-            spawn_system,
+            death_mark_system,       // 标记待死亡 entity，释放 room cap
+            spawn_system,            // 统一创建校验通过的 drone
+            regeneration_system,     // 资源点再生
+            combat_system,           // 战斗结算（damage 先 → heal 后）
+            decay_system,            // 疲劳/冷却递减
+            death_cleanup_system,    // 实际 despawn
         ).chain());
 
         // === 孵化规则 ===
@@ -178,7 +176,7 @@ impl WorldConfig {
             app.add_systems(Update, code_update_window_system);
         }
         if self.code.propagation_speed > 0 {
-            app.add_systems(Update, code_propagation_system.before(movement_system));
+            app.add_systems(Update, code_propagation_system.before(spawn_system));
         }
 
         // === Drone 控制 ===

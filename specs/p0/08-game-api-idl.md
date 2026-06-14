@@ -143,39 +143,45 @@ commands:
 
   Hack:
     params: { object_id: ObjectId, target_id: ObjectId }
-    validator: [exists, owner, drone, body_part(Claim), target_drone, target_hits_below(0.15), not_hacked, in_range(1), fatigue]
+    validator: [exists, owner, drone, body_part(Claim), target_drone, not_hacked, in_range(1), fatigue]
     cost: { Energy: 1000 }
-    cooldown: 10          # 全局冷却
+    cooldown: 200         # 全局冷却
+    description: "施加控制锁逐步夺取 drone——5 tick 渐进控制后转为 Neutral"
 
   Drain:
     params: { object_id: ObjectId, target_id: ObjectId, resource: ResourceName? }
     validator: [exists, owner, drone, body_part(Work,Carry), target_structure, enemy_target, target_has_resource, carry_space, in_range(1), fatigue]
     cost: { Energy: 200 }
-    cooldown: 5           # 每 drone 冷却
+    cooldown: 50          # 每 drone 冷却
+    description: "从目标建筑/存储窃取资源，每 tick 转移 carry_capacity 单位"
 
   Overload:
     params: { object_id: ObjectId, target_id: PlayerId }
     validator: [exists, owner, drone, body_part(RangedAttack), target_player, enemy_target, target_fuel_above(0.2), fatigue]
     cost: { Energy: 300 }
-    cooldown: 8           # 每 drone 冷却，无 range 限制
+    cooldown: 200         # 每 drone 冷却
+    description: "消耗目标 fuel budget 500k，下限 MAX_FUEL×0.2"
 
   Debilitate:
     params: { object_id: ObjectId, target_id: ObjectId, damage_type: DamageType }
     validator: [exists, owner, drone, body_part(Work), enemy_target, valid_damage_type, not_debilitated(damage_type), in_range(3), fatigue]
     cost: { Energy: 200 }
-    cooldown: 6           # 每 drone 冷却
+    cooldown: 150         # 每 drone 冷却
+    description: "施加易伤状态——指定伤害类型抗性×2，持续 50 tick"
 
   Disrupt:
     params: { object_id: ObjectId, target_id: ObjectId }
     validator: [exists, owner, drone, body_part(Attack), target_drone, enemy_target, in_range(1), fatigue]
     cost: { Energy: 100 }
-    cooldown: 5           # 全局冷却
+    cooldown: 50          # 每 drone 冷却
+    description: "打断目标持续动作（Drain/Hack 控制锁等），不造成伤害"
 
   Fortify:
     params: { object_id: ObjectId, target_id: ObjectId? }
-    validator: [exists, owner, drone, body_part(Tough), target_self_or_ally, not_fortified, in_range(1), fatigue]
+    validator: [exists, owner, drone, body_part(Tough), target_self_or_ally, in_range(1), fatigue]
     cost: { Energy: 400 }
-    cooldown: 4           # 每 drone 冷却
+    cooldown: 300         # 每 drone 冷却
+    description: "护盾（所有抗性×0.5）+ 清除目标所有负面状态，持续 100 tick"
 
 # ═════════════════════════════════════
 # Body Part 默认成本表（权威来源）
