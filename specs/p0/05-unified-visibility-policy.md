@@ -126,6 +126,8 @@ GET /api/v1/world/rooms/:id/map → 仅地形（公开）
 
 **旁观者 WebSocket**：当 `public_spectate = true` 时，未登录客户端可订阅世界 delta。推送内容为全地图实体（无 `is_visible_to` 过滤），但受 `spectate_delay` tick 延迟控制。此推送仅供显示——旁观者无法提交任何指令。
 
+**约束**: World 模式下若 `public_spectate = true`，`spectate_delay` 必须 ≥ 50 tick，防止实时信息泄露破坏 `replay_privacy`。旁观者推送的实体信息受 `replay_privacy` 过滤——`private` 时旁观者仅见地形和公开元数据。
+
 **旁观者可见性限制**：
 
 | 信息类别 | 玩家自身 | 回放 (replay) | 旁观者 (spectator) |
