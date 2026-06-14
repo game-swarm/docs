@@ -281,7 +281,7 @@ cargo test --test wasm_sandbox -- --test-threads=1
 | 编译超时 | 30s | 独立超时进程 |
 | 编译内存 | 512 MB | cgroup |
 | 编译进程 | 每次部署独立 fork | 不缓存编译中间产物 |
-| 模块缓存 | 按 (module_hash, wasmtime_version) 缓存 | 每次 tick 执行前校验 player 的 auth token 仍有效——ban/revoke 时清除缓存条目。编译一次，多 tick 复用 |
+| 模块缓存 | 按 (module_hash, wasmtime_version) 缓存 | 每次 tick 执行前校验 player 的证书未过期未吊销——过期/吊销立即终止 WASM 执行（该 tick 0 指令）。缓存条目随撤销清除 |
 | 并发编译 | 最多 5 个 | 防止编译阶段 DoS |
 | module validation | 10ms | wasmparser 解析超时 |
 
