@@ -293,6 +293,6 @@ cargo test --test wasm_sandbox -- --test-threads=1
 |------|----------|------------|
 | `host_get_terrain` | 500 | 4 bytes |
 | `host_get_objects_in_range` | 2,000 + 100/entity | 64 KB |
-| `host_path_find` | 10,000 + 50/tile | 8 KB |
+| `host_path_find` | 10,000 + 50/tile | 8 KB | **缓存键**: `(from, to, terrain_hash, player_visibility_fingerprint)` — 不同玩家的可见性状态产生不同缓存条目，防止跨玩家路径泄露 |
 | `host_get_world_config` | 1,000 | 16 KB |
 | `host_get_world_rules` | 1,000 | 16 KB |

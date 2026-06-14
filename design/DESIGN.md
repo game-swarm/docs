@@ -1353,7 +1353,7 @@ if (rules.get("empire-upkeep").config.onshortfall.value === "damage") {
 | 组件 | 算法 | 说明 |
 |------|------|------|
 | PRNG | **Blake3 XOF** | 确定种子 + offset → 随机流。与哈希同原语，消除 ChaCha 依赖，纯软件 ~6 GB/s。XOF 模式：`blake3::Hasher::update_with_seek(seed, offset)` |
-| 种子 | world_seed = Blake3(32随机字节) | 32 字节熵（256-bit），编码为 hex 字符串。不可从 tick_number 推导。 |
+| 种子 | world_seed = Blake3(32随机字节) | 32 字节熵（256-bit），编码为 hex 字符串。不可从 tick_number 推导。**每 10,000 tick 自动轮换**（Blake3(旧种子, 当前tick)），防止长期观察推断种子空间 |
 | Hash | **Blake3** | 固定实现。不用 std::hash / SipHash（跨版本可变）。 |
 | 种子洗牌 | Blake3(tick_number \\|\\| world_seed) | 每 tick 确定但不可预测的玩家顺序。**不是手速/运气**——玩家无法通过加快操作影响排序位置。公平随机：所有玩家同等不可预测，相同种子=相同顺序，可回放验证 |
 | ECS 顺序 | `.chain()` | 严格串行。未来用 `.before()/.after()` 部分并行 |
