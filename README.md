@@ -1,6 +1,6 @@
 # Swarm — 设计文档
 
-可编程 MMO RTS 游戏引擎的设计文档仓库。审查状态：R13 发现 Phase 0 未真正冻结——已产出 Speaker Verdict，需 R14 闭合 Blocker 后方可进入 Phase 1。最后审查日期：2026-06-14。
+可编程 MMO RTS 游戏引擎的设计文档仓库。Phase 0 Architecture Freeze 确认冻结（2026-06-14，R14 终审通过）。
 
 ## 目录结构
 

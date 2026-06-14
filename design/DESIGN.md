@@ -1483,4 +1483,4 @@ Swarm 不追求与 Screeps API 兼容。设计哲学不同：
 
 ---
 
-*最后更新: 2026-06-14*
+*最后更新: 2026-06-14 — Phase 0 Architecture Freeze 确认（R14 终审通过）*
