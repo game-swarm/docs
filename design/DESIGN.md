@@ -672,45 +672,64 @@ regeneration = 10
 ```toml
 # world.toml — 伤害类型定义（可扩展）
 [[damage_types]]
-name = "Physical"
-description = "基础近战伤害"
-default_resistance = 1.0          # 默认抗性倍率
-
-[[damage_types]]
-name = "Piercing"
-description = "穿刺远程伤害"
+name = "Kinetic"
+description = "动能冲击——碰撞、钝击、爆炸"
 default_resistance = 1.0
 
 [[damage_types]]
-name = "Siege"
-description = "攻城伤害"
-default_resistance = 1.0          # 建筑单独定义 ×2
+name = "Thermal"
+description = "热能——火焰、激光、等离子"
+default_resistance = 1.0
+
+[[damage_types]]  
+name = "EMP"
+description = "电磁脉冲——电击、过载、电子干扰"
+default_resistance = 1.0
 
 [[damage_types]]
-name = "Heal"
-description = "治疗"
-default_resistance = 1.0          # 反向伤害
+name = "Sonic"
+description = "声波——振动、共振、超声波"
+default_resistance = 1.0
 
-# 抗性覆盖（按 body part / structure）
+[[damage_types]]
+name = "Corrosive"
+description = "腐蚀——酸液、纳米分解、生化"
+default_resistance = 1.0
+
+[[damage_types]]
+name = "Psionic"
+description = "心灵——精神攻击、认知干扰、AI 劫持"
+default_resistance = 1.0
+
+# 抗性：按 body part / structure / 属性叠加
+# 抗性倍率相乘: final_multiplier = body_resistance × attribute_resistance
 [resistances.Tough]
-Physical = 0.5                    # 50% 物理减免
+Kinetic = 0.5          # 肉盾：动能减半
+Sonic = 0.5            # 减震
 
-[resistances.Structure]  
-Siege = 2.0                       # 建筑 ×2 攻城伤害
+[resistances.Structure]
+EMP = 2.0              # 建筑弱电磁
+Corrosive = 1.5        # 建筑怕腐蚀
+
+# 属性级抗性（Rhai 模组可为实体动态赋予）
+# 例如: actions.set_attribute(entity_id, "Shielded", true)
+#       → 所有伤害 × 0.7 (需在 world.toml 定义 attribute_multipliers)
 ```
 
 **Body part 伤害绑定**:
 
 | Body Part | 默认伤害类型 | 基础伤害值 |
 |-----------|------------|----------|
-| Attack | Physical | 30 |
-| RangedAttack | Piercing | 20 |
-| Tower（建筑自动攻击） | Siege | 50 |
-| Heal | Heal | 12（回复量） |
+| Attack | Kinetic | 30 |
+| RangedAttack | Kinetic | 20 |
+| Tower（建筑自动攻击） | Kinetic | 50 |
+| Heal | —（反向治疗） | 12 |
 
-**伤害计算**：`base_damage × damage_multiplier(世界规则) × resistance_multiplier(目标抗性)`
+**抗性机制**: 分两层叠加——**组件抗性**（body part / structure 的固定倍率）+ **属性抗性**（由模组/规则动态赋予的倍率，如 `Shielded = 0.7`）。最终倍率 = 组件倍率 × 属性倍率。
 
-**模组扩展**：Rhai 模组可通过 `actions.add_damage_type(...)` 注册新类型，通过 `actions.set_resistance(entity_type, damage_type, multiplier)` 修改抗性表。例如火焰主题模组可添加 `Fire` 类型并使 `Tough` 对 `Fire` 抗性为 0。
+**免疫机制**: Rhai 模组可通过 `actions.set_entity_flag(entity_id, "immune_Thermal", true)` 赋予免疫（倍率 = 0）。适用于 Boss 单位、世界事件、特殊建筑。
+
+**模组扩展**: Rhai 模组可注册新伤害类型（`actions.add_damage_type("Fire", 1.0)`）、设置抗性（`actions.set_resistance("Tough", "Fire", 0.3)`）、赋予属性（`actions.set_attribute(entity_id, "Flaming", true)`）。
 
 #### 可见性与观战
 
