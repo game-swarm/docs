@@ -926,7 +926,7 @@ struct Resource { energy: u32 }
 
 // 之后（动态）
 struct Resource {
-    amounts: HashMap<String, u32>,  // { "Energy": 500, "Matter": 200 }
+    amounts: IndexMap<String, u32>,  // IndexMap 保证迭代顺序确定
 }
 struct ResourceDef {
     name: String,
