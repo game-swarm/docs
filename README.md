@@ -1,29 +1,49 @@
 # Swarm — 设计文档
 
-可编程 MMO RTS 游戏引擎的设计文档仓库。
+可编程 MMO RTS 游戏引擎的设计文档仓库。Phase 0 Architecture Freeze 完成（2026-06-14）。
 
 ## 目录结构
 
 ```
 docs/
-├── design/            # 架构设计
-│   ├── DESIGN.md      #   主设计文档
-│   └── PLANNER-OUTPUT.md  # Planner 扩展计划（评审前草案）
-├── specs/             # 技术规范
-│   └── p0/            #   Phase 2 阻断项（6 个 P0 工件）
-│       ├── 01-tick-protocol-spec.md      # Tick 协议规范
-│       ├── 02-command-validation-spec.md # 指令校验规范
-│       ├── 03-mcp-security-contract.md   # MCP 安全契约
-│       ├── 04-wasm-sandbox-baseline.md   # WASM 沙箱基线
+├── design/
+│   └── DESIGN.md                 # 架构全景 + 游戏设计 + 路线图 (1,346 行)
+├── specs/
+│   └── p0/                       # P0 冻结规范 (9 份)
+│       ├── 01-tick-protocol-spec.md        # Tick 生命周期 + 失败语义 + 回放
+│       ├── 02-command-validation-spec.md   # 校验矩阵 + Refund 模型 + Schema
+│       ├── 03-mcp-security-contract.md    # MCP 接口 + 认证流程
+│       ├── 04-wasm-sandbox-baseline.md     # WASM 沙箱 + Deferred Model
 │       ├── 05-unified-visibility-policy.md # 统一可见性策略
-│       ├── 06-mvp-feedback-loop.md       # MVP 反馈循环规范
-│       └── 07-world-rules-engine.md       # World Rules Engine 配置规范
-│       ├── 08-game-api-idl.md             # Game API IDL 单一真相规范
-│       └── 09-command-source-model.md      # 指令来源模型规范
-└── reviews/           # 评审报告
-    ├── CONSENSUS-REPORT.md  # 评审议会共识报告
-    └── review-rev-*.md      # 6 份评审员报告
+│       ├── 06-mvp-feedback-loop.md         # 学习闭环 + 调试工具
+│       ├── 07-world-rules-engine.md        # Rhai 模组 + ECS Plugin
+│       ├── 08-game-api-idl.md              # 单一 IDL + 代码生成
+│       └── 09-command-source-model.md      # 12 来源 + 证书签名 Auth
+└── reviews/                      # 评审档案 (R1-R6)
+    ├── README.md                 # 轮次索引
+    ├── R1/                       # 初审
+    ├── R2/                       # 复审
+    ├── R3/                       # 6 Freeze Blocker 闭合
+    ├── R4/                       # 5 共识修正，零分歧
+    ├── R5/                       # 4 残余修正
+    └── R6/                       # 终轮：8/8 CONDITIONAL_APPROVE
 ```
+
+## 技术选型
+
+| 组件 | 选型 |
+|------|------|
+| 引擎 | Rust + Bevy ECS |
+| 沙箱 | WASM + Wasmtime (per-tick fork) |
+| 模组 | Rhai (AST 解释, 三层信任) |
+| 持久化 | FoundationDB (严格可序列化) |
+| 推送 | NATS |
+| 缓存 | Dragonfly |
+| 指标 | ClickHouse |
+| 哈希/PRNG/签名 | Blake3 (单一原语) |
+| 证书 | Ed25519 (OAuth2 → 短期证书) |
+| SDK | TypeScript + Rust |
+| UI | Monaco + PixiJS |
 
 ## 代码仓库
 
@@ -38,14 +58,9 @@ docs/
 
 ## 评审流程
 
-设计评审使用**评审议会机制**（design-parliament skill）：
+9 位评审者（3 模型 × 3 方向）× N 轮迭代 → Speaker 合成共识。
 
-1. **6 位评审员**（3 模型 × 2 方向）并行独立评审
-2. 方向内交叉评审
-3. 议会辩论处理分歧
-4. **议长（rev-speaker）** 合成共识报告
-
-评审员 Profile 列表见 Hermes 配置。
+详见 [reviews/README.md](reviews/README.md)。
 
 ## 许可证
 
