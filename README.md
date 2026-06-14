@@ -7,7 +7,8 @@
 ```
 docs/
 ├── design/
-│   └── DESIGN.md                 # 架构全景 + 游戏设计 + 路线图 (1,346 行)
+│   ├── DESIGN.md                 # 架构全景 + 游戏设计 + 路线图 (1,346 行)
+│   └── tech-choices.md           # 技术选型（11 组件备选分析 + 决策理由）
 ├── specs/
 │   └── p0/                       # P0 冻结规范 (9 份)
 │       ├── 01-tick-protocol-spec.md        # Tick 生命周期 + 失败语义 + 回放
