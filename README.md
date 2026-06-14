@@ -1,13 +1,13 @@
 # Swarm — 设计文档
 
-可编程 MMO RTS 游戏引擎的设计文档仓库。Phase 0 Architecture Freeze 确认冻结（2026-06-14，R14 终审通过）。
+可编程 MMO RTS 游戏引擎的设计文档仓库。**当前进度：Phase 3 完成，Phase 4 进行中**（2026-06-14）。
 
 ## 目录结构
 
 ```
 docs/
 ├── design/
-│   ├── DESIGN.md                 # 架构全景 + 游戏设计 + 路线图 (1,346 行)
+│   ├── DESIGN.md                 # 架构全景 + 游戏设计 (1,486 行)
 │   ├── tech-choices.md           # 技术选型（11 组件备选分析 + 决策理由）
 │   └── ROADMAP.md                # 实施计划（7 阶段交付物 + 验收标准）
 ├── specs/
@@ -21,14 +21,10 @@ docs/
 │       ├── 07-world-rules-engine.md        # Rhai 模组 + ECS Plugin
 │       ├── 08-game-api-idl.md              # 单一 IDL + 代码生成
 │       └── 09-command-source-model.md      # 12 来源 + 证书签名 Auth
-└── reviews/                      # 评审档案 (R1-R13)
+└── reviews/                      # 评审档案 (R1-R14)
     ├── README.md                 # 轮次索引
-    ├── R1/                       # 初审
-    ├── R2/                       # 复审
-    ├── R3/                       # 6 Freeze Blocker 闭合
-    ├── R4/                       # 5 共识修正，零分歧
-    ├── R5/                       # 4 残余修正
-    └── R6/                       # 终轮：8/8 CONDITIONAL_APPROVE
+    ├── R1/ — R14/                # 14 轮评审
+    └── R14/R14-CONFIRMATION.md   # 终审：14/14 通过，Phase 0 冻结
 ```
 
 ## 技术选型
@@ -49,18 +45,18 @@ docs/
 
 ## 代码仓库
 
-| 仓库 | 说明 |
-|------|------|
-| [swarm/engine](https://git.kagurazakalan.com/swarm/engine) | Rust 游戏引擎 |
-| [swarm/sandbox](https://git.kagurazakalan.com/swarm/sandbox) | WASM 沙箱运行时 |
-| [swarm/gateway](https://git.kagurazakalan.com/swarm/gateway) | Go API 网关 |
-| [swarm/frontend](https://git.kagurazakalan.com/swarm/frontend) | Web 客户端 |
-| [swarm/sdk-ts](https://git.kagurazakalan.com/swarm/sdk-ts) | TypeScript SDK |
-| [swarm/sdk-rust](https://git.kagurazakalan.com/swarm/sdk-rust) | Rust SDK |
+| 仓库 | 说明 | 状态 |
+|------|------|------|
+| [swarm/engine](https://git.kagurazakalan.com/swarm/engine) | Rust 游戏引擎 | ✅ 82 tests |
+| [swarm/sandbox](https://git.kagurazakalan.com/swarm/sandbox) | WASM 沙箱运行时 | ✅ 9 tests |
+| [swarm/sdk-ts](https://git.kagurazakalan.com/swarm/sdk-ts) | TypeScript SDK | ✅ 11 tests |
+| [swarm/sdk-rust](https://git.kagurazakalan.com/swarm/sdk-rust) | Rust SDK | — |
+| [swarm/gateway](https://git.kagurazakalan.com/swarm/gateway) | Go API 网关 | — |
+| [swarm/frontend](https://git.kagurazakalan.com/swarm/frontend) | Web 客户端 | — |
 
 ## 评审流程
 
-9 位评审者（3 模型 × 3 方向）× N 轮迭代 → Speaker 合成共识。
+9 位评审者（3 模型 × 3 方向）× 14 轮迭代 → Speaker 合成共识。Phase 0 经 R14 终审确认冻结。
 
 详见 [reviews/README.md](reviews/README.md)。
 
