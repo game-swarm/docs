@@ -80,6 +80,8 @@ collect_timeout_ms = 2500  // 硬截止时间
 
 ```
 fn build_snapshot(player_id, tick) -> Snapshot:
+    // all_entities 来自 Bevy World 内存（当前 tick 执行前的权威状态）
+    // 不从 FDB/Dragonfly 读 —— COLLECT 阶段不访问外部存储
     entities = visibility_filter(all_entities, player_id, tick)
     return Snapshot {
         tick,
