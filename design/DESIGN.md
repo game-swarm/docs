@@ -667,22 +667,50 @@ regeneration = 10
 
 #### 伤害与武器类型
 
-| 伤害类型 | 描述 | 示例 body part | 有效目标 |
-|---------|------|--------------|---------|
-| `Physical` | 基础近战伤害 | Attack | 所有实体 |
-| `Piercing` | 穿刺伤害，对 Tough 部件穿透 | RangedAttack | 所有实体 |
-| `Siege` | 攻城伤害，对建筑倍率 ×2 | —（Tower 建筑自动攻击） | 建筑 |
-| `Heal` | 治疗（反向伤害） | Heal | 己方 drone / 建筑 |
+伤害类型和抗性体系是**世界规则的一部分**——像资源类型一样可由 world.toml 定义和模组扩展。默认世界提供以下基础类型：
 
-**抗性系统**（Phase 6 实现）:
+```toml
+# world.toml — 伤害类型定义（可扩展）
+[[damage_types]]
+name = "Physical"
+description = "基础近战伤害"
+default_resistance = 1.0          # 默认抗性倍率
 
-| Body Part | Physical | Piercing | Siege | 说明 |
-|-----------|---------|---------|-------|------|
-| Tough | 减 50% | 无减免 | 无减免 | 肉盾部件 |
-| 其余部件 | 无 | 无 | 无 | — |
-| Structure（建筑） | 无 | 无 | ×2 伤害 | 建筑弱攻城 |
+[[damage_types]]
+name = "Piercing"
+description = "穿刺远程伤害"
+default_resistance = 1.0
 
-每种 body part 的攻击附带其基础伤害类型。伤害计算：`base_damage × damage_multiplier × resistance_multiplier`。
+[[damage_types]]
+name = "Siege"
+description = "攻城伤害"
+default_resistance = 1.0          # 建筑单独定义 ×2
+
+[[damage_types]]
+name = "Heal"
+description = "治疗"
+default_resistance = 1.0          # 反向伤害
+
+# 抗性覆盖（按 body part / structure）
+[resistances.Tough]
+Physical = 0.5                    # 50% 物理减免
+
+[resistances.Structure]  
+Siege = 2.0                       # 建筑 ×2 攻城伤害
+```
+
+**Body part 伤害绑定**:
+
+| Body Part | 默认伤害类型 | 基础伤害值 |
+|-----------|------------|----------|
+| Attack | Physical | 30 |
+| RangedAttack | Piercing | 20 |
+| Tower（建筑自动攻击） | Siege | 50 |
+| Heal | Heal | 12（回复量） |
+
+**伤害计算**：`base_damage × damage_multiplier(世界规则) × resistance_multiplier(目标抗性)`
+
+**模组扩展**：Rhai 模组可通过 `actions.add_damage_type(...)` 注册新类型，通过 `actions.set_resistance(entity_type, damage_type, multiplier)` 修改抗性表。例如火焰主题模组可添加 `Fire` 类型并使 `Tough` 对 `Fire` 抗性为 0。
 
 #### 可见性与观战
 
