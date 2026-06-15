@@ -516,11 +516,14 @@ fn host_get_world_rules(out_ptr: i32, out_len: i32) -> i32;
 /tick/{N}/rejections     → 被拒绝的指令及原因
 /tick/{N}/metrics        → tick 指标
 /tick/{N}/mods_lock      → 该 tick 时的 mods.lock 快照（模组版本哈希集）
+/tick/{N}/world_config   → 该 tick 时的 world.toml 快照（世界规则配置）
 /player/{id}/profile     → 玩家档案
 /player/{id}/modules/    → WASM 模块历史（含预编译后的原生码）
 ```
 
-**回放流程**：定位最近 keyframe（`≤ N 的最大 K 倍 tick`）→ 加载完整状态 + 对应的 `mods_lock` → 根据 `mods_lock` 中各模组的 `rev` checkout 到精确 commit → 顺序重放 delta 链（每个 delta 包含该 tick 的指令 + 状态变化）→ 抵达目标 tick。delta 链的确定性由 §3.3 保证——相同 seed + 相同指令 + 相同模组版本 → 相同状态，重放结果与原始执行完全一致。
+**回放元数据**：`mods_lock` + `world_config` 构成回放的完整环境元数据。两者都在 keyframe 级别存储完整快照；keyframe 之间的 delta 仅在配置或模组版本发生变更时记录差异（配置变更远少于每 tick 实体变更，几乎不增加存储）。回放时恢复完整环境后再重放指令。
+
+**回放流程**：定位最近 keyframe → 加载状态 + `mods_lock` + `world_config` → checkout 模组到精确 commit，恢复世界规则 → 顺序重放 delta 链 → 抵达目标 tick。确定性保证：相同初始状态 + 相同 seed + 相同指令 + 相同 world_config + 相同模组版本 → 相同 state_checksum。
 
 **典型配置**：`K=100`（每 100 tick 一个 keyframe，约 5 分钟），delta 仅存储实体变更（创建/修改/删除），体积约为 keyframe 的 1-5%。整体存储减少约 90%。
 
@@ -2225,7 +2228,7 @@ if (rules.get("empire-upkeep").config.onshortfall.value === "damage") {
 
 #### 回放保证
 
-给定 tick N-1 状态 + tick N RawCommand + world_seed + mods_lock（该 tick 的模组版本快照）→ 相同 Wasmtime pinned 版本下 `execute_deterministic == recorded_state`。每个 tick 产出 `state_checksum` 写入 TickTrace。CI 对随机采样 tick 做 full replay 验证——包括 checkout 到对应 `mods_lock` 记录的精确模组 commit。
+给定 tick N-1 状态 + tick N RawCommand + world_seed + world_config（世界规则快照）+ mods_lock（模组版本快照）→ 相同 Wasmtime pinned 版本下 `execute_deterministic == recorded_state`。每个 tick 产出 `state_checksum` 写入 TickTrace。CI 对随机采样 tick 做 full replay 验证——包括恢复对应 `world_config` 规则集 + checkout 到对应 `mods_lock` 记录的精确模组 commit。
 
 ---
 
