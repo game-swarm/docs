@@ -139,10 +139,9 @@ Swarm 支持两种玩家：
 
 ```
 swarm/
-├── docs/           # 设计文档、P0 规范、评审报告
+├── docs/           # 设计文档、P0 规范
 │   ├── design/     #   架构设计
-│   ├── specs/      #   技术规范
-│   └── reviews/    #   评审报告
+│   └── specs/      #   技术规范
 ├── engine/         # Rust 游戏引擎 — Bevy ECS, Tick 调度, 世界模拟
 ├── sandbox/        # WASM 沙箱运行时 — 编译服务, 模块管理, 安全审计
 ├── gateway/        # Go API 网关 — WebSocket, REST, gRPC, 认证

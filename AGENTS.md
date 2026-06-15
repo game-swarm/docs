@@ -30,7 +30,6 @@ DESIGN.md 更新 → spec 对齐 → 代码实现对齐 spec
 
 - `docs/README.md` — 目录导航，指向 DESIGN + ROADMAP
 - Root `README.md` — 仓库入口，指向 docs/
-- `reviews/README.md` — 评审历史索引
 - `api/` — 开发者参考文档（与 spec 互补，非替代）
 
 ## AGENTS.md
