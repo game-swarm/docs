@@ -12,7 +12,7 @@ docs/
 ├── GETTING-STARTED.md           # 5 分钟入门指南
 ├── RUNBOOK.md                   # 运维手册
 ├── api/                         # API 参考
-│   ├── commands.md              #   24 种 CommandAction
+│   ├── commands.md              #   23 种 CommandAction
 │   ├── host-functions.md        #   WASM host functions
 │   └── mcp-tools.md             #   MCP 工具完整列表
 ├── design/

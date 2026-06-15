@@ -1,7 +1,7 @@
 # Swarm — 模块化实施追踪
 
 > 锚定 Phase 0 Architecture Freeze（2026-06-14 冻结，2026-06-15 设计评审 9/9 通过，B1-B9 全部闭合）。审计日期: 2026-06-15  
-> 只看合并到 main 且测试通过的代码。Engine 151 tests, SDK-Rust 8 tests, Gateway 7 tests.
+> 只看合并到 main 且测试通过的代码。Engine 151 tests, SDK-Rust 8 tests, Gateway 9 tests.
 
 ## 总览
 
@@ -48,7 +48,7 @@
 - [x] tick(snapshot) → Command[] 类型 + constants (BODY_PART_COST/MAX_FUEL 等)
 - [x] Starter bot 示例 + tests
 
-## gateway/ — Go API 网关 — 7 tests ✅ (100%)
+## gateway/ — Go API 网关 — 9 tests ✅ (100%)
 - [x] WebSocket 连接池 (goroutine per connection)
 - [x] NATS → 客户端消息中继
 - [x] OAuth2 回调 HTTP handler
