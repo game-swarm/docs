@@ -140,7 +140,7 @@ commands:
     refund: registry.body_cost(body) * 0.5
 
   # ═════════════════════════════════════
-  # 扩展指令（Phase 3-6 实现）
+  # 扩展指令（已实现）
   # ═════════════════════════════════════
 
   ClaimController:
@@ -278,7 +278,7 @@ refund_policy:
 | Rust | `src/generated/host_functions.rs` — host function stubs |
 | TS SDK | `sdk-ts/src/generated/api.ts` — types + autocomplete |
 | MCP | MCP tool schemas JSON |
-| Replay | TickTrace schema — 冻结于 Phase 0；格式变更需递增 ABI 版本 |
+| Replay | TickTrace schema — 已冻结；格式变更需递增 ABI 版本 |
 | Docs | API reference markdown |
 
 ## 5. CI 检查

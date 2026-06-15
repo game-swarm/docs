@@ -22,7 +22,7 @@
 | `TestHarness` | 自动化测试 | test_context | ❌ 否 | 完整 | N/A | 测试世界 | N/A |
 | `Tutorial` | 教程引导 | tutorial_session + world_id | ⚠️ 仅教程世界 | 完整 | 10/tick | 教程房间 | N/A |
 
-### 2.2 扩展来源（Phase 1-2 实现）
+### 2.2 扩展来源（已实现）
 
 | Source | 描述 | auth_context | gameplay | audit | rate_limit | visibility | budget |
 |--------|------|-------------|----------|-------|------------|------------|--------|

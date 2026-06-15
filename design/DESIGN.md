@@ -753,7 +753,7 @@ cost = { Energy = 100000 }
 
 - `transfer_to_global_time`：本地→全局转换需 N tick（默认 10 tick）。资源在运输期间不可用。
 - `transfer_from_global_time`：全局→本地转换需 N tick（默认 5 tick）。大型帝国需提前规划补给线。
-- 转换期间资源处于"运输中"状态——可被敌方巡逻 drone 拦截（需 PvP 启用，Phase 6 战斗系统实现）。
+- 转换期间资源处于"运输中"状态——可被敌方巡逻 drone 拦截（需 PvP 启用）。
 
 > 运输时间使全局存储不能作为"战斗中的即时补给"——这是一种非平凡的策略权衡。
 
