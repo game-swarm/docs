@@ -1929,9 +1929,22 @@ isolation = "process"   # "process" | "inprocess"
 
 #### 安装与配置
 
+模组分发模型：**一个模组 = 一个 git 仓库**。无中心化市场或注册表。
+
+```
+内置模组:  engine/mods/ 目录下随引擎分发（多子目录，每个子目录一个模组）
+第三方:   任意 git 仓库，服主 clone 到本地后引用
+```
+
 ```bash
-# 从模组市场安装
-swarm mod install empire-upkeep
+# 安装第三方模组（git clone 到本地模组目录）
+swarm mod add https://git.kagurazakalan.com/swarm/mods/empire-upkeep.git
+
+# 安装指定版本（git tag）
+swarm mod add https://git.kagurazakalan.com/swarm/mods/empire-upkeep.git --tag v1.2.0
+
+# 查看已安装模组
+swarm mod list
 
 # 查看模组的可配置项
 swarm mod config empire-upkeep
@@ -1940,8 +1953,11 @@ swarm mod config empire-upkeep
 swarm mod config empire-upkeep drone_cost 5
 swarm mod config empire-upkeep onshortfall "damage"
 
-# 在世界中启用
+# 在世界中启用（引用已安装的模组名）
 swarm world add-mod empire-upkeep
+
+# 更新模组（git pull）
+swarm mod update empire-upkeep
 ```
 
 世界配置中引用：
@@ -1953,14 +1969,16 @@ name = "Survival World"
 
 [[mods]]
 name = "empire-upkeep"
-version = "1.2.0"
+source = "https://git.kagurazakalan.com/swarm/mods/empire-upkeep.git"
+version = "1.2.0"              # git tag
 [mods.config]
 drone_cost = 5
-room_superlinear = 2        # fixed<u32,4>: 0.0002 超线性系数
+room_superlinear = 2            # fixed<u32,4>: 0.0002 超线性系数
 onshortfall = "damage"
 
 [[mods]]
 name = "resource-decay"
+source = "https://git.kagurazakalan.com/swarm/mods/resource-decay.git"
 version = "0.3.0"
 [mods.config]
 decay_rate = 0.001
@@ -1970,8 +1988,11 @@ decay_rate = 0.001
 
 ```rust
 fn register_mod_systems(app: &mut App, world_config: &WorldConfig) {
+    // world_config.mods 中的每个条目已解析为本地路径：
+    //   内置模组 → engine/mods/{name}/
+    //   第三方   → ~/.swarm/mods/{host}/{owner}/{repo}/（git clone 目录）
     for mod_def in &world_config.mods {
-        let mut module = load_mod(&mod_def.name, &mod_def.version);
+        let mut module = load_mod_from_path(&mod_def.path);
         module.configure(&mod_def.config);                // 注入参数
         module.run_init();                                 // init.rhai
 
@@ -1988,22 +2009,30 @@ fn register_mod_systems(app: &mut App, world_config: &WorldConfig) {
 }
 ```
 
-#### 模组市场
+#### 模组分发
+
+**一个模组 = 一个 git 仓库**。Swarm 不运营中心化模组市场或注册表。
 
 ```
-swarm-mods.kagurazakalan.com
+分发路径:
 
-  模组              评分    安装量    描述
-  ─────────────────────────────────────────────────
-  empire-upkeep     ★4.8   1,234     帝国规模维护费
-  fog-of-war        ★4.6   892       战争迷雾
-  resource-decay    ★4.3   567       资源腐败衰减
-  territory-control ★4.5   445       连续领土要求
-  alliance-system   ★4.7   678       玩家间结盟
-  mutation          ★4.2   234       drone 进化变异
+  内置模组                     第三方模组
+  ┌──────────────────┐       ┌─────────────────────┐
+  │ engine/mods/      │       │ 任意 git 仓库        │
+  │   empire-upkeep/  │       │ swarm mod add <url>  │
+  │   fog-of-war/     │       │ → clone 到本地        │
+  │   resource-decay/ │       │ → world.toml 引用     │
+  │   ...             │       └─────────────────────┘
+  └──────────────────┘
+    随引擎源码分发                 服主自行管理
+    默认启用（可禁用）              按需安装
 ```
 
-模组是源码——服主可以 fork、修改、提交 PR。社区 review + rating。
+**内置模组**：引擎仓库 `engine/mods/` 下的每个子目录是一个内置模组。引擎启动时自动发现并注册，服主可在 `world.toml` 中禁用不需要的。内置模组提供官方默认规则集的核心扩展——empire-upkeep、fog-of-war、resource-decay 等。
+
+**第三方模组**：服主通过 `swarm mod add <git-url>` 安装。引擎 clone 到本地模组目录后，`world.toml` 通过 `source` + `version`（git tag）引用。更新通过 `swarm mod update`（背后是 `git pull` + checkout tag）。
+
+**发现**：不提供中心化搜索。模组通过社区渠道分发——文档 wiki、论坛、社交网络。模组仓库的 README 即为"商店页面"。
 
 #### 规则可见性与 i18n
 
