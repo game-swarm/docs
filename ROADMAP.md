@@ -7,7 +7,7 @@
 
 | 模块 | 目录 | ✅ | ⚠️ | ❌ | 进度 |
 |------|------|----|----|-----|------|
-| engine | `engine/` | 32 | 6 | 3 | 78% |
+| engine | `engine/` | 33 | 6 | 2 | 80% |
 | sandbox | `sandbox/` | 6 | 0 | 0 | 100% |
 | sdk-ts | `sdk-ts/` | 5 | 0 | 0 | 100% |
 | sdk-rust | `sdk-rust/` | 1 | 0 | 3 | 25% |
@@ -15,7 +15,7 @@
 | frontend | `frontend/` | 4 | 4 | 0 | 50% |
 | infra | (根目录) | 3 | 0 | 1 | 75% |
 | docs | `docs/` | 6 | 0 | 0 | 100% |
-| **总计** | | **61** | **10** | **7** | **78%** |
+| **总计** | | **62** | **10** | **6** | **79%** |
 
 ---
 
@@ -72,7 +72,7 @@
 ### 战斗
 - [x] [P6] 战斗系统 (Attack/RangedAttack/Heal + damage_multiplier) — `combat_system.rs`
 - [x] [P6] Controller + 房间占领 (Claim body part, GCL) — `components.rs:334-344`
-- [ ] [P6] 运输拦截 (PvP 世界: 敌方 drone 拦截运输中的资源) ❌
+- [x] [P6] 运输拦截 (PvP 世界: 敌方 drone 拦截运输中的资源) ✅ (2026-06-15) — 122 tests
 
 ### 经济
 - [x] [P6] 市场交易 (MarketOrder + CreateMarketOrder/BuyMarketOrder) — `resources.rs:83-96`
