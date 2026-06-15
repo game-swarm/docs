@@ -1,7 +1,5 @@
 # 统一可见性策略
 
-> **状态**: 当前 | **日期**: 2026-06-15
-
 ## 1. 核心原则
 
 **一个函数回答「玩家 P 在 tick T 能看到什么」：**
@@ -29,13 +27,13 @@ ROOM_VISIBLE: 若玩家在该房间有视野则可见。
 视野来源: 任意拥有的 drone 或建筑，vision_range > 0。
 ```
 
-| 视野来源 | 范围 |
-|---------|------|
-| Drone | 3（默认，取决于身体部件） |
-| Spawn | 3 |
-| Tower | 3（充能后 6） |
-| Observer | 10（激活时） |
-| Controller（拥有者，level ≥ 1） | 1 |
+ 视野来源 | 范围 |
+---------|------|
+ Drone | 3（默认，取决于身体部件） |
+ Spawn | 3 |
+ Tower | 3（充能后 6） |
+ Observer | 10（激活时） |
+ Controller（拥有者，level ≥ 1） | 1 |
 
 ### 2.3 中立/敌对实体
 
@@ -47,17 +45,17 @@ HOSTILE: 若在任何友好视野源范围内则可见。
 
 ### 2.4 隐藏信息
 
-| 数据 | 默认可见性 |
-|------|-----------|
-| 其他玩家资源数量 | ❌ 隐藏 |
-| 其他玩家 Controller 进度 | ❌ 隐藏 |
-| 其他玩家在建工程 | ✅ 可见（在视野内） |
-| 其他玩家冷却时间 | ❌ 隐藏 |
-| 其他玩家疲劳值 | ❌ 隐藏 |
-| 其他玩家身体部件组成 | ✅ 可见（可观察特征） |
-| RNG 种子 | ❌ 始终隐藏 |
-| 被拒绝指令（其他玩家） | ❌ 隐藏 |
-| WASM 模块错误（其他玩家） | ❌ 隐藏 |
+ 数据 | 默认可见性 |
+------|-----------|
+ 其他玩家资源数量 | ❌ 隐藏 |
+ 其他玩家 Controller 进度 | ❌ 隐藏 |
+ 其他玩家在建工程 | ✅ 可见（在视野内） |
+ 其他玩家冷却时间 | ❌ 隐藏 |
+ 其他玩家疲劳值 | ❌ 隐藏 |
+ 其他玩家身体部件组成 | ✅ 可见（可观察特征） |
+ RNG 种子 | ❌ 始终隐藏 |
+ 被拒绝指令（其他玩家） | ❌ 隐藏 |
+ WASM 模块错误（其他玩家） | ❌ 隐藏 |
 
 ### 2.5 市场
 
@@ -95,13 +93,13 @@ LEADERBOARD: 公开。指标: GCL、房间数、drone 数。
 
 ### 3.2 MCP 工具
 
-| 工具 | 可见性过滤 |
-|------|-----------|
-| `get_snapshot` | 完整 `is_visible_to` 过滤 |
-| `get_objects_in_range` | `is_visible_to` + 范围检查 |
-| `get_terrain` | 任意格 — 地形是公开信息 |
-| `inspect_entity` | 仅当 `is_visible_to` 返回 true 或为自身实体 |
-| `inspect_room` | 仅限自身有视野的房间 |
+ 工具 | 可见性过滤 |
+------|-----------|
+ `get_snapshot` | 完整 `is_visible_to` 过滤 |
+ `get_objects_in_range` | `is_visible_to` + 范围检查 |
+ `get_terrain` | 任意格 — 地形是公开信息 |
+ `inspect_entity` | 仅当 `is_visible_to` 返回 true 或为自身实体 |
+ `inspect_room` | 仅限自身有视野的房间 |
 
 ### 3.3 WebSocket 增量
 
@@ -120,11 +118,11 @@ GET /api/v1/world/rooms/:id/map → 仅地形（公开）
 
 **两层分离**：引擎始终按 `is_visible_to` 计算 drone 的 snapshot（游戏公平性），但玩家/旁观者的「摄像头」可以有不同的可见范围（观战体验）。
 
-| 模式 | drone snapshot | 玩家屏幕 / MCP | WebSocket 旁观 |
-|------|---------------|---------------|---------------|
-| `player_view = "drone"` | `is_visible_to(player)` 过滤 | 同 snapshot | 同 snapshot |
-| `player_view = "full"` | `is_visible_to(player)` 过滤 | 全地图（无视 fog） | 全地图（如 `public_spectate=true`） |
-| `player_view = "allied"` | `is_visible_to(player)` 过滤 | 所有友方 drone 聚合视野 | N/A |
+ 模式 | drone snapshot | 玩家屏幕 / MCP | WebSocket 旁观 |
+------|---------------|---------------|---------------|
+ `player_view = "drone"` | `is_visible_to(player)` 过滤 | 同 snapshot | 同 snapshot |
+ `player_view = "full"` | `is_visible_to(player)` 过滤 | 全地图（无视 fog） | 全地图（如 `public_spectate=true`） |
+ `player_view = "allied"` | `is_visible_to(player)` 过滤 | 所有友方 drone 聚合视野 | N/A |
 
 **关键不变量**：无论 `player_view` 如何设置，WASM `tick()` 收到的 snapshot **始终**按 `is_visible_to(player)` 过滤——`fog_of_war` 控制。`player_view` 只影响人类屏幕和 MCP 只读查询。
 
@@ -134,37 +132,37 @@ GET /api/v1/world/rooms/:id/map → 仅地形（公开）
 
 **旁观者可见性限制**：
 
-| 信息类别 | 玩家自身 | 回放 (replay) | 旁观者 (spectator) |
-|---------|---------|--------------|-------------------|
-| 实体位置/状态（position, hits, owner） | ✅ | ✅ | ✅ |
-| drone body parts 组成 | ✅ | ✅ | ✅ |
-| 资源持有量（本地 + 全局） | ✅ | ✅（自身） | ❌ |
-| drone 环境变量 (`env_vars`) | ✅ | ✅ | ❌ |
-| drone 内存内容 | ✅ | ✅ | ❌ |
-| 代码版本 / 部署历史 | ✅ | ✅ | ❌ |
-| 调试信息 (`swarm_explain_last_tick`) | ✅ | ✅ | ❌ |
-| 指令列表（本 tick 提交了什么） | ✅ | ✅ | ❌ |
-| 策略指标 (`swarm_profile`) | ✅ | ✅ | ❌ |
+ 信息类别 | 玩家自身 | 回放 (replay) | 旁观者 (spectator) |
+---------|---------|--------------|-------------------|
+ 实体位置/状态（position, hits, owner） | ✅ | ✅ | ✅ |
+ drone body parts 组成 | ✅ | ✅ | ✅ |
+ 资源持有量（本地 + 全局） | ✅ | ✅（自身） | ❌ |
+ drone 环境变量 (`env_vars`) | ✅ | ✅ | ❌ |
+ drone 内存内容 | ✅ | ✅ | ❌ |
+ 代码版本 / 部署历史 | ✅ | ✅ | ❌ |
+ 调试信息 (`swarm_explain_last_tick`) | ✅ | ✅ | ❌ |
+ 指令列表（本 tick 提交了什么） | ✅ | ✅ | ❌ |
+ 策略指标 (`swarm_profile`) | ✅ | ✅ | ❌ |
 
 旁观者只能看到**世界层面的物理状态**——实体在哪、谁拥有、战斗中。不能看到任何玩家的**内部状态、代码逻辑、调试信息**。回放查看器在观看自身回放时保留完整权限，观看他人回放时等同于旁观者。
 
 ### 3.6 调试/回放
 
-| 模式 | 可见性 |
-|------|--------|
-| **裸追踪** (admin) | 全部 — 所有实体、所有指令、所有状态 |
-| **自身回放** (玩家) | `is_visible_to(玩家, tick)` — 玩家实际所见 |
-| **公开回放** (Arena 赛后) | 全知视角 — 赛后延迟 ≥100 tick 才公开 |
-| **公开回放** (World) | 不公开 — 仅自身回放 |
+ 模式 | 可见性 |
+------|--------|
+ **裸追踪** (admin) | 全部 — 所有实体、所有指令、所有状态 |
+ **自身回放** (玩家) | `is_visible_to(玩家, tick)` — 玩家实际所见 |
+ **公开回放** (Arena 赛后) | 全知视角 — 赛后延迟 ≥100 tick 才公开 |
+ **公开回放** (World) | 不公开 — 仅自身回放 |
 
 ### 数据分级
 
-| 级别 | 内容 | 谁可见 |
-|------|------|--------|
-| Public | 排行榜、房间名、Controller 等级 | 所有人 |
-| Self | 自身实体、tick 解释、rejection detail | 仅自己 |
-| Admin-only | 全量 tick trace、其他玩家指令、world_seed、RNG 状态 | 仅管理员 |
-| Delayed | Arena 全知回放 | 赛后 + ≥100 tick |
+ 级别 | 内容 | 谁可见 |
+------|------|--------|
+ Public | 排行榜、房间名、Controller 等级 | 所有人 |
+ Self | 自身实体、tick 解释、rejection detail | 仅自己 |
+ Admin-only | 全量 tick trace、其他玩家指令、world_seed、RNG 状态 | 仅管理员 |
+ Delayed | Arena 全知回放 | 赛后 + ≥100 tick |
 
 ## 4. 房间 Fog of War
 
@@ -242,43 +240,43 @@ fn test_vision_range_boundary() { ... }
 
 ## 8. 可见性配置
 
-锚定 DESIGN.md §8.2 可见性与观战。可见性分两层：**drone 感知**（影响游戏公平性）和**玩家视野**（影响观战体验）。
+可见性分两层：**drone 感知**（影响游戏公平性）和**玩家视野**（影响观战体验）。
 
 ### 8.1 配置项（WorldConfig.visibility）
 
-| 规则 | 类型 | 默认 | 说明 |
-|------|------|------|------|
-| `fog_of_war` | bool | true | drone 的 WASM `tick()` snapshot 是否受可见性限制。true = drone 只能看到感知范围内的实体；false = snapshot 包含全地图（教学/合作世界） |
-| `player_view` | enum | `drone` | 玩家视野模式 |
-| `public_spectate` | bool | false | 未登录用户实时旁观。World 默认关，Arena 默认开 |
-| `spectate_delay` | u32 | 0 | 旁观延迟（tick）。0 = 实时；>0 = 延迟回放，防止观众信息泄露 |
-| `replay_privacy` | enum | `private` | 回放可见性。Arena 赛后强制 `public` |
+ 规则 | 类型 | 默认 | 说明 |
+------|------|------|------|
+ `fog_of_war` | bool | true | drone 的 WASM `tick()` snapshot 是否受可见性限制。true = drone 只能看到感知范围内的实体；false = snapshot 包含全地图（教学/合作世界） |
+ `player_view` | enum | `drone` | 玩家视野模式 |
+ `public_spectate` | bool | false | 未登录用户实时旁观。World 默认关，Arena 默认开 |
+ `spectate_delay` | u32 | 0 | 旁观延迟（tick）。0 = 实时；>0 = 延迟回放，防止观众信息泄露 |
+ `replay_privacy` | enum | `private` | 回放可见性。Arena 赛后强制 `public` |
 
 ### 8.2 PlayerView 模式
 
-| 值 | 说明 |
-|-----|------|
-| `drone` | 玩家只能看到自己 drone 所见。默认模式 |
-| `full` | 玩家实时看到全地图，无视 drone 感知范围。教学/合作世界使用 |
-| `allied` | 看到所有同阵营 drone 的聚合视野 |
+ 值 | 说明 |
+-----|------|
+ `drone` | 玩家只能看到自己 drone 所见。默认模式 |
+ `full` | 玩家实时看到全地图，无视 drone 感知范围。教学/合作世界使用 |
+ `allied` | 看到所有同阵营 drone 的聚合视野 |
 
 ### 8.3 ReplayPrivacy 等级
 
-| 值 | 可见范围 |
-|-----|---------|
-| `private` | 仅自身 |
-| `allies` | 同阵营可看 |
-| `world` | 同世界玩家可看 |
-| `public` | 任何人（含未登录）。Arena 赛后默认 |
+ 值 | 可见范围 |
+-----|---------|
+ `private` | 仅自身 |
+ `allies` | 同阵营可看 |
+ `world` | 同世界玩家可看 |
+ `public` | 任何人（含未登录）。Arena 赛后默认 |
 
 ### 8.4 组合场景
 
-| 场景 | fog_of_war | player_view | 效果 |
-|------|-----------|-------------|------|
-| 标准 World | true | drone | drone 感知有限，玩家只看自己 drone 所见 |
-| 教学世界 | false | full | 新手看到全地图，drone 也能感知全图 |
-| 竞技观战 | true | drone | drone 公平受限，观众通过 `public_spectate` + `spectate_delay=100` 看延迟全图 |
-| 合作 PvE | true | allied | drone 各自感知，但玩家看到所有友方聚合视野 |
+ 场景 | fog_of_war | player_view | 效果 |
+------|-----------|-------------|------|
+ 标准 World | true | drone | drone 感知有限，玩家只看自己 drone 所见 |
+ 教学世界 | false | full | 新手看到全地图，drone 也能感知全图 |
+ 竞技观战 | true | drone | drone 公平受限，观众通过 `public_spectate` + `spectate_delay=100` 看延迟全图 |
+ 合作 PvE | true | allied | drone 各自感知，但玩家看到所有友方聚合视野 |
 
 ### 8.5 配置示例（world.toml）
 

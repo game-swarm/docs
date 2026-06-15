@@ -1,7 +1,5 @@
 # World Rules Engine — 世界规则配置规范
 
-> **状态**: 当前 | **日期**: 2026-06-15
-
 ## 1. 定位
 
 Swarm 不是「一个游戏」，是「游戏引擎平台」。规则模组是**可安装的 Rhai 脚本 + 声明式配置**——轻量、确定、可组合。
@@ -414,15 +412,15 @@ empire-upkeep/
 
 ## 6. World vs Arena 默认值
 
-| 规则 | World | Arena |
-|------|-------|-------|
-| `spawn.policy` | RandomRoom | FixedSpawn |
-| `code.update_cost` | {} | {} |
-| `code.update_window` | 无限制 | 赛前锁定 |
-| `code.propagation_speed` | 0 | 0 |
-| `drone.env_vars` | true | true |
-| `combat.pvp_enabled` | true | true |
-| `visibility.fog_of_war` | true | false（全场可见） |
+ 规则 | World | Arena |
+------|-------|-------|
+ `spawn.policy` | RandomRoom | FixedSpawn |
+ `code.update_cost` | {} | {} |
+ `code.update_window` | 无限制 | 赛前锁定 |
+ `code.propagation_speed` | 0 | 0 |
+ `drone.env_vars` | true | true |
+ `combat.pvp_enabled` | true | true |
+ `visibility.fog_of_war` | true | false（全场可见） |
 
 ## 9. 配置校验
 
@@ -471,9 +469,7 @@ fn validate_config(config: &WorldConfig) -> Result<(), Vec<String>> {
 
 ---
 
-## 7. 可配置类型系统 (2026-06-15)
-
-锚定 DESIGN.md §8.2。类型系统从硬编码枚举改为 world.toml 驱动的注册表。
+## 7. 可配置类型系统
 
 ### 9.1 身体部件类型 (`[[body_part_types]]`)
 
@@ -543,17 +539,17 @@ cost = { Energy = 10 }
 
 **字段说明**：
 
-| 字段 | 类型 | 必需 | 说明 |
-|------|------|------|------|
-| `name` | string | ✅ | 唯一标识符 |
-| `description` | string | ✅ | 人类可读描述 |
-| `action` | string \| string[] | 条件 | 绑定的 CommandAction。`passive` 类型可省略。数组表示支持多种 action |
-| `passive` | map | 条件 | 被动效果配置。与 action 互斥 |
-| `damage_type` | string | 条件 | 攻击类型的伤害类型，引用 `[[damage_types]]` 中的 name |
-| `base_damage` | u32 | 条件 | 每 part 的基础伤害值。`damage_type` 存在时必需 |
-| `base_heal` | u32 | 条件 | 每 part 的基础治疗量。action=Heal 时必需 |
-| `range` | u32 | ✅ | 生效距离。注：CommandAction 的 `in_range()` 校验可覆盖此值（如 Heal body part range=1 但实际命令有效距离=3） |
-| `cost` | `{String: u32}` | ✅ | 生成该 body part 的资源消耗，key 为资源名 |
+ 字段 | 类型 | 必需 | 说明 |
+------|------|------|------|
+ `name` | string | ✅ | 唯一标识符 |
+ `description` | string | ✅ | 人类可读描述 |
+ `action` | string \| string[] | 条件 | 绑定的 CommandAction。`passive` 类型可省略。数组表示支持多种 action |
+ `passive` | map | 条件 | 被动效果配置。与 action 互斥 |
+ `damage_type` | string | 条件 | 攻击类型的伤害类型，引用 `[[damage_types]]` 中的 name |
+ `base_damage` | u32 | 条件 | 每 part 的基础伤害值。`damage_type` 存在时必需 |
+ `base_heal` | u32 | 条件 | 每 part 的基础治疗量。action=Heal 时必需 |
+ `range` | u32 | ✅ | 生效距离。注：CommandAction 的 `in_range()` 校验可覆盖此值（如 Heal body part range=1 但实际命令有效距离=3） |
+ `cost` | `{String: u32}` | ✅ | 生成该 body part 的资源消耗，key 为资源名 |
 
 **Body part → CommandAction 绑定**：
 
@@ -682,18 +678,18 @@ cost = { Energy = 100000 }
 
 **字段说明**：
 
-| 字段 | 类型 | 必需 | 说明 |
-|------|------|------|------|
-| `name` | string | ✅ | 唯一标识符 |
-| `description` | string | ✅ | 人类可读描述 |
-| `category` | enum | ✅ | `core` / `storage` / `defense` / `production` / `logistics` / `intel` |
-| `hits` | u32 | ✅ | 最大 HP |
-| `rcl_required` | u8 | ✅ | 需要的最低 RCL 等级（1-8） |
-| `max_per_room` | u32 | 否 | 每房间最大数量 |
-| `capacity` | u32 | 否 | 资源存储容量 |
-| `attack` | map | 否 | 自动攻击 `{damage, damage_type, range, cooldown}` |
-| `sight_range` | u32 | 否 | 提供的额外视野范围 |
-| `cost` | `{String: u32}` | ✅ | 建造成本 |
+ 字段 | 类型 | 必需 | 说明 |
+------|------|------|------|
+ `name` | string | ✅ | 唯一标识符 |
+ `description` | string | ✅ | 人类可读描述 |
+ `category` | enum | ✅ | `core` / `storage` / `defense` / `production` / `logistics` / `intel` |
+ `hits` | u32 | ✅ | 最大 HP |
+ `rcl_required` | u8 | ✅ | 需要的最低 RCL 等级（1-8） |
+ `max_per_room` | u32 | 否 | 每房间最大数量 |
+ `capacity` | u32 | 否 | 资源存储容量 |
+ `attack` | map | 否 | 自动攻击 `{damage, damage_type, range, cooldown}` |
+ `sight_range` | u32 | 否 | 提供的额外视野范围 |
+ `cost` | `{String: u32}` | ✅ | 建造成本 |
 
 ### 6.3 特殊效果类型定义 (`[[special_effects]]`)
 
@@ -788,14 +784,14 @@ resistance = "Psionic"
 
 **字段说明**：
 
-| 字段 | 类型 | 必需 | 说明 |
-|------|------|------|------|
-| `name` | string | ✅ | 唯一标识符，被 `[[custom_actions]].special_effect` 引用 |
-| `description` | string | ✅ | 人类可读描述 |
-| `handler` | string | ✅ | 引擎内置处理器。内置：`hack`, `drain`, `overload`, `debilitate`, `disrupt`, `fortify`, `leech`, `fabricate`, `heal_self`, `scramble_commands`, `convert_to_structure` |
-| `target` | enum | ✅ | 目标类型：`enemy_drone`, `enemy_structure`, `enemy_player`, `enemy_any`, `self`, `ally`, `self_or_ally`, `any` |
-| `duration` | u32 | ✅ | 持续 tick 数（0 = 即时） |
-| `resistance` | string | 否 | 目标抗性检查，引用 `[[damage_types]]`。无此字段 = 不检查抗性 |
+ 字段 | 类型 | 必需 | 说明 |
+------|------|------|------|
+ `name` | string | ✅ | 唯一标识符，被 `[[custom_actions]].special_effect` 引用 |
+ `description` | string | ✅ | 人类可读描述 |
+ `handler` | string | ✅ | 引擎内置处理器。内置：`hack`, `drain`, `overload`, `debilitate`, `disrupt`, `fortify`, `leech`, `fabricate`, `heal_self`, `scramble_commands`, `convert_to_structure` |
+ `target` | enum | ✅ | 目标类型：`enemy_drone`, `enemy_structure`, `enemy_player`, `enemy_any`, `self`, `ally`, `self_or_ally`, `any` |
+ `duration` | u32 | ✅ | 持续 tick 数（0 = 即时） |
+ `resistance` | string | 否 | 目标抗性检查，引用 `[[damage_types]]`。无此字段 = 不检查抗性 |
 
 **注册流程**：
 
@@ -880,17 +876,17 @@ cost = { Energy = 2000, Matter = 500 }
 
 **字段说明**：
 
-| 字段 | 类型 | 必需 | 说明 |
-|------|------|------|------|
-| `name` | string | ✅ | 唯一标识符 |
-| `description` | string | ✅ | 人类可读描述 |
-| `damage_type` | string | 否 | 伤害类型，引用 `[[damage_types]]` |
-| `base_damage` | u32 | 否 | 基础伤害值 |
-| `range` | u32 | ✅ | 生效距离 |
-| `special_effect` | string | 否 | 特殊效果标识符，引用 `[[special_effects]]` 中定义的 name |
-| `special_param` | float | 否 | 特殊效果参数 |
-| `cooldown` | u32 | 否 | 冷却时间（tick） |
-| `cost` | `{String: u32}` | 否 | 每次使用消耗（body part spawn 成本在 `[[body_part_types]]` 中独立定义） |
+ 字段 | 类型 | 必需 | 说明 |
+------|------|------|------|
+ `name` | string | ✅ | 唯一标识符 |
+ `description` | string | ✅ | 人类可读描述 |
+ `damage_type` | string | 否 | 伤害类型，引用 `[[damage_types]]` |
+ `base_damage` | u32 | 否 | 基础伤害值 |
+ `range` | u32 | ✅ | 生效距离 |
+ `special_effect` | string | 否 | 特殊效果标识符，引用 `[[special_effects]]` 中定义的 name |
+ `special_param` | float | 否 | 特殊效果参数 |
+ `cooldown` | u32 | 否 | 冷却时间（tick） |
+ `cost` | `{String: u32}` | 否 | 每次使用消耗（body part spawn 成本在 `[[body_part_types]]` 中独立定义） |
 
 **Rhai handler 注册**（全新效果，TOML 无法表达时）：
 
@@ -939,11 +935,11 @@ default_resistance = 1.0
 
 **字段说明**：
 
-| 字段 | 类型 | 必需 | 说明 |
-|------|------|------|------|
-| `name` | string | ✅ | 唯一标识符 |
-| `description` | string | ✅ | 人类可读描述 |
-| `default_resistance` | float | ✅ | 默认抗性倍率（1.0 = 无减免） |
+ 字段 | 类型 | 必需 | 说明 |
+------|------|------|------|
+ `name` | string | ✅ | 唯一标识符 |
+ `description` | string | ✅ | 人类可读描述 |
+ `default_resistance` | float | ✅ | 默认抗性倍率（1.0 = 无减免） |
 
 **抗性机制**：两层叠加——组件抗性 × 属性抗性 = 最终倍率。
 
@@ -969,25 +965,25 @@ actions.set_attribute(entity_id, "Flaming", true);
 
 ### 6.6 Body part 伤害绑定
 
-| Body Part | 伤害类型 | 基础伤害 | 说明 |
-|-----------|---------|---------|------|
-| Attack | Kinetic | 30 | 近战，距离 1，低成本高伤害 |
-| RangedAttack | Kinetic | 25 | 远程，距离 3，射程优势 |
-| Tower（建筑） | Kinetic | 50 | 自动攻击 |
-| Heal | — | 12 | 治疗量 |
+ Body Part | 伤害类型 | 基础伤害 | 说明 |
+-----------|---------|---------|------|
+ Attack | Kinetic | 30 | 近战，距离 1，低成本高伤害 |
+ RangedAttack | Kinetic | 25 | 远程，距离 3，射程优势 |
+ Tower（建筑） | Kinetic | 50 | 自动攻击 |
+ Heal | — | 12 | 治疗量 |
 
 ### 6.7 特殊攻击方式
 
 所有特殊攻击通过 `[[special_effects]]` + `[[custom_actions]]` 可配置注册。
 
-| 攻击 | body part | 效果 | 冷却 | 消耗 | 抗性 |
-|------|----------|------|------|------|------|
-| Hack | Claim | 夺取 drone 转 Neutral | 200 tick | 1000E | Psionic |
-| Drain | Carry+Work | 窃取资源，每 tick transfer | 50 tick | 200E/tick | EMP |
-| Overload | RangedAttack | 目标 fuel -500k | 200 tick | 300E | EMP |
-| Debilitate | Work | 指定伤害类型抗性 ×2, 50 tick | 150 tick | 200E | Corrosive |
-| Disrupt | Attack | 打断目标动作 | 50 tick | 100E | Sonic |
-| Fortify | Tough | 护盾 ×0.5 + 清除负面状态 | 300 tick | 400E | — |
+ 攻击 | body part | 效果 | 冷却 | 消耗 | 抗性 |
+------|----------|------|------|------|------|
+ Hack | Claim | 夺取 drone 转 Neutral | 200 tick | 1000E | Psionic |
+ Drain | Carry+Work | 窃取资源，每 tick transfer | 50 tick | 200E/tick | EMP |
+ Overload | RangedAttack | 目标 fuel -500k | 200 tick | 300E | EMP |
+ Debilitate | Work | 指定伤害类型抗性 ×2, 50 tick | 150 tick | 200E | Corrosive |
+ Disrupt | Attack | 打断目标动作 | 50 tick | 100E | Sonic |
+ Fortify | Tough | 护盾 ×0.5 + 清除负面状态 | 300 tick | 400E | — |
 
 **通用规则**：
 - 特殊攻击与 HP 伤害互斥——同一 body part 同一 tick 只能执行一种

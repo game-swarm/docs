@@ -2226,7 +2226,3 @@ Swarm 不追求与 Screeps API 兼容。设计哲学不同：
 | AI 玩家 | 无 | MCP 原生界面 |
 | 代码年代 | 2014 起步，Node.js 8 | 2026，Rust + WASM |
 | 许可证 | 混合（server 开源，client 专有） | MIT（完全开源） |
-
----
-
-*最后更新: 2026-06-15*

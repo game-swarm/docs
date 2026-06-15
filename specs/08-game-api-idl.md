@@ -1,7 +1,5 @@
 # Game API IDL Spec — 游戏 API 接口定义语言
 
-> **状态**: 当前 | **日期**: 2026-06-15
-
 > **目标**: host functions / Command / Validator / SDK / MCP schema 单一真相来源
 
 ## 1. 原则
@@ -27,7 +25,6 @@ game_api.idl  (单一真相)
 
 version: "1.0.0"
 abi_version: 1                # 每次 host function 签名变更时递增
-generated: "2026-06-14"
 
 types:
   PlayerId: u32
@@ -262,14 +259,14 @@ refund_policy:
 
 ## 3. 代码生成规则
 
-| 目标 | 生成物 |
-|------|--------|
-| Rust | `src/generated/commands.rs` — Command enum + validate() |
-| Rust | `src/generated/host_functions.rs` — host function stubs |
-| TS SDK | `sdk-ts/src/generated/api.ts` — types + autocomplete |
-| MCP | MCP tool schemas JSON |
-| Replay | TickTrace schema — 已冻结；格式变更需递增 ABI 版本 |
-| Docs | API reference markdown |
+ 目标 | 生成物 |
+------|--------|
+ Rust | `src/generated/commands.rs` — Command enum + validate() |
+ Rust | `src/generated/host_functions.rs` — host function stubs |
+ TS SDK | `sdk-ts/src/generated/api.ts` — types + autocomplete |
+ MCP | MCP tool schemas JSON |
+ Replay | TickTrace schema — 已冻结；格式变更需递增 ABI 版本 |
+ Docs | API reference markdown |
 
 ## 5. CI 检查
 
@@ -284,23 +281,23 @@ git diff --exit-code        # 生成代码与提交代码一致 → 不一致则
 
 ## 4. 可配置命令
 
-锚定 DESIGN.md §5, §8.2。**所有特殊攻击通过 world.toml 的 `[[custom_actions]]` + `[[special_effects]]` 可配置注册**，非硬编码。
+**所有特殊攻击通过 world.toml 的 `[[custom_actions]]` + `[[special_effects]]` 可配置注册**，非硬编码。
 
 ### 4.1 变体列表
 
-| CommandAction | body part | special_effect | 说明 |
-|--------------|-----------|---------------|------|
-| `RangedAttack` | RangedAttack | — | 远程攻击，parts × 25，范围 3 |
-| `ClaimController` | Claim | — | 占领 Controller |
-| `Recycle` | — | — | 回收 drone，退还 50% body part 资源 |
-| `Disrupt` | Attack | `disrupt` | 打断目标动作，50 tick CD |
-| `Fortify` | Tough | `fortify` | 护盾 + 净化，300 tick CD |
-| `Hack` | Claim | `hack` | 夺取 drone → Neutral，200 tick CD |
-| `Drain` | Carry+Work | `drain` | 窃取资源，50 tick CD |
-| `Overload` | RangedAttack | `overload` | 消耗配额 -500k，200 tick CD |
-| `Debilitate` | Work | `debilitate` | 易伤 ×2，150 tick CD |
-| `Leech` | custom | `leech` | 吸血 50%，Corrosive 15 dmg |
-| `Fabricate` | custom | `fabricate` | 转化建筑，500 tick CD |
+ CommandAction | body part | special_effect | 说明 |
+--------------|-----------|---------------|------|
+ `RangedAttack` | RangedAttack | — | 远程攻击，parts × 25，范围 3 |
+ `ClaimController` | Claim | — | 占领 Controller |
+ `Recycle` | — | — | 回收 drone，退还 50% body part 资源 |
+ `Disrupt` | Attack | `disrupt` | 打断目标动作，50 tick CD |
+ `Fortify` | Tough | `fortify` | 护盾 + 净化，300 tick CD |
+ `Hack` | Claim | `hack` | 夺取 drone → Neutral，200 tick CD |
+ `Drain` | Carry+Work | `drain` | 窃取资源，50 tick CD |
+ `Overload` | RangedAttack | `overload` | 消耗配额 -500k，200 tick CD |
+ `Debilitate` | Work | `debilitate` | 易伤 ×2，150 tick CD |
+ `Leech` | custom | `leech` | 吸血 50%，Corrosive 15 dmg |
+ `Fabricate` | custom | `fabricate` | 转化建筑，500 tick CD |
 
 ### 4.2 注册规则
 
