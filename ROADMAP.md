@@ -12,10 +12,10 @@
 | sdk-ts | `sdk-ts/` | 5 | 0 | 0 | 100% |
 | sdk-rust | `sdk-rust/` | 1 | 0 | 3 | 25% |
 | gateway | `gateway/` | 0 | 0 | 4 | 0% |
-| frontend | `frontend/` | 2 | 4 | 2 | 25% |
+| frontend | `frontend/` | 3 | 4 | 1 | 38% |
 | infra | (根目录) | 2 | 1 | 1 | 50% |
 | docs | `docs/` | 6 | 0 | 0 | 100% |
-| **总计** | | **53** | **11** | **14** | **68%** |
+| **总计** | | **54** | **11** | **13** | **69%** |
 
 ---
 
@@ -142,7 +142,7 @@
 ## frontend/ — Web 客户端 (React)
 
 - [x] [P5] React + PixiJS WebGL tilemap 地图渲染 — `MapView.tsx`
-- [ ] [P5] Monaco Editor 集成 (TypeScript 自动补全) ❌ — 依赖已安装, 未集成
+- [x] [P5] Monaco Editor 集成 (TypeScript 自动补全) ✅ (2026-06-15) — `CodeEditor.tsx` + Compile & Deploy 按钮
 - [ ] [P5] IDE: 行内校验 (已实现) + 一键 WASM 编译部署 (未实现) ⚠️
 - [ ] [P5] OAuth2 登录 UI ⚠️
 - [ ] [P4] 回放查看器 (交互式 tick 选择 + 快照/指令/拒绝浏览) ⚠️ — 当前为静态演示
