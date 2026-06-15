@@ -13,9 +13,9 @@
 | sdk-rust | `sdk-rust/` | 3 | 0 | 0 | 100% |
 | gateway | `gateway/` | 4 | 0 | 0 | 100% |
 | frontend | `frontend/` | 7 | 1 | 0 | 88% |
-| infra | (根目录) | 5 | 0 | 1 | 83% |
+| infra | (根目录) | 6 | 0 | 0 | 100% |
 | docs | `docs/` | 6 | 0 | 0 | 100% |
-| **总计** | | **78** | **1** | **1** | **97.5%** |
+| **总计** | | **79** | **1** | **0** | **98.75%** |
 
 > **注**: engine 汇总行仅统计已完成的核心交付物（42 项）。ECS 并行化 ❌、Sharding ❌、AI 锦标赛执行引擎 ⚠️ 为额外排期项，已创建为看板任务（B4/B5），不计入 42 项。
 
@@ -59,9 +59,9 @@
 - [x] 交互式回放查看器 (ReplayViewer.tsx)
 - [ ] WASM 一键编译部署 ⚠️ (simulated compileBot, 非真实 WASM 编译管道)
 
-## infra/ — 基础设施 (83%)
+## infra/ — 基础设施 (100%)
 - [x] Docker Compose + CI/CD + Load test + Security auditor
-- [ ] Wasmtime CVE SLA ⚠️
+- [x] Wasmtime CVE SLA
 
 ---
 

@@ -1,6 +1,6 @@
 # Swarm — 设计文档
 
-可编程 MMO RTS 游戏引擎的设计文档仓库。**模块化追踪中**（2026-06-15 审计）— 78/80 项完成 (97.5%)。
+可编程 MMO RTS 游戏引擎的设计文档仓库。**模块化追踪中**（2026-06-15 审计）— 79/80 项完成 (98.75%)。
 
 ## 目录结构
 
@@ -21,6 +21,8 @@ docs/
 │       ├── 07-world-rules-engine.md        # Rhai 模组 + ECS Plugin
 │       ├── 08-game-api-idl.md              # 单一 IDL + 代码生成
 │       └── 09-command-source-model.md      # 12 来源 + 证书签名 Auth
+├── security/
+│   └── CVE-SLA.md                # Wasmtime CVE 响应 SLA
 └── reviews/                      # 评审档案 (R1-R14)
     ├── README.md                 # 轮次索引
     ├── R1/ — R14/                # 14 轮评审
