@@ -6,10 +6,10 @@
 
 ```
 docs/
+├── ROADMAP.md                   # 实施计划 + 代码对齐审计 (7 阶段交付物 + 验收标准)
 ├── design/
-│   ├── DESIGN.md                 # 架构全景 + 游戏设计 (1,486 行)
-│   ├── tech-choices.md           # 技术选型（11 组件备选分析 + 决策理由）
-│   └── ROADMAP.md                # 实施计划（7 阶段交付物 + 验收标准）
+│   ├── DESIGN.md                # 架构全景 + 游戏设计 (1,486 行)
+│   └── tech-choices.md          # 技术选型（11 组件备选分析 + 决策理由）
 ├── specs/
 │   └── p0/                       # P0 冻结规范 (9 份)
 │       ├── 01-tick-protocol-spec.md        # Tick 生命周期 + 失败语义 + 回放
