@@ -239,32 +239,3 @@ fn test_vision_range_boundary() { ... }
 ### Arena 模式（比赛）
 
 简化可见性：比赛边界内全信息。双方玩家看到整个竞技场。公平竞技禁用 fog-of-war。计时器和得分对观战者可见。全知回放赛后公开。
-
----
-
-## 附录 A: Phase 0 后增补 (2026-06-15)
-
-以下可见性策略在 Phase 0 冻结后新增。锚定 DESIGN.md §8.2 可见性与观战。
-
-### A.1 可见性配置 (WorldConfig.visibility)
-
-| 规则 | 类型 | 默认 | 说明 |
-|------|------|------|------|
-| `fog_of_war` | bool | true | drone 感知是否受限 |
-| `player_view` | enum | `drone` | drone / full / allied |
-| `public_spectate` | bool | false | 未登录旁观 (Arena=true) |
-| `spectate_delay` | u32 | 0 | 旁观延迟 tick |
-| `replay_privacy` | enum | `private` | private / allies / world / public |
-
-### A.2 PlayerView 模式
-
-- `drone`: 仅自己 drone 的聚合视野
-- `full`: 全图实时 (教学/合作世界)
-- `allied`: 同阵营所有 drone 的聚合视野
-
-### A.3 ReplayPrivacy 等级
-
-- `private`: 仅自身
-- `allies`: 同阵营
-- `world`: 同世界玩家
-- `public`: 任何人 (Arena 赛后默认)

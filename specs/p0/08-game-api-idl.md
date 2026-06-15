@@ -270,26 +270,3 @@ git diff --exit-code        # 生成代码与提交代码一致 → 不一致则
 ```
 
 任何对游戏 API 的修改必须从 IDL 开始——修改 `game_api.idl` → 重新生成 → 提交生成的代码。不允许手写 Command 变体或 host function。
-
----
-
-## 附录 A: Phase 0 后增补 CommandAction (2026-06-15)
-
-以下在 Phase 0 冻结后新增。锚定 DESIGN.md §5, §8.2。
-
-| CommandAction | 新增日期 | body part 绑定 |
-|--------------|---------|---------------|
-| RangedAttack | 2026-06-15 | RangedAttack |
-| ClaimController | 2026-06-15 | Claim |
-| Recycle | 2026-06-15 | — (任意 drone) |
-| Disrupt | 2026-06-15 | Attack |
-| Fortify | 2026-06-15 | Tough |
-| Hack | 2026-06-15 | Claim |
-| Drain | 2026-06-15 | Carry + Work |
-| Overload | 2026-06-15 | RangedAttack |
-| Debilitate | 2026-06-15 | Work |
-| Leech | 2026-06-15 | custom |
-| Fabricate | 2026-06-15 | custom |
-
-`[[custom_actions]]` 注册的新 action (Leech, Fabricate) 通过 world.toml 定义并自动暴露到 IDL。
-参见 DESIGN.md §8.2 自定义 CommandAction。
