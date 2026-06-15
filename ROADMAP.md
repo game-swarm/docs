@@ -7,7 +7,7 @@
 
 | 模块 | 目录 | ✅ | ⚠️ | ❌ | 进度 |
 |------|------|----|----|-----|------|
-| engine | `engine/` | 30 | 7 | 4 | 73% |
+| engine | `engine/` | 31 | 6 | 4 | 76% |
 | sandbox | `sandbox/` | 6 | 0 | 0 | 100% |
 | sdk-ts | `sdk-ts/` | 5 | 0 | 0 | 100% |
 | sdk-rust | `sdk-rust/` | 0 | 0 | 4 | 0% |
@@ -15,7 +15,7 @@
 | frontend | `frontend/` | 2 | 4 | 2 | 25% |
 | infra | (根目录) | 2 | 1 | 1 | 50% |
 | docs | `docs/` | 6 | 0 | 0 | 100% |
-| **总计** | | **51** | **12** | **15** | **65%** |
+| **总计** | | **52** | **11** | **15** | **67%** |
 
 ---
 
@@ -57,7 +57,7 @@
 - [x] [P3] 3 hooks: init.rhai / tick_start.rhai / tick_end.rhai 定义 — `rule_module.rs`
 - [x] [P3] Module CLI (swarm mod install/remove/config) — `mod_cli.rs`
 - [x] [P3] 执行预算 (AST 10k/tick, actions 100/tick, 墙钟 100ms)
-- [ ] [P3] tick_start.rhai 在单玩家 main loop 中调用 — multi-player 路径正常 ⚠️
+- [x] [P3] tick_start.rhai 在单玩家 main loop 中调用 ✅ (2026-06-15 修复)
 
 ### 全局存储
 - [x] [P3] TransferToGlobal/TransferFromGlobal — `command.rs:99-105`

@@ -31,4 +31,6 @@
 - 审查者：hermes+kagurazaka
 - 最后审查日期：2026-06-14
 | 整体审查状态：**已通过（R14 终审确认冻结 → Phase 0 Frozen）**
-- 实现进度：**全部 7 阶段完成（engine 115 + sandbox 9 + sdk-ts 11 + frontend 3 = 138 tests）**
+- 实现进度：**模块化追踪**（2026-06-15 审计）— 78 项: ✅52 ⚠️11 ❌15
+- 测试总计: engine 115 + sandbox 9 + sdk-ts 11 + frontend 3 = 138
+- 详见 [ROADMAP.md](../ROADMAP.md)
