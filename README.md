@@ -20,7 +20,6 @@ docs/
 │   └── tech-choices.md          # 技术选型
 ├── specs/                       # 当前规范（git 管理历史版本）
 ├── security/CVE-SLA.md          # Wasmtime CVE 响应 SLA
-└── reviews/                     # 评审档案 (R1-R14)
 ```
 
 ## 代码仓库
@@ -36,9 +35,7 @@ docs/
 
 ## 评审流程
 
-9 位评审者（3 模型 × 3 方向）× 14 轮迭代。Phase 0 经 R14 终审冻结。
-
-详见 [reviews/README.md](reviews/README.md)。
+9 位评审者（3 模型 × 3 方向）× 14 轮迭代。Phase 0 经 R14 终审冻结。评审档案已归档到 `git tag review-archive`。
 
 ## 许可证
 
