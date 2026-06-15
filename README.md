@@ -18,7 +18,9 @@ docs/
 ├── design/
 │   ├── DESIGN.md                # 架构全景 + 游戏设计
 │   └── tech-choices.md          # 技术选型
-├── specs/p0/                    # P0 冻结规范 (9 份)
+├── specs/
+│   ├── v0.1/                    # 冻结基线 — Phase 0 (9 份)
+│   └── v0.2/                    # 当前 — 对齐 DESIGN.md (9 份)
 ├── security/CVE-SLA.md          # Wasmtime CVE 响应 SLA
 └── reviews/                     # 评审档案 (R1-R14)
 ```
