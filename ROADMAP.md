@@ -10,12 +10,12 @@
 | engine | `engine/` | 31 | 6 | 4 | 76% |
 | sandbox | `sandbox/` | 6 | 0 | 0 | 100% |
 | sdk-ts | `sdk-ts/` | 5 | 0 | 0 | 100% |
-| sdk-rust | `sdk-rust/` | 0 | 0 | 4 | 0% |
+| sdk-rust | `sdk-rust/` | 1 | 0 | 3 | 25% |
 | gateway | `gateway/` | 0 | 0 | 4 | 0% |
 | frontend | `frontend/` | 2 | 4 | 2 | 25% |
 | infra | (根目录) | 2 | 1 | 1 | 50% |
 | docs | `docs/` | 6 | 0 | 0 | 100% |
-| **总计** | | **52** | **11** | **15** | **67%** |
+| **总计** | | **53** | **11** | **14** | **68%** |
 
 ---
 
@@ -121,7 +121,7 @@
 
 > 仓库已创建，零代码。
 
-- [ ] [P1] tick(snapshot) → Command[] 类型定义 ❌
+- [x] [P1] tick(snapshot) → Command[] 类型定义 ✅ (2026-06-15) — 2 tests
 - [ ] [P1] IDL 驱动代码生成 ❌
 - [ ] [P1] Starter bot 示例 ❌
 - [ ] [P5] 本地模拟集成 (swarm sim 辅助) ❌
