@@ -691,9 +691,30 @@ cost = { Energy = 100000 }
  `capacity` | u32 | 否 | 资源存储容量 |
  `attack` | map | 否 | 自动攻击 `{damage, damage_type, range, cooldown}` |
  `sight_range` | u32 | 否 | 提供的额外视野范围 |
- `cost` | `{String: u32}` | ✅ | 建造成本 |
+ | `cost` | `{String: u32}` | ✅ | 建造成本 |
 
-### 6.3 特殊效果类型定义 (`[[special_effects]]`)
+ ### 9.2a Controller 升级表 (RCL)
+
+ Controller 是房间的核心建筑，决定可用建筑、维修容量和 drone 上限。通过向 Controller 存入资源升级。
+
+ | Level | 累计 progress | 解锁建筑 | 最大房间 drone | 维修容量 | 维修距离 | 说明 |
+ |-------|-------------|---------|---------------|---------|---------|------|
+ | 1 | 0 | Spawn | 50 | 5/tick | 1 格 | 初始状态 |
+ | 2 | 200 | Extension (5), Road, Container | 100 | 10/tick | 1 格 | 储能起步 |
+ | 3 | 400 | Extension (10), Tower, Storage, Depot | 200 | 20/tick | 2 格 | 防御+前线维修 |
+ | 4 | 800 | Extension (20), Link | 300 | 30/tick | 2 格 | 能源网络 |
+ | 5 | 1,500 | Extension (30), Terminal, Observer | 400 | 40/tick | 3 格 | 市场交易 |
+ | 6 | 3,000 | Extension (40), Extractor, Lab, Factory | 500 | 50/tick | 3 格 | 制造系统 |
+ | 7 | 6,000 | Extension (50), PowerSpawn | 500 | 60/tick | 4 格 | 晚期产能 |
+ | 8 | 12,000 | Extension (60), Nuker | 500 | 80/tick | 5 格 | 终极武器 |
+
+ **升级**: 每 tick 自动将存入的资源转换为 progress。`progress >= progress_total` 时升级。
+
+ **降级**: Controller 失去 owner 超过 `downgrade_timer`（默认 5000 tick）后降一级，progress 重置。
+
+ **维修硬上限**: 多个 Controller 的总 age 回退量不超过每 tick 自然增长的 50%（`max(0, age + 1 - min(0.5, controller_count × 0.5))`），不可完全抵消寿命流逝。
+
+ ### 9.3 特殊效果类型定义 (`[[special_effects]]`)
 
 与 body_part_types 和 damage_types 一样，特殊效果可通过 world.toml 定义和扩展。每个条目定义一种可由 `[[custom_actions]]` 引用的效果：
 

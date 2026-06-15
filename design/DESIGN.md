@@ -14,9 +14,8 @@
 6. [数据模型](#6-数据模型)
 7. [部署架构](#7-部署架构)
 8. [World Rules Engine](#8-world-rules-engine--可配置的游戏规则)
-9. [路线图](#9-路线图)
-10. [World vs Arena 模式](#10-world-模式-vs-arena-模式)
-11. [贡献指南](#11-贡献指南)
+9. [World vs Arena 模式](#9-world-模式-vs-arena-模式)
+10. [贡献指南](#10-贡献指南)
 
 ---
 
@@ -2147,26 +2146,7 @@ if (rules.get("empire-upkeep").config.onshortfall.value === "damage") {
 
 ---
 
-## 9. 路线图
-
-实现进度详见 [ROADMAP.md](../ROADMAP.md)。
-
-### 已完成
-
-- [x] Game API IDL（host functions + Command + Validator + SDK ABI + MCP schema 同源）→ P0-8
-- [x] Command Source Model（12 sources: WASM/MCP_Deploy/MCP_Query/Admin/Replay/TestHarness/Tutorial/Deploy/Rollback/RuleMod/Simulate/DryRun）→ P0-9
-- [x] Determinism Contract（PRNG=Blake3 XOF, hash=Blake3, 禁 f64, IndexMap, ECS .chain()）→ DESIGN §8.8
-- [x] Tick Protocol（FDB commit in EXECUTE, tick abandon behavior, NATS ack）→ P0-1
-- [x] World Rules Engine 收敛为 Rhai 模组 → P0-7
-- [x] Deferred Command Model（tick() → JSON, 禁 imperative host functions）→ P0-4 §3
-- [x] Fuel Refund 安全模型（时序/上限/滥用检测）→ P0-2 §7
-- [x] 全局存储反制机制（累进税/隐匿性/运输时间）→ DESIGN §8.2
-- [x] P0-9 Source Gate 完整矩阵（12 sources × capability/budget/visibility）→ P0-9
-- [x] Tick 输出 JSON Schema 校验 → P0-2 §1.1
-
----
-
-## 10. World 模式 vs Arena 模式
+## 9. World 模式 vs Arena 模式
 
 | 维度 | World（持久世界） | Arena（比赛） |
 |------|-----------------|-------------|
@@ -2184,16 +2164,16 @@ if (rules.get("empire-upkeep").config.onshortfall.value === "damage") {
 
 ---
 
-## 11. 贡献指南
+## 10. 贡献指南
 
-### 11.1 开发环境搭建
+### 10.1 开发环境搭建
 
 ```bash
 git clone git@git.kagurazakalan.com:swarm/engine.git
 cd engine && docker-compose up
 ```
 
-### 11.2 代码规范
+### 10.2 代码规范
 
 - Rust: `cargo fmt` + `cargo clippy`（严格）
 - Go: `gofmt` + `golangci-lint`

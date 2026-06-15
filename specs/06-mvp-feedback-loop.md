@@ -1,6 +1,6 @@
 # MVP 反馈循环规范
 
-> 详见 DESIGN §10
+> 详见 DESIGN §9
 
 ## 1. MVP 反馈循环
 

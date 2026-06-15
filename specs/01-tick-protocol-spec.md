@@ -111,6 +111,24 @@ Tick N+1: 引擎自动切换到 v2
 
 代码部署不影响当前 tick 执行——当前 tick 使用已加载的模块。切换是原子的。
 
+### 2.5 新玩家加入与重生
+
+**首次加入**：新玩家进入世界时，系统分配出生房间。分配策略：
+
+1. **密度优先**：计算各候选区域（以 spawn 点为中心 3×3 房间）的活跃玩家密度，选择密度最低的区域
+2. **避免包围**：拒绝将新玩家分配到四周均为敌对玩家已占领房间的区域
+3. **safe_mode 保护**：新玩家首次 spawn 后自动获得 safe_mode，持续 `world.toml` 中配置的时长（默认 500 tick），期间其他玩家无法在该房间执行任何敌对操作
+
+```toml
+[spawn]
+safe_mode_duration = 500       # 新玩家保护期（tick），0 = 禁用
+respawn_policy = "NewRoom"     # NewRoom | OriginalRoom
+```
+
+**重生**：玩家殖民地全灭后，按 `respawn_policy` 重生：
+- `NewRoom`：在密度最低的区域重新分配（默认）
+- `OriginalRoom`：回到首次出生的房间
+
 ## 3. 阶段二：执行
 
 ### 3.1 指令排序（确定性 + 公平）
@@ -139,6 +157,15 @@ for (order_index, player_id) in player_order.iter().enumerate() {
 - 确定性：相同 `(tick_number, world_seed, 相同指令集)` → 相同顺序 → 相同世界状态
 - 公平性：每个 tick 玩家顺序随机轮换，长期期望均等
 - 不可预测：玩家无法提前知道自己在当前 tick 的排序位置
+
+**种子轮换**：`world_seed` 定期轮换，防止长期观察推断种子空间。轮换周期通过 `world.toml` 配置：
+
+```toml
+[world]
+seed_rotation_interval = 10000   # 每 N tick 轮换一次（默认 10000）
+```
+
+轮换算法：`new_seed = Blake3(old_seed || current_tick)`。旧种子对应的回放数据仍可验证——TickTrace 中记录每 tick 使用的 seed epoch，回放时按 epoch 选择对应种子。
 
 ### 3.2 资源竞争 (Resource Contention)
 
@@ -397,3 +424,60 @@ fn replay_tick(tick_N) -> WorldState:
 #### 6.3.4 Tick Boundary Contract
 
 COLLECT 阶段从 Bevy World 内存读取权威状态，不访问 FDB/Dragonfly。EXECUTE 阶段在 Bevy World 上原地修改 → FDB 事务提交 → 成功后 FDB 为新的权威源。Bevy World 与 FDB 的关系：Bevy 是每 tick 的工作副本，FDB 是持久化的权威源。启动/恢复时从 FDB 重建 Bevy World。
+
+## 7. 确定性保证与反作弊
+
+### 7.1 确定性合同
+
+给定 tick N-1 状态 + tick N RawCommand + world_seed + 激活模组列表 → `execute_deterministic == recorded_state`。每个 tick 产出 `state_checksum` 写入 TickTrace。
+
+确定性依赖：
+- PRNG：Blake3 XOF，确定性种子 + offset → 随机流，不依赖 OS 熵源
+- Hash：Blake3 固定实现，不用 `std::hash`（跨版本可变）
+- 排序：(shuffle_order, player_id, cmd_seq) — 相同种子 + 相同指令 → 相同顺序
+- ECS：`.chain()` 严格串行，`.before()/.after()` 部分并行
+- 数值：整数 + 定点数，禁用 `f64`（跨平台/编译器非确定）
+- HashMap：`indexmap`，不用 `std::HashMap`（迭代顺序非确定）
+
+### 7.2 回放验证
+
+CI 对随机采样 tick 做 full replay 验证：`execute_deterministic(state, commands) != recorded_state` → 确定性 BUG。
+
+```rust
+// FDB 故障注入 CI 测试：验证快照恢复一致性
+fn fdb_commit_failure_restores_snapshot_consistency() {
+    fault_injection::set_mode(FaultMode::RandomCommitFailure {
+        probability: 0.1,  // 10% tick 触发 commit 失败
+        seed: 42,           // 确定性种子
+    });
+    for tick in 0..1000 {
+        let snapshot = world.snapshot();
+        let commit_result = execute_and_commit(&mut world, collected, tick);
+        if commit_result.is_err() {
+            world.restore(snapshot);
+            assert_eq!(world.state_checksum(), snapshot_checksum);
+        }
+    }
+}
+```
+
+### 7.3 异常检测
+
+引擎对每个玩家进行运行时异常检测：
+
+| 检测类型 | 方法 | 触发动作 |
+|---------|------|---------|
+| **状态变化超限** | 玩家 tick 间世界变化超过物理上限（drone 移动距离、资源获取速率、建造速度） | 标记玩家，该 tick 指令全部拒绝 |
+| **指令模式异常** | 连续多 tick 提交相同指令序列（脚本化行为） | 降级为观察模式，限制 fuel budget |
+| **WASM 静态分析** | 部署时扫描可疑系统调用模式、异常内存访问 | 拒绝部署，记录安全审计日志 |
+
+### 7.4 CI 确定性验证
+
+```bash
+# 每 CI run 随机选取 5% tick 做 full replay
+cargo test --test determinism -- --samples 1000 --sample-rate 0.05
+
+# 验证断言
+assert_eq!(replayed.state_checksum, recorded.state_checksum);
+assert_eq!(replayed.entity_count, recorded.entity_count);
+```
