@@ -338,16 +338,19 @@ Swarm 支持三个扩展层级：
 ```
 每 tick（目标 3s）：
 
-阶段一：收集 (COLLECT) — 并行, ~2.5s
-  ├── 对每个活跃玩家:
-  │   ├── 加载玩家 WASM 模块（缓存在内存中）
-  │   ├── 序列化可见世界状态 → JSON 快照
-  │   ├── 在 sandbox worker 进程中实例化 WASM，fuel limit = 玩家 CPU 配额
-  │   ├── 调用 tick(snapshot) → 收集 Vec<Command>
-  │   └── 过滤无效指令（超配额、非法操作）
+阶段一：收集 (COLLECT) — 并行
+  ├── [tick 开始] 构建世界快照（一次性，按房间分区）
+  │   ├── 序列化完整世界状态为结构化快照，按房间分片
+  │   └── 快照构建在玩家代码执行前完成，天然确定
+  ├── 对每个活跃玩家（并行，sandbox worker pool）:
+  │   ├── 根据玩家 drone 所在房间，拼接可见房间的快照分片
+  │   │   └── 默认可见 = 当前房间 + 相邻房间（最多 9 个分片拼接）
+  │   ├── 实例化玩家 WASM 模块（部署时已预编译为原生码，tick 时仅实例化）
+  │   ├── 调用 tick(snapshot)，fuel limit = 玩家 CPU 配额
+  │   └── 收集 Vec<Command>，过滤无效指令（超配额、非法操作）
   └── 收集全部指令到指令队列
 
-阶段二：执行 (EXECUTE) — 串行, ~0.5s
+阶段二：执行 (EXECUTE) — 约束并行
   ├── 玩家顺序种子洗牌（seed = hash(tick_number, world_seed)）
   ├── Phase 2a: 命令循环（逐条 inline 应用）
   │   ├── 对每条指令（按洗牌后顺序 + 玩家内 sequence 排序）:
@@ -370,7 +373,7 @@ Swarm 支持三个扩展层级：
   ├── 计算增量（与上一 tick 快照的实体差异）
   ├── Dragonfly 缓存更新
   ├── 通过 NATS → Gateway → WebSocket 客户端发布
-  └── 每隔 N tick 记录完整世界快照到 FDB（回放用）
+  └── 持久化：每 tick 存储 delta，每 K tick 存储 keyframe 到 FDB（回放用）
 ```
 
 ### Phase 2a/2b 分类原则
@@ -390,6 +393,10 @@ Swarm 支持三个扩展层级：
 **Spawn 时序说明**：spawn_system 在 death_mark 之后（room cap 槽位已释放）、combat/decay 之前运行。新 spawn 的 drone **在同 tick 参与 combat 和 decay**——可能出生即被攻击或受衰减影响。此行为是有意设计（「出生即投入战斗」），非文档错误。
 
 **Phase 2b 并行策略**：regeneration（资源点再生）和 decay（疲劳/冷却递减）只操作各自独立的数据，与主线 death→spawn→combat→death_cleanup 无数据竞争。利用 Bevy 的 `.before()/.after()` 将这两个系统与主线并行调度——Bevy 在幕后自动分配线程，无需手动管理。约束：两者必须在 `death_cleanup` 之前完成（防止操作已 despawn 的 entity），其他无顺序要求。正确性由数据独立 + Bevy 依赖图保证，确定性不依赖并行度（同 input 同 output）。
+
+**两阶段快照架构**：Phase 1 不再为每个玩家独立序列化世界状态。改为：(1) tick 开始时一次性构建完整世界快照，按房间分片；(2) 每个玩家根据其 drone 所在位置，拼接可见房间的分片（默认 ≤9 个）。复杂度从 `O(玩家数 × 实体数)` 降为 `O(实体数 + 玩家数 × 可见房间数)`，消除每玩家重复序列化开销。快照构建在玩家 WASM 执行前完成，与玩家顺序无关，天然确定。
+
+**WASM 预编译**：玩家上传 WASM 模块时，引擎在部署阶段立即编译为原生码并存储（非 tick 时 JIT）。tick 时只需实例化已编译模块，消除首次加载的编译延迟。编译后的模块按 `(module_hash, wasmtime_version)` 缓存，Wasmtime 版本升级时自动重编译。
 
 ### 3.3 确定性保证
 
@@ -454,12 +461,15 @@ MCP 不做游戏动作。不存在 `swarm_move`、`swarm_attack`、`swarm_build`
 WASM 模块通过 **deferred command model** 与引擎交互：
 
 ```
-tick(snapshot_json) → Command[]
+部署:  上传 WASM → 验证 → 预编译为原生码 → 存储（按 module_hash 索引）
+tick:  tick(snapshot) → Command[]
 ```
 
-1. 引擎将快照 JSON 写入 WASM 线性内存
+1. 引擎构建世界快照（按房间分片），根据玩家可见范围拼接子集，写入 WASM 线性内存
 2. 调用 `tick(ptr, len)` — WASM 模块接收快照，返回指令 JSON 列表
 3. 引擎校验所有指令 → 应用到世界
+
+快照格式为结构化数据（非纯文本 JSON），房间分片保证拼接无歧义。SDK 侧通过 `WorldSnapshot` 类型访问，无需感知底层分片结构。
 
 ### 5.1 允许的 Host Function（查询专用，只读）
 
@@ -497,14 +507,21 @@ fn host_get_world_rules(out_ptr: i32, out_len: i32) -> i32;
 
 ### 6.1 FoundationDB — 世界状态
 
+世界状态采用 **Keyframe + Delta** 存储模型，兼顾回放完整性和存储效率：
+
 ```
-/tick/{N}/state          → tick N 后的完整世界状态
+/tick/{N}/keyframe       → 每 K tick 的完整世界状态（keyframe）
+/tick/{N}/delta          → keyframe 之间的增量（实体变更集 + 指令日志）
 /tick/{N}/commands       → 全部玩家的排序指令
 /tick/{N}/rejections     → 被拒绝的指令及原因
 /tick/{N}/metrics        → tick 指标
 /player/{id}/profile     → 玩家档案
-/player/{id}/modules/    → WASM 模块历史
+/player/{id}/modules/    → WASM 模块历史（含预编译后的原生码）
 ```
+
+**回放流程**：定位最近 keyframe（`≤ N 的最大 K 倍 tick`）→ 加载完整状态 → 顺序重放 delta 链（每个 delta 包含该 tick 的指令 + 状态变化）→ 抵达目标 tick。delta 链的确定性由 §3.3 保证——相同 seed + 相同指令 → 相同状态，重放结果与原始执行完全一致。
+
+**典型配置**：`K=100`（每 100 tick 一个 keyframe，约 5 分钟），delta 仅存储实体变更（创建/修改/删除），体积约为 keyframe 的 1-5%。整体存储减少约 90%。
 
 ### 6.2 Dragonfly — 热缓存
 
