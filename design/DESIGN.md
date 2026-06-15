@@ -356,11 +356,13 @@ Swarm 支持三个扩展层级：
   │   │   ├── 资源竞争 → 先到先得（先执行者优先）
   │   │   └── 冲突 → 丢弃 + 记录 RejectionReason
   │   └── Spawn 命令在 Phase 2a 中只校验不入队
-  ├── Phase 2b: ECS Systems 统一运行（`.chain()`）
+  ├── Phase 2b: ECS Systems（部分并行）
   │   ├── death_mark_system（标记待死亡 entity，释放 room cap 槽位）
   │   ├── spawn_system（统一创建 Phase 2a 校验通过的 drone）
   │   ├── combat_system（damage 先 → heal 后，同 tick 内结算）
-  │   └── regeneration/decay/death_cleanup/其他被动 systems
+  │   ├── regeneration_system ─┐
+  │   ├── decay_system ────────┤ 并行（无数据竞争，与主线无依赖）
+  │   └── death_cleanup_system（实际 despawn，等全部系统完成）
   ├── FDB 原子提交（全或无）
   └── tick_counter 推进
 
@@ -376,7 +378,7 @@ Swarm 支持三个扩展层级：
 | 阶段 | 执行模型 | 包含的命令/系统 | 分类原则 |
 |------|---------|---------------|---------|
 | **Phase 2a (Inline)** | 串行 inline 应用 | Move, Harvest, Build, Transfer, Attack, RangedAttack, Heal, Recycle | **玩家提交的命令**——效果依赖执行顺序，且「先到先得」竞争有意义。对 Bevy World 做立即修改，后续命令基于最新状态校验 |
-| **Phase 2b (Deferred)** | ECS Systems `.chain()` | death_mark, spawn, combat, regeneration, decay, death_cleanup 等被动系统 | **被动系统**——对所有实体均匀运行，或需跨实体协调（Spawn 需 room cap，Combat 需同时 damage+heal 结算）。不接收玩家命令，响应 2a 产生的状态变化 |
+| **Phase 2b (Deferred)** | ECS Systems `.chain()` + `.before()/.after()` | death_mark, spawn, combat（主线 `.chain()`）；regeneration, decay（并行，仅需 before death_cleanup） | **被动系统**——对有依赖关系的系统串行执行（保证正确性），无数据竞争的系统利用 Bevy 并行调度。不接收玩家命令，响应 2a 产生的状态变化 |
 
 **Attack 与 combat_system 的职责分离**：
 - **Phase 2a Attack/RangedAttack 命令**：直接应用 damage（含抗性/伤害类型计算），立即反映到目标 HP
@@ -386,6 +388,8 @@ Swarm 支持三个扩展层级：
 **Recycle 死亡路径**：Recycle 命令走标准 death_mark → death_cleanup 路径（与其他死亡一致），不在 Phase 2a 中立即 despawn。death_mark 在 2b 开头标记待死亡 entity 并释放 room cap 槽位，death_cleanup 在 2b 末尾执行实际 despawn。
 
 **Spawn 时序说明**：spawn_system 在 death_mark 之后（room cap 槽位已释放）、combat/decay 之前运行。新 spawn 的 drone **在同 tick 参与 combat 和 decay**——可能出生即被攻击或受衰减影响。此行为是有意设计（「出生即投入战斗」），非文档错误。
+
+**Phase 2b 并行策略**：regeneration（资源点再生）和 decay（疲劳/冷却递减）只操作各自独立的数据，与主线 death→spawn→combat→death_cleanup 无数据竞争。利用 Bevy 的 `.before()/.after()` 将这两个系统与主线并行调度——Bevy 在幕后自动分配线程，无需手动管理。约束：两者必须在 `death_cleanup` 之前完成（防止操作已 despawn 的 entity），其他无顺序要求。正确性由数据独立 + Bevy 依赖图保证，确定性不依赖并行度（同 input 同 output）。
 
 ### 3.3 确定性保证
 
@@ -1620,15 +1624,20 @@ damage_multiplier = 10000
 ```rust
 // engine 启动时
 fn register_rule_systems(app: &mut App, config: &WorldConfig) {
-    // 基础系统始终注册（Phase 2b 系统链——Inline 命令已在 Phase 2a 逐条执行）
+    // 基础系统始终注册
+    // 主线（必须串行，有数据依赖）
     app.add_systems(Update, (
         death_mark_system,       // 标记待死亡 entity，释放 room cap
         spawn_system,            // 统一创建校验通过的 drone
-        regeneration_system,     // 资源点再生
         combat_system,           // 战斗结算（damage 先 → heal 后）
-        decay_system,            // 疲劳/冷却递减
         death_cleanup_system,    // 实际 despawn
     ).chain());
+
+    // 无依赖系统（与主线并行，仅需在 death_cleanup 前完成）
+    app.add_systems(Update, (
+        regeneration_system,     // 资源点再生
+        decay_system,            // 疲劳/冷却递减
+    ).after(death_mark_system).before(death_cleanup_system));
 
     // 注入资源注册表——所有 System 通过它查询资源类型和消耗
     let resource_registry = ResourceRegistry::from_config(&config);
@@ -2133,7 +2142,7 @@ if (rules.get("empire-upkeep").config.onshortfall.value === "damage") {
 | 种子 | world_seed = Blake3(32随机字节) | 32 字节熵（256-bit），编码为 hex 字符串。不可从 tick_number 推导。**每 10,000 tick 自动轮换**（Blake3(旧种子, 当前tick)），防止长期观察推断种子空间 |
 | Hash | **Blake3** | 固定实现。不用 std::hash / SipHash（跨版本可变）。 |
 | 种子洗牌 | Blake3(tick_number \\|\\| world_seed) | 每 tick 确定但不可预测的玩家顺序。**不是手速/运气**——玩家无法通过加快操作影响排序位置。公平随机：所有玩家同等不可预测，相同种子=相同顺序，可回放验证 |
-| ECS 顺序 | `.chain()` | 严格串行。未来用 `.before()/.after()` 部分并行 |
+| ECS 顺序 | `.chain()` + `.before()/.after()` | 有数据依赖的串行（death→spawn→combat→death_cleanup），无依赖的并行（regeneration, decay）。Bevy 依赖图保证偏序不变，确定性不依赖并行度 |
 | 数值 | 整数 + 定点数 | 禁 f64（跨平台/编译器非确定）。游戏引擎数值用 `i64 × 精度因子`。**Rhai 模组脚本同样禁用浮点**——所有模组参数必须声明为 `u32`/`i64`/`fixed<u32,N>` 定点类型，Rhai 引擎侧关闭浮点运算能力。 |
 | 排序 | (shuffle_order, player_id, cmd_seq) | 相同种子 + 相同指令 → 相同顺序 |
 | HashMap 顺序 | `indexmap` | 不用 std::HashMap（迭代顺序非确定） |
