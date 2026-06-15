@@ -16,8 +16,10 @@
 | infra | (根目录) | 6 | 0 | 0 | 100% |
 | docs | `docs/` | 6 | 0 | 0 | 100% |
 | **小计** | | **83** | **0** | **0** | **100%** |
-| 审计缺口 (B6-B11) | engine+gateway+sandbox | 10 | 🔄1 | 0 | 91% |
-| **总计** | | **93** | **1** | **0** | **99%** |
+| 审计缺口 (B6-B11) | engine+gateway+sandbox | 10 | 0 | 0 | 100% |
+| **总计** | | **93** | **0** | **0** | **100%** |
+
+待实现: H1b (6 special attacks configurable via [[special_effects]])
 
 ---
 
@@ -69,7 +71,7 @@
 
 | 任务 | 缺口 | 仓库 | 状态 |
 |------|------|------|------|
-| B6 | MCP 工具补齐 (6 tools + explain_last_tick) | engine/mcp.rs | 🔄 running |
+| B6 | MCP 工具补齐 (6 tools + explain_last_tick) | engine/mcp.rs | ✅ done (`aaad5fd`) |
 | B7 | 战斗系统 (RangedAttack/Claim/Controller/RCL) | engine/command+systems | ✅ done (`b0c6350`) |
 | B8 | World Rules 可配置化 (15项规则 + world.toml) | engine/world+resources | ✅ done (`7bc855f`) |
 | B9 | 可见性高级特性 (fog_of_war/player_view/spectate) | engine/visibility.rs | ✅ done (`bf04af3`) |
@@ -91,9 +93,16 @@
 
 ---
 
-## H1-H2: 特殊攻击 + 回收 (DESIGN §8.2 未实现)
+## H1-H2: 特殊攻击 + 回收 (DESIGN §8.2)
 
-| 任务 | 缺口 | DESIGN 锚定 |
-|------|------|-----------|
-| H1 | 特殊攻击 (Hack/Drain/Overload/Debilitate/Leech/Fabricate + Disrupt/Fortify完善) | DESIGN §8.2 特殊攻击方式表 |
-| H2 | Recycle 命令 (回收 drone 退还 50% 资源) | DESIGN §8.2 Drone 身体规划 |
+| 任务 | 内容 | 状态 |
+|------|------|------|
+| H1a | Disrupt + Fortify 特殊攻击实现 | ✅ done (`3559d8e`) |
+| H2 | Recycle 命令 (回收 drone 退还 50% 资源) | ✅ done (`83e613b`) |
+| H1b | Hack/Drain/Overload/Debilitate/Leech/Fabricate (通过 [[special_effects]] + [[custom_actions]] 可配置注册) | 🔄 kanban ready (`t_1515f1f5`) |
+
+**H1b 架构要求** (DESIGN §8.2 已更新):
+- 新增 `[[special_effects]]` world.toml 配置段 (8 字段: name/description/handler/target/duration/resistance)
+- 10 个内置 handler: hack/drain/overload/debilitate/disrupt/fortify/leech/fabricate/heal_self/scramble_commands/convert_to_structure
+- `CustomActionSpecialEffect` enum → SpecialEffectRegistry (字符串→handler 映射，非硬编码)
+- 全部 8 个特殊攻击在默认 world.toml 中作为 `[[custom_actions]]` 条目预注册
