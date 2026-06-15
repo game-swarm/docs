@@ -244,27 +244,50 @@ fn test_vision_range_boundary() { ... }
 
 ## 5. v0.2 新增: 可见性配置 (2026-06-15)
 
-锚定 DESIGN.md §8.2 可见性与观战。
+锚定 DESIGN.md §8.2 可见性与观战。可见性分两层：**drone 感知**（影响游戏公平性）和**玩家视野**（影响观战体验）。
 
-### 5.1 配置项
+### 5.1 配置项（WorldConfig.visibility）
 
 | 规则 | 类型 | 默认 | 说明 |
 |------|------|------|------|
-| `fog_of_war` | bool | true | drone 感知是否受限 |
-| `player_view` | enum | `drone` | drone / full / allied |
-| `public_spectate` | bool | false | 未登录旁观 |
-| `spectate_delay` | u32 | 0 | 旁观延迟 tick |
-| `replay_privacy` | enum | `private` | private / allies / world / public |
+| `fog_of_war` | bool | true | drone 的 WASM `tick()` snapshot 是否受可见性限制。true = drone 只能看到感知范围内的实体；false = snapshot 包含全地图（教学/合作世界） |
+| `player_view` | enum | `drone` | 玩家视野模式 |
+| `public_spectate` | bool | false | 未登录用户实时旁观。World 默认关，Arena 默认开 |
+| `spectate_delay` | u32 | 0 | 旁观延迟（tick）。0 = 实时；>0 = 延迟回放，防止观众信息泄露 |
+| `replay_privacy` | enum | `private` | 回放可见性。Arena 赛后强制 `public` |
 
 ### 5.2 PlayerView 模式
 
-- `drone`: 仅自己 drone 的聚合视野
-- `full`: 全图实时（教学/合作世界）
-- `allied`: 同阵营所有 drone 的聚合视野
+| 值 | 说明 |
+|-----|------|
+| `drone` | 玩家只能看到自己 drone 所见。默认模式 |
+| `full` | 玩家实时看到全地图，无视 drone 感知范围。教学/合作世界使用 |
+| `allied` | 看到所有同阵营 drone 的聚合视野 |
 
 ### 5.3 ReplayPrivacy 等级
 
-- `private`: 仅自身
-- `allies`: 同阵营
-- `world`: 同世界玩家
-- `public`: 任何人（Arena 赛后默认 public）
+| 值 | 可见范围 |
+|-----|---------|
+| `private` | 仅自身 |
+| `allies` | 同阵营可看 |
+| `world` | 同世界玩家可看 |
+| `public` | 任何人（含未登录）。Arena 赛后默认 |
+
+### 5.4 组合场景
+
+| 场景 | fog_of_war | player_view | 效果 |
+|------|-----------|-------------|------|
+| 标准 World | true | drone | drone 感知有限，玩家只看自己 drone 所见 |
+| 教学世界 | false | full | 新手看到全地图，drone 也能感知全图 |
+| 竞技观战 | true | drone | drone 公平受限，观众通过 `public_spectate` + `spectate_delay=100` 看延迟全图 |
+| 合作 PvE | true | allied | drone 各自感知，但玩家看到所有友方聚合视野 |
+
+### 5.5 配置示例（world.toml）
+
+```toml
+[visibility]
+fog_of_war = true
+player_view = "drone"
+public_spectate = false
+spectate_delay = 0
+```

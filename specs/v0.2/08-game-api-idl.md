@@ -275,18 +275,27 @@ git diff --exit-code        # 生成代码与提交代码一致 → 不一致则
 
 ## 4. v0.2 新增 CommandAction (2026-06-15)
 
-锚定 DESIGN.md §5, §8.2。
+锚定 DESIGN.md §5, §8.2。以下在 v0.1 IDL 冻结后新增。
 
-| CommandAction | body part 绑定 | 说明 |
-|--------------|---------------|------|
-| RangedAttack | RangedAttack | 远程攻击, parts×25, 范围3 |
-| ClaimController | Claim | 占领 Controller |
-| Recycle | — | 回收 drone, 50%退还 |
-| Disrupt | Attack | 打断目标动作 |
-| Fortify | Tough | 护盾+净化 |
-| Hack | Claim | 夺取 drone |
-| Drain | Carry+Work | 窃取资源 |
-| Overload | RangedAttack | 消耗配额 |
-| Debilitate | Work | 易伤状态 |
-| Leech | custom | 吸血 |
-| Fabricate | custom | 转化建筑 |
+### 4.1 新增变体
+
+| CommandAction | body part | 说明 |
+|--------------|-----------|------|
+| `RangedAttack` | RangedAttack | 远程攻击，parts × 25，范围 3 |
+| `ClaimController` | Claim | 占领 Controller |
+| `Recycle` | — | 回收 drone，退还 50% body part 资源 |
+| `Disrupt` | Attack | 打断目标动作，50 tick CD |
+| `Fortify` | Tough | 护盾 + 净化，300 tick CD |
+| `Hack` | Claim | 夺取 drone 转 Neutral，200 tick CD |
+| `Drain` | Carry+Work | 窃取资源，50 tick CD |
+| `Overload` | RangedAttack | 消耗配额 -500k，200 tick CD |
+| `Debilitate` | Work | 易伤 ×2，150 tick CD |
+| `Leech` | custom | 吸血 50%，Corrosive 15 dmg |
+| `Fabricate` | custom | 转化建筑，500 tick CD |
+
+### 4.2 注册规则
+
+- 以上变体在引擎启动时从 world.toml 的 `[[custom_actions]]` 动态注册
+- `[[body_part_types]]` 定义 body part → action 绑定
+- IDL 代码生成器自动扫描注册表 → 生成所有 target 语言的绑定
+- SDK 和 MCP schema 自动包含新 action

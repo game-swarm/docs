@@ -418,27 +418,378 @@ fn validate_config(config: &WorldConfig) -> Result<(), Vec<String>> {
 
 ## 6. v0.2 新增: 可配置类型系统 (2026-06-15)
 
-锚定 DESIGN.md §8.2。
+锚定 DESIGN.md §8.2。类型系统从硬编码枚举改为 world.toml 驱动的注册表。
 
-### 6.1 身体部件 (`[[body_part_types]]`)
+### 6.1 身体部件类型 (`[[body_part_types]]`)
 
-8 字段: name / description / action / passive / damage_type / base_damage / base_heal / range / cost。
-默认 8 种: Move, Work, Carry, Attack, RangedAttack, Heal, Claim, Tough。
-Body part 绑定到 CommandAction，新 body part 可复用已有 action 或注册新的。
+与资源类型一样，身体部件可通过 world.toml 定义。默认世界提供 8 种基础类型：
+
+```toml
+[[body_part_types]]
+name = "Move"
+description = "移动——每 part 每 tick 可消除 1 fatigue"
+action = "Move"
+range = 1
+cost = { Energy = 50 }
+
+[[body_part_types]]
+name = "Work"
+description = "工作——采集资源、建造建筑、维修"
+action = ["Harvest", "Build"]
+range = 1
+cost = { Energy = 100 }
+
+[[body_part_types]]
+name = "Carry"
+description = "运输——携带资源，容量 = parts × 50"
+action = ["Transfer", "Withdraw"]
+passive = { carry_capacity_per_part = 50 }
+cost = { Energy = 50 }
+
+[[body_part_types]]
+name = "Attack"
+description = "近战攻击——距离 1，每 part 30 伤害"
+action = "Attack"
+damage_type = "Kinetic"
+base_damage = 30
+range = 1
+cost = { Energy = 80 }
+
+[[body_part_types]]
+name = "RangedAttack"
+description = "远程攻击——距离 3，每 part 25 伤害"
+action = "RangedAttack"
+damage_type = "Kinetic"
+base_damage = 25
+range = 3
+cost = { Energy = 100 }
+
+[[body_part_types]]
+name = "Heal"
+description = "治疗——每 part 恢复 12 HP"
+action = "Heal"
+base_heal = 12
+range = 1
+cost = { Energy = 250 }
+
+[[body_part_types]]
+name = "Claim"
+description = "占领——夺取敌方建筑/Controller"
+action = "ClaimController"
+range = 1
+cost = { Energy = 600 }
+
+[[body_part_types]]
+name = "Tough"
+description = "韧性——被动 HP 加成，每 part +100 hits_max"
+passive = { hits_per_part = 100 }
+cost = { Energy = 10 }
+```
+
+**字段说明**：
+
+| 字段 | 类型 | 必需 | 说明 |
+|------|------|------|------|
+| `name` | string | ✅ | 唯一标识符 |
+| `description` | string | ✅ | 人类可读描述 |
+| `action` | string \| string[] | 条件 | 绑定的 CommandAction。`passive` 类型可省略。数组表示支持多种 action |
+| `passive` | map | 条件 | 被动效果配置。与 action 互斥 |
+| `damage_type` | string | 条件 | 攻击类型的伤害类型，引用 `[[damage_types]]` 中的 name |
+| `base_damage` | u32 | 条件 | 每 part 的基础伤害值。`damage_type` 存在时必需 |
+| `base_heal` | u32 | 条件 | 每 part 的基础治疗量。action=Heal 时必需 |
+| `range` | u32 | ✅ | 生效距离（被动类型填 0） |
+| `cost` | `{String: u32}` | ✅ | 生成该 body part 的资源消耗，key 为资源名 |
+
+**Body part → CommandAction 绑定**：
+
+- 一个 CommandAction 可被多个 body part 触发（如 `Attack` 可由 `Claw`/`Bite` 触发）
+- 新 body part 绑定到已有 CommandAction 时，只需定义不同的 damage_type/base_damage/cost，引擎复用该 action 的校验和应用逻辑
+- 引入新 CommandAction 时需在引擎中注册变体 + validate/apply handler + IDL 暴露
+
+**Rhai 模组扩展**：
+
+```rust
+actions.add_body_part_type("Leech", #{
+    action: "Leech",
+    damage_type: "Corrosive",
+    base_damage: 15,
+    range: 1,
+    cost: #{ Energy: 300 },
+    special: "heal_self_50pct"
+});
+```
 
 ### 6.2 建筑类型 (`[[structure_types]]`)
 
-10 字段: name / description / category / hits / rcl_required / max_per_room / capacity / attack / sight_range / cost。
-默认 12 种: Spawn, Extension, Tower, Storage, Link, Extractor, Lab, Terminal, Observer, PowerSpawn, Factory, Nuker。
+与身体部件一样，建筑类型可通过 world.toml 定义。默认 12 种基础类型：
+
+```toml
+[[structure_types]]
+name = "Spawn"
+description = "出生点——生成 drone"
+category = "core"
+hits = 5000
+rcl_required = 1
+cost = { Energy = 200 }
+
+[[structure_types]]
+name = "Extension"
+description = "扩展——存储能量，最多 60 个"
+category = "storage"
+hits = 1000
+rcl_required = 2
+max_per_room = 60
+cost = { Energy = 50 }
+
+[[structure_types]]
+name = "Tower"
+description = "防御塔——自动攻击射程内敌方"
+category = "defense"
+hits = 3000
+rcl_required = 3
+attack = { damage = 50, damage_type = "Kinetic", range = 5, cooldown = 10 }
+cost = { Energy = 200 }
+
+[[structure_types]]
+name = "Storage"
+description = "仓库——大容量本地资源存储"
+category = "storage"
+hits = 10000
+rcl_required = 3
+capacity = 1000000
+cost = { Energy = 500 }
+
+[[structure_types]]
+name = "Link"
+description = "链接——短距离能量传输"
+category = "logistics"
+hits = 1000
+rcl_required = 4
+cost = { Energy = 300 }
+
+[[structure_types]]
+name = "Extractor"
+description = "萃取器——从资源点采集矿物"
+category = "production"
+hits = 5000
+rcl_required = 6
+cost = { Energy = 800 }
+
+[[structure_types]]
+name = "Lab"
+description = "实验室——化学反应/资源合成"
+category = "production"
+hits = 5000
+rcl_required = 6
+cost = { Energy = 1000 }
+
+[[structure_types]]
+name = "Terminal"
+description = "终端——市场交易接口"
+category = "logistics"
+hits = 3000
+rcl_required = 5
+cost = { Energy = 500 }
+
+[[structure_types]]
+name = "Observer"
+description = "观察者——扩展视野范围"
+category = "intel"
+hits = 500
+rcl_required = 5
+sight_range = 10
+cost = { Energy = 300 }
+
+[[structure_types]]
+name = "PowerSpawn"
+description = "强化出生点——处理高等级 drone body"
+category = "core"
+hits = 5000
+rcl_required = 7
+cost = { Energy = 5000 }
+
+[[structure_types]]
+name = "Factory"
+description = "工厂——批量生产商品"
+category = "production"
+hits = 5000
+rcl_required = 6
+cost = { Energy = 1500 }
+
+[[structure_types]]
+name = "Nuker"
+description = "核弹发射井——终极武器"
+category = "defense"
+hits = 10000
+rcl_required = 8
+cost = { Energy = 100000 }
+```
+
+**字段说明**：
+
+| 字段 | 类型 | 必需 | 说明 |
+|------|------|------|------|
+| `name` | string | ✅ | 唯一标识符 |
+| `description` | string | ✅ | 人类可读描述 |
+| `category` | enum | ✅ | `core` / `storage` / `defense` / `production` / `logistics` / `intel` |
+| `hits` | u32 | ✅ | 最大 HP |
+| `rcl_required` | u8 | ✅ | 需要的最低 RCL 等级（1-8） |
+| `max_per_room` | u32 | 否 | 每房间最大数量 |
+| `capacity` | u32 | 否 | 资源存储容量 |
+| `attack` | map | 否 | 自动攻击 `{damage, damage_type, range, cooldown}` |
+| `sight_range` | u32 | 否 | 提供的额外视野范围 |
+| `cost` | `{String: u32}` | ✅ | 建造成本 |
 
 ### 6.3 自定义 CommandAction (`[[custom_actions]]`)
 
-8 字段: name / description / damage_type / base_damage / range / special_effect / cooldown / cost。
-内置 special_effect: heal_self, scramble_commands, convert_to_structure, disrupt, fortify。
-Rhai 模组可通过 `actions.register_action_handler()` 注册自定义 handler。
+当新 body part 需要的动作无法映射到已有 CommandAction 时使用。通过 world.toml 声明，引擎启动时动态注册：
+
+```toml
+[[custom_actions]]
+name = "Leech"
+description = "吸血攻击——造成伤害并治疗自身 50%"
+damage_type = "Corrosive"
+base_damage = 15
+range = 1
+special_effect = "heal_self"
+special_param = 0.5
+
+[[custom_actions]]
+name = "Scramble"
+description = "扰乱——随机重排目标下一 tick 的指令执行顺序"
+range = 3
+special_effect = "scramble_commands"
+cooldown = 100
+cost = { Energy = 400 }
+
+[[custom_actions]]
+name = "Fabricate"
+description = "转化——将敌方 drone 转化为己方建筑"
+range = 1
+special_effect = "convert_to_structure"
+cooldown = 500
+cost = { Energy = 2000, Matter = 500 }
+```
+
+**字段说明**：
+
+| 字段 | 类型 | 必需 | 说明 |
+|------|------|------|------|
+| `name` | string | ✅ | 唯一标识符，生成 `CommandAction::{name}` 变体 |
+| `description` | string | ✅ | 人类可读描述 |
+| `damage_type` | string | 否 | 伤害类型，引用 `[[damage_types]]` |
+| `base_damage` | u32 | 否 | 基础伤害值 |
+| `range` | u32 | ✅ | 生效距离 |
+| `special_effect` | string | 否 | 特殊效果标识符。内置：`heal_self`、`scramble_commands`、`convert_to_structure`、`disrupt`、`fortify` |
+| `special_param` | float | 否 | 特殊效果参数 |
+| `cooldown` | u32 | 否 | 冷却时间（tick） |
+| `cost` | `{String: u32}` | 否 | 每次使用消耗（body part spawn 成本在 `[[body_part_types]]` 中独立定义） |
+
+**注册流程**：
+
+1. world.toml 声明 → 引擎启动时解析，动态注册 CommandAction 变体
+2. 已有 special_effect 的由引擎内置 handler 处理
+3. 全新效果的通过 Rhai 模组注册 handler
+4. IDL 自动生成——新 action 自动暴露给 SDK 和 MCP
+
+**Rhai handler 注册**：
+
+```rust
+actions.register_action_handler("MindControl", |entity, target, params| {
+    actions.set_entity_flag(target, "mind_controlled", true);
+    actions.schedule_flag_removal(target, "mind_controlled", 50);
+});
+```
 
 ### 6.4 伤害类型 (`[[damage_types]]`)
 
-3 字段: name / description / default_resistance。
-默认 6 种: Kinetic, Thermal, EMP, Sonic, Corrosive, Psionic。
-抗性两层叠加: 组件抗性 × 属性抗性。免疫通过 `actions.set_entity_flag(id, "immune_X", true)` 实现。
+伤害类型和抗性体系是**世界规则的一部分**——像资源类型一样可扩展：
+
+```toml
+[[damage_types]]
+name = "Kinetic"
+description = "动能冲击——碰撞、钝击、爆炸"
+default_resistance = 1.0
+
+[[damage_types]]
+name = "Thermal"
+description = "热能——火焰、激光、等离子"
+default_resistance = 1.0
+
+[[damage_types]]
+name = "EMP"
+description = "电磁脉冲——电击、过载、电子干扰"
+default_resistance = 1.0
+
+[[damage_types]]
+name = "Sonic"
+description = "声波——振动、共振、超声波"
+default_resistance = 1.0
+
+[[damage_types]]
+name = "Corrosive"
+description = "腐蚀——酸液、纳米分解、生化"
+default_resistance = 1.0
+
+[[damage_types]]
+name = "Psionic"
+description = "心灵——精神攻击、认知干扰、AI 劫持"
+default_resistance = 1.0
+```
+
+**字段说明**：
+
+| 字段 | 类型 | 必需 | 说明 |
+|------|------|------|------|
+| `name` | string | ✅ | 唯一标识符 |
+| `description` | string | ✅ | 人类可读描述 |
+| `default_resistance` | float | ✅ | 默认抗性倍率（1.0 = 无减免） |
+
+**抗性机制**：两层叠加——组件抗性 × 属性抗性 = 最终倍率。
+
+```toml
+[resistances.Tough]
+Kinetic = 0.5     # Tough 对动能减半
+Sonic = 0.5       # 减震
+
+[resistances.Structure]
+EMP = 2.0         # 建筑弱电磁
+Corrosive = 1.5   # 建筑怕腐蚀
+```
+
+**免疫**：Rhai 模组通过 `actions.set_entity_flag(id, "immune_Thermal", true)` 赋予免疫（倍率 = 0）。
+
+**模组扩展**：
+
+```rust
+actions.add_damage_type("Fire", 1.0);
+actions.set_resistance("Tough", "Fire", 0.3);
+actions.set_attribute(entity_id, "Flaming", true);
+```
+
+### 6.5 Body part 伤害绑定
+
+| Body Part | 伤害类型 | 基础伤害 | 说明 |
+|-----------|---------|---------|------|
+| Attack | Kinetic | 30 | 近战，距离 1，低成本高伤害 |
+| RangedAttack | Kinetic | 25 | 远程，距离 3，射程优势 |
+| Tower（建筑） | Kinetic | 50 | 自动攻击 |
+| Heal | — | 12 | 治疗量 |
+
+### 6.6 特殊攻击方式
+
+除 HP 伤害外，以下特殊攻击作为 Command 或 body part 能力存在。每种有独立冷却、资源消耗和抗性：
+
+| 攻击 | body part | 效果 | 冷却 | 消耗 | 抗性 |
+|------|----------|------|------|------|------|
+| Hack | Claim | 夺取 drone 转 Neutral | 200 tick | 1000E | Psionic |
+| Drain | Carry+Work | 窃取资源，每 tick transfer | 50 tick | 200E/tick | EMP |
+| Overload | RangedAttack | 目标 fuel -500k | 200 tick | 300E | EMP |
+| Debilitate | Work | 指定伤害类型抗性 ×2, 50 tick | 150 tick | 200E | Corrosive |
+| Disrupt | Attack | 打断目标动作 | 50 tick | 100E | Sonic |
+| Fortify | Tough | 护盾 ×0.5 + 清除负面状态 | 300 tick | 400E | — |
+
+**通用规则**：
+- 特殊攻击与 HP 伤害互斥——同一 body part 同一 tick 只能执行一种
+- 持续型攻击在 drone 移动或被 Disrupt 时中断
+- 所有特殊攻击受 `damage_multiplier` 世界规则影响
