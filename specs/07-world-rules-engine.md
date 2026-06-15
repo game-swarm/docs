@@ -85,6 +85,7 @@ regeneration = 10
 # ═════════════════════════════════════
 
 [drone]
+lifespan = 1500                 # drone 基础存活 tick 数
 env_vars = true
 memory_size = 1024
 memory_spawn_cost = {}          # 每 byte 孵化成本
@@ -412,6 +413,22 @@ empire-upkeep/
 
 > **设计理由**: 无"允许未签名"模式——防止服主疏忽导致恶意模组注入。开发调试时使用 `swarm dev sign` 生成临时开发密钥签名。
 
+### 5.1a 国际化
+
+模组的 `description` 和配置参数的 `description` 字段支持多语言。每个 `[[mods]]` 条目可在 `[mods.i18n]` 下按语言代码提供本地化描述：
+
+```toml
+[[mods]]
+name = "empire-upkeep"
+description = "Empire upkeep — drones and rooms cost energy per tick"
+[mods.i18n.zh]
+description = "帝国维护费——drone 和房间每 tick 消耗能量"
+[mods.i18n.ja]
+description = "帝国維持費——ドローンと部屋が毎tickエネルギーを消費"
+```
+
+引擎根据请求的 `Accept-Language` 头或 MCP 客户端的 `locale` 参数返回对应语言。缺少翻译时回退到 `en`，再回退到顶层 `description` 字段。
+
 ## 6. World vs Arena 默认值
 
  规则 | World | Arena |
@@ -550,8 +567,9 @@ cost = { Energy = 10 }
  `damage_type` | string | 条件 | 攻击类型的伤害类型，引用 `[[damage_types]]` 中的 name |
  `base_damage` | u32 | 条件 | 每 part 的基础伤害值。`damage_type` 存在时必需 |
  `base_heal` | u32 | 条件 | 每 part 的基础治疗量。action=Heal 时必需 |
- `range` | u32 | ✅ | 生效距离。注：CommandAction 的 `in_range()` 校验可覆盖此值（如 Heal body part range=1 但实际命令有效距离=3） |
- `cost` | `{String: u32}` | ✅ | 生成该 body part 的资源消耗，key 为资源名 |
+ | `range` | u32 | ✅ | 生效距离。注：CommandAction 的 `in_range()` 校验可覆盖此值（如 Heal body part range=1 但实际命令有效距离=3） |
+ | `age_modifier` | i32 | 否 | 对 drone lifespan 的修正（正=延寿，负=折寿）。TOUGH +100，ATTACK -80 等 |
+ | `cost` | `{String: u32}` | ✅ | 生成该 body part 的资源消耗，key 为资源名 |
 
 **Body part → CommandAction 绑定**：
 
