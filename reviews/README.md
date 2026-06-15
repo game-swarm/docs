@@ -23,14 +23,7 @@
 | [R5](R5/) | 7 份评审 | R5-SPEAKER-VERDICT.md | 4 残余修正，零架构矛盾 |
 | [R6](R6/) | 8 份评审 | R6-SPEAKER-VERDICT.md | 终轮：8/8 CONDITIONAL_APPROVE |
 | R7-R12 | 迭代细化 | 各轮目录 | 持续收敛 |
-| [R13](R13/) | 9 份评审 | R13-SPEAKER-VERDICT.md | 发现 10 项共识 Blocker，产出 Speaker Verdict |
-| [R14](R14/) | 终审确认 | R14-CONFIRMATION.md | **14/14 通过，Phase 0 确认冻结** ✅ |
+| [R13](R13/) | 9 份评审 | R13-SPEAKER-VERDICT.md | 发现 10 项共识 Blocker |
+| [R14](R14/) | 终审确认 | R14-CONFIRMATION.md | **14/14 通过，Phase 0 冻结** ✅ |
 
-## 审查状态
-
-- 审查者：hermes+kagurazaka
-- 最后审查日期：2026-06-15
-- 整体审查状态：**已通过（R14 终审确认冻结 → Phase 0 Frozen）**
-- 实现进度：**全部完成** — 83 项: ✅83 ⚠️0 ❌0 (100%)
-- 测试总计: engine 144 + sandbox 9 + sdk-rust 8 + sdk-ts 11 + gateway 7 + frontend 8 = **187**
-- 详见 [ROADMAP.md](../ROADMAP.md)
+实现进度 → [ROADMAP.md](../ROADMAP.md)
