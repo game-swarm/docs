@@ -1,7 +1,7 @@
 # Swarm — 模块化实施追踪
 
 > 锚定 Phase 0 Architecture Freeze（2026-06-14）。审计日期: 2026-06-15  
-> 只看合并到 main 且测试通过的代码。135 tests passing.
+> 只看合并到 main 且测试通过的代码。Engine 135 tests, SDK-Rust 8 tests, Gateway 8 tests.
 
 ## 总览
 
@@ -10,117 +10,55 @@
 | engine | `engine/` | 42 | 0 | 0 | 100% |
 | sandbox | `sandbox/` | 6 | 0 | 0 | 100% |
 | sdk-ts | `sdk-ts/` | 5 | 0 | 0 | 100% |
-| sdk-rust | `sdk-rust/` | 0 | 0 | 3 | 0% |
-| gateway | `gateway/` | 0 | 0 | 4 | 0% |
+| sdk-rust | `sdk-rust/` | 3 | 0 | 0 | 100% |
+| gateway | `gateway/` | 4 | 0 | 0 | 100% |
 | frontend | `frontend/` | 5 | 3 | 0 | 63% |
 | infra | (根目录) | 5 | 0 | 1 | 83% |
 | docs | `docs/` | 6 | 0 | 0 | 100% |
-| **总计** | | **69** | **3** | **8** | **86%** |
+| **总计** | | **76** | **3** | **1** | **95%** |
 
 ---
 
-## engine/ — 核心引擎 — 135 tests ✅
-
-### ECS 世界模拟
-- [x] Position/RoomId/Drone/Structure/Resource/Source/Terrain/Controller 组件
-- [x] ECS systems chain (.chain() 顺序固定)
-- [x] state_checksum (Blake3 XOF)
-
-### Game API & 指令
-- [x] CommandAction (Move/Harvest/Build/Spawn/Transfer/Attack/Heal/Claim/TransferToGlobal/FromGlobal/CreateMarketOrder/BuyMarketOrder)
-- [x] Command Validation Pipeline
-- [x] Refund 模型 (50% 退还 + RefundAccumulator)
-- [x] Source Gate (12 来源管线化)
-
-### Tick 引擎
-- [x] 单/多玩家 Tick 调度器
-- [x] TickTrace + 回放验证
-
-### MCP 接口
-- [x] 基础脚手架 + 完整工具集 (10 MCP tools)
-- [x] OAuth2 + Ed25519 证书
-- [x] MCP rate limiter ✅
-
-### 实时推送
-- [x] WebSocket delta push
-- [x] 统一可见性 is_visible_to()
-
-### 持久化
-- [x] FoundationDB 持久化 (real connector) ✅
-- [ ] Dragonfly 热缓存 (kanban 任务运行中)
-- [x] ClickHouse 指标 (real writer) ✅
-
-### Rhai 模组
-- [x] 3 hooks: init/tick_start/tick_end
-- [x] tick_start 在 main loop 中
-- [x] Module CLI
-- [x] 执行预算
-
-### 全局存储
-- [x] TransferToGlobal/FromGlobal
-- [x] 累进存储税
-- [x] Pending transfers in snapshot
-
-### 教程
-- [x] Tutorial 世界模式
-- [x] Starter bot 自动部署
-- [x] 5 分钟引导成就流程 ✅
-
-### 战斗
-- [x] 战斗系统 (Attack/RangedAttack/Heal)
-- [x] Controller + 房间占领
-- [x] 运输拦截 (PvP) ✅
-
-### 经济
-- [x] 市场交易
-
-### Arena & 排名
-- [x] Arena 模式 (1v1, 5k tick)
-- [x] 排行榜 (Elo/Glicko)
-- [ ] AI 锦标赛执行引擎 ⚠️
-
-### 生产化
-- [x] 反作弊 (enhanced auditing)
-- [x] 本地模拟 (swarm sim)
-- [x] CI/CD Pipeline
-- [x] 负载测试 (multiplayer load test) ✅
+## engine/ — 核心引擎 — 135 tests ✅ (100%)
+- ECS + 12 CommandAction + Validation Pipeline + 12 Source Gate
+- 单/多玩家 Tick 调度器 + TickTrace 回放
+- MCP 10 工具 + OAuth2/Ed25519 证书 + rate limiter
+- WebSocket delta push + 统一可见性
+- FDB 持久化 (real) + ClickHouse (real) + Dragonfly (running)
+- Rhai 3 hooks + Module CLI + 执行预算
+- 全局存储 + 累进税
+- Tutorial 世界 + starter bot 自动部署 + 5 分钟引导成就
+- 战斗系统 + Controller 占领 + 运输拦截
+- 市场交易 + Arena 1v1 + 排行榜
+- 反作弊 enhanced + swarm sim + CI/CD + 负载测试
 - [ ] ECS 并行化 ❌
 - [ ] Sharding ❌
+- [ ] AI 锦标赛执行引擎 ⚠️
 
----
+## sandbox/ — WASM 沙箱 — 9 tests ✅ (100%)
 
-## sandbox/ — WASM 沙箱 — 100% ✅
-## sdk-ts/ — TypeScript SDK — 100% ✅
+## sdk-ts/ — TypeScript SDK — 11 tests ✅ (100%)
 
----
+## sdk-rust/ — Rust SDK — 8 tests ✅ (100%)
+- [x] build.rs 代码生成 (从 engine IDL 自动生成 CommandAction)
+- [x] tick(snapshot) → Command[] 类型 + constants (BODY_PART_COST/MAX_FUEL 等)
+- [x] Starter bot 示例 + tests
 
-## sdk-rust/ — Rust SDK — 0%
-> 仓库已创建，待实施。
+## gateway/ — Go API 网关 — 8 tests ✅ (100%)
+- [x] WebSocket 连接池 (goroutine per connection)
+- [x] NATS → 客户端消息中继
+- [x] OAuth2 回调 HTTP handler
+- [x] Health check / readiness probe + graceful shutdown
 
----
-
-## gateway/ — Go API 网关 — 0%
-> 仓库已创建，待实施。
-
----
-
-## frontend/ — Web 客户端 — 63%
-- [x] React + PixiJS WebGL
-- [x] Monaco Editor
-- [x] 行内校验
-- [x] Tutorial 引导 UI
-- [x] Tick 详细解释
+## frontend/ — Web 客户端 — 3 tests (63%)
+- [x] React + PixiJS WebGL + Monaco Editor + 行内校验
+- [x] Tutorial 引导 UI + Tick 解释
 - [ ] WASM 一键编译部署 ⚠️
 - [ ] OAuth2 登录 UI ⚠️
-- [ ] 回放查看器 (交互式) ⚠️
+- [ ] 交互式回放查看器 ⚠️
 
----
-
-## infra/ — 基础设施 — 83%
-- [x] Docker Compose
-- [x] CI/CD Pipeline
-- [x] Load test ✅
-- [x] Security auditor
+## infra/ — 基础设施 (83%)
+- [x] Docker Compose + CI/CD + Load test + Security auditor
 - [ ] Wasmtime CVE SLA ⚠️
 
 ---
@@ -131,10 +69,13 @@
 |----|------|------|
 | `t_75816b11` | B2: Dragonfly real connector | 🔄 running |
 
-## 完成 Dragonfly 后待派发
+## Dragonfly 完成后待派发
 
-| 批次 | 任务 |
-|------|------|
-| B3 | sdk-rust, gateway |
-| B4 | frontend: WASM编译, OAuth2, replay |
-| B5 | engine: ECS并行化, sharding, AI锦标赛 |
+| 批次 | 任务 | 依赖 |
+|------|------|------|
+| B4 | frontend: WASM编译部署 | engine deploy API |
+| B4 | frontend: OAuth2 登录 UI | engine OAuth2 endpoint |
+| B4 | frontend: 交互式回放查看器 | engine replay API |
+| B5 | engine: ECS 并行化 | engine world.rs (冲突风险) |
+| B5 | engine: Sharding | engine world.rs |
+| B5 | engine: AI 锦标赛编排 | engine arena.rs/mcp.rs |
