@@ -1,7 +1,7 @@
 # Swarm — 模块化实施追踪
 
 > 锚定 Phase 0 Architecture Freeze（2026-06-14）。审计日期: 2026-06-15  
-> 只看合并到 main 且测试通过的代码。Engine 144 tests, SDK-Rust 8 tests, Gateway 7 tests.
+> 只看合并到 main 且测试通过的代码。Engine 150 tests, SDK-Rust 8 tests, Gateway 7 tests.
 
 ## 总览
 
@@ -16,12 +16,12 @@
 | infra | (根目录) | 6 | 0 | 0 | 100% |
 | docs | `docs/` | 6 | 0 | 0 | 100% |
 | **小计** | | **83** | **0** | **0** | **100%** |
-| 审计缺口 (B6-B11) | engine+gateway+sandbox | 2 | 🔄4 | 0 | 33% |
-| **总计** | | **85** | **4** | **0** | **96%** |
+| 审计缺口 (B6-B11) | engine+gateway+sandbox | 10 | 🔄1 | 0 | 91% |
+| **总计** | | **93** | **1** | **0** | **99%** |
 
 ---
 
-## engine/ — 核心引擎 — 144 tests ✅ (100%)
+## engine/ — 核心引擎 — 150 tests ✅
 - ECS + 12 CommandAction + Validation Pipeline + 12 Source Gate
 - 单/多玩家 Tick 调度器 + TickTrace 回放
 - MCP 10 工具 + OAuth2/Ed25519 证书 + rate limiter
@@ -70,9 +70,9 @@
 | 任务 | 缺口 | 仓库 | 状态 |
 |------|------|------|------|
 | B6 | MCP 工具补齐 (6 tools + explain_last_tick) | engine/mcp.rs | 🔄 running |
-| B7 | 战斗系统 (RangedAttack/Claim/Controller/RCL) | engine/command+systems | 🔄 running |
-| B8 | World Rules 可配置化 (15项规则 + world.toml) | engine/world+resources | 🔄 running |
-| B9 | 可见性高级特性 (fog_of_war/player_view/spectate) | engine/visibility.rs | 🔄 running |
+| B7 | 战斗系统 (RangedAttack/Claim/Controller/RCL) | engine/command+systems | ✅ done (`b0c6350`) |
+| B8 | World Rules 可配置化 (15项规则 + world.toml) | engine/world+resources | ✅ done (`7bc855f`) |
+| B9 | 可见性高级特性 (fog_of_war/player_view/spectate) | engine/visibility.rs | ✅ done (`bf04af3`) |
 | B10 | Gateway OAuth2 真实 provider 集成 | gateway/ | ✅ done (`dfa3f80`) |
 | B11 | WASM 沙箱 OS 进程隔离 (seccomp/cgroup) | sandbox/ | ✅ done (`05d8c5f`) |
 
@@ -82,19 +82,9 @@
 
 | ID | 差距 | DESIGN 目标 | 当前实现 | 锚定点 |
 |----|------|-----------|---------|--------|
-| G1 | BodyPart 不可配置 | world.toml `[[body_part_types]]` 8 字段 schema (action/damage_type/base_damage/passive/range/cost) | 硬编码 enum, ActionCosts 常量 | DESIGN §8.2 身体部件类型定义 |
-| G2 | 无伤害类型体系 | 6 种伤害类型 (Kinetic/Thermal/EMP/Sonic/Corrosive/Psionic) + 抗性 | 固定数值 damage = parts × 30 | DESIGN §8.2 伤害与武器类型 |
-| G3 | 身体部件单资源成本 | 多资源消耗 (如 `Attack = {Crystal=80, Gas=20}`) | 仅 Energy | DESIGN §8.2 资源定义 |
-| G4 | 无属性级抗性 | Rhai 模组可赋予动态属性 (Shielded→0.7×) | 无 | DESIGN §8.2 属性级抗性 |
-| G5 | StructureType 不可配置 | world.toml `[[structure_types]]` 12 字段 schema (category/rcl_required/attack/capacity/...) | 硬编码 enum, 12 种 | DESIGN §8.2 自定义建筑类型 |
-| G6 | CommandAction 不可扩展 | world.toml `[[custom_actions]]` 注册新 action (damage_type/special_effect/cooldown) | 固定 12 种 CommandAction | DESIGN §8.2 自定义 CommandAction |
-
----
-
-## C1-C3: 架构缺口补齐 (DESIGN 可扩展性)
-
-| 任务 | 缺口 | 依赖 | 状态 |
-|------|------|------|------|
-| C1 | Combat 引擎 (G1+G2+G4: BodyPart可配置 + 伤害类型 + 抗性) | — | 🔄 running |
-| C2 | 多资源成本 (G3: BodyPart/Structure 多资源 spawn) | — | 🔄 running |
-| C3 | 可扩展架构 (G5+G6: StructureType + CommandAction) | → C1 | ◻ todo |
+| G1 | BodyPart 不可配置 | world.toml `[[body_part_types]]` 8 字段 schema | ✅ done (`0e2454e`) | DESIGN §8.2 |
+| G2 | 无伤害类型体系 | 6 种伤害类型 + 抗性 | ✅ done (`0e2454e`) | DESIGN §8.2 |
+| G3 | 身体部件单资源成本 | 多资源消耗 | ✅ done (`8d09471`) | DESIGN §8.2 |
+| G4 | 无属性级抗性 | Rhai 模组动态属性 | ✅ done (`0e2454e`) | DESIGN §8.2 |
+| G5 | StructureType 不可配置 | `[[structure_types]]` | ✅ done (`1381e7a`) | DESIGN §8.2 |
+| G6 | CommandAction 不可扩展 | `[[custom_actions]]` | ✅ done (`1381e7a`) | DESIGN §8.2 |
