@@ -640,33 +640,185 @@ cost = { Energy = 100000 }
 | `sight_range` | u32 | 否 | 提供的额外视野范围 |
 | `cost` | `{String: u32}` | ✅ | 建造成本 |
 
-### 6.3 自定义 CommandAction (`[[custom_actions]]`)
+### 6.3 特殊效果类型定义 (`[[special_effects]]`)
 
-当新 body part 需要的动作无法映射到已有 CommandAction 时使用。通过 world.toml 声明，引擎启动时动态注册：
+与 body_part_types 和 damage_types 一样，特殊效果可通过 world.toml 定义和扩展。每个条目定义一种可由 `[[custom_actions]]` 引用的效果：
 
 ```toml
-[[custom_actions]]
-name = "Leech"
-description = "吸血攻击——造成伤害并治疗自身 50%"
-damage_type = "Corrosive"
-base_damage = 15
-range = 1
-special_effect = "heal_self"
-special_param = 0.5
+[[special_effects]]
+name = "hack"
+description = "夺取目标 drone——5 tick 控制锁后转为 Neutral"
+handler = "hack"
+target = "enemy_drone"
+duration = 5
+resistance = "Psionic"
+
+[[special_effects]]
+name = "drain"
+description = "从目标建筑/存储窃取资源"
+handler = "drain"
+target = "enemy_structure"
+duration = 0
+resistance = "EMP"
+
+[[special_effects]]
+name = "overload"
+description = "消耗目标 fuel budget -500k"
+handler = "overload"
+target = "enemy_player"
+duration = 0
+resistance = "EMP"
+
+[[special_effects]]
+name = "debilitate"
+description = "易伤——指定伤害类型抗性×2，持续 50 tick"
+handler = "debilitate"
+target = "enemy_any"
+duration = 50
+resistance = "Corrosive"
+
+[[special_effects]]
+name = "disrupt"
+description = "打断目标持续动作，不造成 HP 伤害"
+handler = "disrupt"
+target = "enemy_drone"
+duration = 0
+resistance = "Sonic"
+
+[[special_effects]]
+name = "fortify"
+description = "护盾+净化——所有抗性×0.5，清除负面状态"
+handler = "fortify"
+target = "self_or_ally"
+duration = 100
+
+[[special_effects]]
+name = "leech"
+description = "吸血——造成伤害的 50% 治疗自身"
+handler = "leech"
+target = "enemy_any"
+duration = 0
+resistance = "Corrosive"
+
+[[special_effects]]
+name = "fabricate"
+description = "转化敌方 drone 为己方建筑"
+handler = "fabricate"
+target = "enemy_drone"
+duration = 0
+resistance = "Psionic"
+
+[[special_effects]]
+name = "heal_self"
+description = "造成伤害的指定比例治疗自身"
+handler = "heal_self"
+target = "enemy_any"
+duration = 0
+
+[[special_effects]]
+name = "scramble_commands"
+description = "随机重排目标下 tick 指令执行顺序"
+handler = "scramble_commands"
+target = "enemy_drone"
+duration = 0
+
+[[special_effects]]
+name = "convert_to_structure"
+description = "将目标 drone 转化为己方建筑"
+handler = "convert_to_structure"
+target = "enemy_drone"
+duration = 0
+resistance = "Psionic"
+```
+
+**字段说明**：
+
+| 字段 | 类型 | 必需 | 说明 |
+|------|------|------|------|
+| `name` | string | ✅ | 唯一标识符，被 `[[custom_actions]].special_effect` 引用 |
+| `description` | string | ✅ | 人类可读描述 |
+| `handler` | string | ✅ | 引擎内置处理器。内置：`hack`, `drain`, `overload`, `debilitate`, `disrupt`, `fortify`, `leech`, `fabricate`, `heal_self`, `scramble_commands`, `convert_to_structure` |
+| `target` | enum | ✅ | 目标类型：`enemy_drone`, `enemy_structure`, `enemy_player`, `enemy_any`, `self`, `ally`, `self_or_ally`, `any` |
+| `duration` | u32 | ✅ | 持续 tick 数（0 = 即时） |
+| `resistance` | string | 否 | 目标抗性检查，引用 `[[damage_types]]`。无此字段 = 不检查抗性 |
+
+**注册流程**：
+
+```
+1. world.toml 声明 [[special_effects]] → 引擎解析注册到 SpecialEffectRegistry
+2. [[custom_actions]] 通过 special_effect = "name" 引用 → 引擎绑定 handler
+3. 引擎内置所有 handler — 无需 Rhai 即可使用
+4. 服主新增 [[custom_actions]] 引用已有 [[special_effects]] → 无需改 Rust 代码
+5. 需全新 handler 时通过 Rhai 模组注册
+```
+
+### 6.4 自定义 CommandAction (`[[custom_actions]]`)
+
+当新 body part 需要的动作无法映射到已有 CommandAction 时使用。通过 world.toml 声明 `[[custom_actions]]` 条目并引用 `[[special_effects]]` 中定义的效果类型：
+
+```toml
+# 以下 8 个特殊攻击在所有世界中预注册
+# 服主可禁用（注释/删除）或修改参数
 
 [[custom_actions]]
-name = "Scramble"
-description = "扰乱——随机重排目标下一 tick 的指令执行顺序"
-range = 3
-special_effect = "scramble_commands"
-cooldown = 100
+name = "Hack"
+description = "夺取 drone——5 tick 控制锁后转为 Neutral"
+special_effect = "hack"
+cooldown = 200
+cost = { Energy = 1000 }
+
+[[custom_actions]]
+name = "Drain"
+description = "从目标建筑窃取资源"
+special_effect = "drain"
+cooldown = 50
+cost = { Energy = 200 }
+
+[[custom_actions]]
+name = "Overload"
+description = "消耗目标 fuel budget 500k"
+special_effect = "overload"
+cooldown = 200
+cost = { Energy = 300 }
+
+[[custom_actions]]
+name = "Debilitate"
+description = "施加易伤——指定伤害类型抗性×2，持续 50 tick"
+special_effect = "debilitate"
+special_param = 2.0
+cooldown = 150
+cost = { Energy = 200 }
+
+[[custom_actions]]
+name = "Disrupt"
+description = "打断目标持续动作"
+special_effect = "disrupt"
+cooldown = 50
+cost = { Energy = 100 }
+
+[[custom_actions]]
+name = "Fortify"
+description = "护盾+净化——所有抗性×0.5，清除负面状态"
+special_effect = "fortify"
+special_param = 0.5
+cooldown = 300
 cost = { Energy = 400 }
 
 [[custom_actions]]
-name = "Fabricate"
-description = "转化——将敌方 drone 转化为己方建筑"
+name = "Leech"
+description = "吸血攻击——伤害 50% 治疗自身，Corrosive 15 dmg"
+damage_type = "Corrosive"
+base_damage = 15
 range = 1
-special_effect = "convert_to_structure"
+special_effect = "leech"
+special_param = 0.5
+cost = { Energy = 300 }
+
+[[custom_actions]]
+name = "Fabricate"
+description = "将敌方 drone 转化为己方建筑"
+range = 1
+special_effect = "fabricate"
 cooldown = 500
 cost = { Energy = 2000, Matter = 500 }
 ```
@@ -675,24 +827,17 @@ cost = { Energy = 2000, Matter = 500 }
 
 | 字段 | 类型 | 必需 | 说明 |
 |------|------|------|------|
-| `name` | string | ✅ | 唯一标识符，生成 `CommandAction::{name}` 变体 |
+| `name` | string | ✅ | 唯一标识符 |
 | `description` | string | ✅ | 人类可读描述 |
 | `damage_type` | string | 否 | 伤害类型，引用 `[[damage_types]]` |
 | `base_damage` | u32 | 否 | 基础伤害值 |
 | `range` | u32 | ✅ | 生效距离 |
-| `special_effect` | string | 否 | 特殊效果标识符。内置：`heal_self`、`scramble_commands`、`convert_to_structure`、`disrupt`、`fortify` |
+| `special_effect` | string | 否 | 特殊效果标识符，引用 `[[special_effects]]` 中定义的 name |
 | `special_param` | float | 否 | 特殊效果参数 |
 | `cooldown` | u32 | 否 | 冷却时间（tick） |
 | `cost` | `{String: u32}` | 否 | 每次使用消耗（body part spawn 成本在 `[[body_part_types]]` 中独立定义） |
 
-**注册流程**：
-
-1. world.toml 声明 → 引擎启动时解析，动态注册 CommandAction 变体
-2. 已有 special_effect 的由引擎内置 handler 处理
-3. 全新效果的通过 Rhai 模组注册 handler
-4. IDL 自动生成——新 action 自动暴露给 SDK 和 MCP
-
-**Rhai handler 注册**：
+**Rhai handler 注册**（全新效果，TOML 无法表达时）：
 
 ```rust
 actions.register_action_handler("MindControl", |entity, target, params| {
@@ -701,7 +846,7 @@ actions.register_action_handler("MindControl", |entity, target, params| {
 });
 ```
 
-### 6.4 伤害类型 (`[[damage_types]]`)
+### 6.5 伤害类型 (`[[damage_types]]`)
 
 伤害类型和抗性体系是**世界规则的一部分**——像资源类型一样可扩展：
 
@@ -767,7 +912,7 @@ actions.set_resistance("Tough", "Fire", 0.3);
 actions.set_attribute(entity_id, "Flaming", true);
 ```
 
-### 6.5 Body part 伤害绑定
+### 6.6 Body part 伤害绑定
 
 | Body Part | 伤害类型 | 基础伤害 | 说明 |
 |-----------|---------|---------|------|
@@ -776,9 +921,9 @@ actions.set_attribute(entity_id, "Flaming", true);
 | Tower（建筑） | Kinetic | 50 | 自动攻击 |
 | Heal | — | 12 | 治疗量 |
 
-### 6.6 特殊攻击方式
+### 6.7 特殊攻击方式
 
-除 HP 伤害外，以下特殊攻击作为 Command 或 body part 能力存在。每种有独立冷却、资源消耗和抗性：
+所有特殊攻击通过 `[[special_effects]]` + `[[custom_actions]]` 可配置注册。
 
 | 攻击 | body part | 效果 | 冷却 | 消耗 | 抗性 |
 |------|----------|------|------|------|------|
