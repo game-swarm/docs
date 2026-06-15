@@ -88,3 +88,13 @@
 | G4 | 无属性级抗性 | Rhai 模组可赋予动态属性 (Shielded→0.7×) | 无 | DESIGN §8.2 属性级抗性 |
 | G5 | StructureType 不可配置 | world.toml `[[structure_types]]` 12 字段 schema (category/rcl_required/attack/capacity/...) | 硬编码 enum, 12 种 | DESIGN §8.2 自定义建筑类型 |
 | G6 | CommandAction 不可扩展 | world.toml `[[custom_actions]]` 注册新 action (damage_type/special_effect/cooldown) | 固定 12 种 CommandAction | DESIGN §8.2 自定义 CommandAction |
+
+---
+
+## C1-C3: 架构缺口补齐 (DESIGN 可扩展性)
+
+| 任务 | 缺口 | 依赖 | 状态 |
+|------|------|------|------|
+| C1 | Combat 引擎 (G1+G2+G4: BodyPart可配置 + 伤害类型 + 抗性) | — | 🔄 running |
+| C2 | 多资源成本 (G3: BodyPart/Structure 多资源 spawn) | — | 🔄 running |
+| C3 | 可扩展架构 (G5+G6: StructureType + CommandAction) | → C1 | ◻ todo |
