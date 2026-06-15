@@ -75,3 +75,14 @@
 | B9 | 可见性高级特性 (fog_of_war/player_view/spectate) | engine/visibility.rs | 🔄 running |
 | B10 | Gateway OAuth2 真实 provider 集成 | gateway/ | ✅ done (`dfa3f80`) |
 | B11 | WASM 沙箱 OS 进程隔离 (seccomp/cgroup) | sandbox/ | ✅ done (`05d8c5f`) |
+
+---
+
+## 设计与实现差距（DESIGN.md 目标 vs 当前代码）
+
+| ID | 差距 | DESIGN 目标 | 当前实现 | 锚定点 |
+|----|------|-----------|---------|--------|
+| G1 | BodyPart 不可配置 | world.toml 定义 body part 成本、伤害类型绑定 | 硬编码 enum, ActionCosts 常量 | DESIGN §8 body_part.* |
+| G2 | 无伤害类型体系 | 6 种伤害类型 (Kinetic/Thermal/EMP/Sonic/Corrosive/Psionic) + 抗性 | 固定数值 damage = parts × 30 | DESIGN §8.2 伤害与武器类型 |
+| G3 | 身体部件单资源成本 | 多资源消耗 (如 `Attack = {Crystal=80, Gas=20}`) | 仅 Energy | DESIGN §8.2 资源定义 |
+| G4 | 无属性级抗性 | Rhai 模组可赋予动态属性 (Shielded→0.7×) | 无 | DESIGN §8.2 属性级抗性 |
