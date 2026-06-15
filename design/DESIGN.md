@@ -1956,24 +1956,34 @@ swarm mod config empire-upkeep onshortfall "damage"
 # 在世界中启用（引用已安装的模组名）
 swarm world add-mod empire-upkeep
 
-# 更新模组（git pull + checkout tag，自动更新 rev）
+# 更新模组（git pull，自动更新 mods.lock）
 swarm mod update empire-upkeep
 ```
 
-**版本锁定**：`world.toml` 中 `version` 和 `rev` 共存。`version` 为 git tag（人类可读，表达服主意图），`rev` 为 commit hash（不可变，锁定精确版本）。`swarm mod add` 和 `swarm mod update` 自动写入当前检出 commit 的 hash，服主无需手填。引擎启动时若本地 checkout 的 hash 与 `rev` 不匹配，发出告警但允许继续——服主可能在开发 fork 中迭代。生产环境建议始终锁定 `rev` 以保证可复现部署。
+**版本锁定**：`world.toml` 和 `mods.lock` 分离——前者由服主编辑（表达意图），后者由工具自动生成（记录解析结果）。
 
-世界配置中引用：
+```
+world.toml              mods.lock
+──────────              ─────────
+服主手写                 自动生成，不应手改
+version = "1.2"         rev = "a1b2c3d..."
+"我要这个 tag"          "已解析为这个 commit"
+提交到 git               提交到 git
+```
+
+`swarm mod add` 和 `swarm mod update` 自动将当前 checkout 的 commit hash 写入 `mods.lock`。引擎启动时以 `mods.lock` 为准进行 checkout；若所在 commit 与 `world.toml` 声明的 tag 不对应（tag 被 force-push），发出告警。`mods.lock` 可选包含 content hash（`checksum` 字段），提供类似 `Cargo.lock` 的完整性校验。
+
+世界配置中引用（`world.toml`，仅表达意图）：
 
 ```toml
-# world.toml
+# world.toml — 服主编辑，表达意图
 [world]
 name = "Survival World"
 
 [[mods]]
 name = "empire-upkeep"
 source = "https://git.kagurazakalan.com/swarm/mods/empire-upkeep.git"
-version = "1.2.0"              # git tag — 人类可读，表达意图
-rev = "a1b2c3d4e5f6..."        # commit hash — 不可变，锁定精确版本
+version = "1.2.0"              # git tag — 人类可读
 [mods.config]
 drone_cost = 5
 room_superlinear = 2            # fixed<u32,4>: 0.0002 超线性系数
@@ -1983,9 +1993,24 @@ onshortfall = "damage"
 name = "resource-decay"
 source = "https://git.kagurazakalan.com/swarm/mods/resource-decay.git"
 version = "0.3.0"
-rev = "e5f6a1b2c3d4..."
 [mods.config]
 decay_rate = 0.001
+```
+
+```toml
+# mods.lock — 工具自动生成，记录解析结果，与 world.toml 一并提交
+[[mods]]
+name = "empire-upkeep"
+source = "https://git.kagurazakalan.com/swarm/mods/empire-upkeep.git"
+version = "1.2.0"
+rev = "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2"   # 不可变 commit hash
+checksum = "sha256:8f3a..."                          # 可选：内容完整性校验
+
+[[mods]]
+name = "resource-decay"
+source = "https://git.kagurazakalan.com/swarm/mods/resource-decay.git"
+version = "0.3.0"
+rev = "e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2"
 ```
 
 #### 引擎集成
