@@ -1,8 +1,6 @@
-# P0-7: World Rules Engine — 世界规则配置规范
+# World Rules Engine — 世界规则配置规范
 
 > **状态**: 当前 | **日期**: 2026-06-15
-
-> **状态**: 当前 | **关联**: DESIGN.md §8
 
 ## 1. 定位
 
@@ -414,7 +412,7 @@ empire-upkeep/
 
 > **设计理由**: 无"允许未签名"模式——防止服主疏忽导致恶意模组注入。开发调试时使用 `swarm dev sign` 生成临时开发密钥签名。
 
-## 8. World vs Arena 默认值
+## 6. World vs Arena 默认值
 
 | 规则 | World | Arena |
 |------|-------|-------|
@@ -477,7 +475,7 @@ fn validate_config(config: &WorldConfig) -> Result<(), Vec<String>> {
 
 锚定 DESIGN.md §8.2。类型系统从硬编码枚举改为 world.toml 驱动的注册表。
 
-### 6.1 身体部件类型 (`[[body_part_types]]`)
+### 9.1 身体部件类型 (`[[body_part_types]]`)
 
 与资源类型一样，身体部件可通过 world.toml 定义。默认世界提供 8 种基础类型：
 

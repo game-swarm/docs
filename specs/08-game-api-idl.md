@@ -1,8 +1,8 @@
-# P0-8: Game API IDL Spec — 游戏 API 接口定义语言
+# Game API IDL Spec — 游戏 API 接口定义语言
 
 > **状态**: 当前 | **日期**: 2026-06-15
 
-> **状态**: Phase 0 Architecture Freeze | **目标**: host functions / Command / Validator / SDK / MCP schema 单一真相来源
+> **目标**: host functions / Command / Validator / SDK / MCP schema 单一真相来源
 
 ## 1. 原则
 
@@ -18,7 +18,7 @@ game_api.idl  (单一真相)
     └──→ Test:   property-based test generators
 ```
 
-**IDL 定义的指令类型是 CommandIntent**——即 WASM 模块 `tick()` 的可信输出格式。CommandIntent 仅包含 `sequence` + `action` 两个字段。`player_id`、`source`、`tick` 等身份/时序字段由服务端 Source Gate 注入后形成 RawCommand（见 P0-2 §2）。IDL 不定义 RawCommand 的 envelope 字段——那些是引擎内部结构。所有校验规则（`validator` 数组）定义在 CommandIntent 的 `action` 字段上。
+**IDL 定义的指令类型是 CommandIntent**——即 WASM 模块 `tick()` 的可信输出格式。CommandIntent 仅包含 `sequence` + `action` 两个字段。`player_id`、`source`、`tick` 等身份/时序字段由服务端 Source Gate 注入后形成 RawCommand（见 specs/02-command-validation §2）。IDL 不定义 RawCommand 的 envelope 字段——那些是引擎内部结构。所有校验规则（`validator` 数组）定义在 CommandIntent 的 `action` 字段上。
 
 ## 2. IDL 格式
 
@@ -84,11 +84,6 @@ commands:
     validator: [exists, owner, drone, fatigue, body_part(Move), passable, !spawning]
     cost: {}   # 无资源消耗
 
-  MoveTo:
-    params: { object_id: ObjectId, x: i32, y: i32 }
-    validator: [Move checks, !spawning, in_room, path_exists, path_length(100)]
-    cost: {}   # pathfinding 计入 fuel
-
   Harvest:
     params: { object_id: ObjectId, target_id: ObjectId, resource: ResourceName? }
     validator: [exists, owner, drone, body_part(Work,Carry), carry_space, is_source, source_not_empty, in_range(1), fatigue]
@@ -108,11 +103,6 @@ commands:
     params: { object_id: ObjectId, x: i32, y: i32, structure: StructureType }
     validator: [exists, owner, drone, body_part(Work,Carry), in_your_room, tile_empty, plain_terrain, under_construction_limit(100), in_range(3)]
     cost: registry.build_cost(structure)
-
-  Repair:
-    params: { object_id: ObjectId, target_id: ObjectId }
-    validator: [exists, owner, drone, body_part(Work,Carry), is_structure, damaged, in_range(3)]
-    cost: registry.repair_cost()
 
   Attack:
     params: { object_id: ObjectId, target_id: ObjectId }
@@ -292,11 +282,11 @@ git diff --exit-code        # 生成代码与提交代码一致 → 不一致则
 
 ---
 
-## 4. 新增
+## 4. 可配置命令
 
-锚定 DESIGN.md §5, §8.2。以下新增。**所有特殊攻击通过 world.toml 的 `[[custom_actions]]` + `[[special_effects]]` 可配置注册**，非硬编码。
+锚定 DESIGN.md §5, §8.2。**所有特殊攻击通过 world.toml 的 `[[custom_actions]]` + `[[special_effects]]` 可配置注册**，非硬编码。
 
-### 4.1 新增变体
+### 4.1 变体列表
 
 | CommandAction | body part | special_effect | 说明 |
 |--------------|-----------|---------------|------|

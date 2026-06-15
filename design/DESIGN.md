@@ -461,7 +461,7 @@ tick(snapshot_json) → Command[]
 
 1. 引擎将快照 JSON 写入 WASM 线性内存
 2. 调用 `tick(ptr, len)` — WASM 模块接收快照，返回指令 JSON 列表
-3. 引擎校验所有指令 → 通过 P0-2 Command Validation Pipeline → 应用到世界
+3. 引擎校验所有指令 → 通过 specs/02-command-validation → 应用到世界
 
 ### 5.1 允许的 Host Function（查询专用，只读）
 
@@ -2153,7 +2153,7 @@ if (rules.get("empire-upkeep").config.onshortfall.value === "damage") {
 
 ## 9. 路线图
 
-当前状态：架构设计阶段。实现进度详见 [ROADMAP.md](../ROADMAP.md)。
+实现进度详见 [ROADMAP.md](../ROADMAP.md)。
 
 ### 已完成
 
@@ -2167,8 +2167,6 @@ if (rules.get("empire-upkeep").config.onshortfall.value === "damage") {
 - [x] 全局存储反制机制（累进税/隐匿性/运输时间）→ DESIGN §8.2
 - [x] P0-9 Source Gate 完整矩阵（12 sources × capability/budget/visibility）→ P0-9
 - [x] Tick 输出 JSON Schema 校验 → P0-2 §1.1
-
-架构冻结日期: 2026-06-14
 
 ---
 

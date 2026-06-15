@@ -1,8 +1,6 @@
-# P0-5: 统一可见性策略
+# 统一可见性策略
 
 > **状态**: 当前 | **日期**: 2026-06-15
-
-> **状态**: 当前
 
 ## 1. 核心原则
 
@@ -242,11 +240,11 @@ fn test_vision_range_boundary() { ... }
 
 ---
 
-## 5. 新增: 可见性配置 (2026-06-15)
+## 8. 可见性配置
 
 锚定 DESIGN.md §8.2 可见性与观战。可见性分两层：**drone 感知**（影响游戏公平性）和**玩家视野**（影响观战体验）。
 
-### 5.1 配置项（WorldConfig.visibility）
+### 8.1 配置项（WorldConfig.visibility）
 
 | 规则 | 类型 | 默认 | 说明 |
 |------|------|------|------|
@@ -256,7 +254,7 @@ fn test_vision_range_boundary() { ... }
 | `spectate_delay` | u32 | 0 | 旁观延迟（tick）。0 = 实时；>0 = 延迟回放，防止观众信息泄露 |
 | `replay_privacy` | enum | `private` | 回放可见性。Arena 赛后强制 `public` |
 
-### 5.2 PlayerView 模式
+### 8.2 PlayerView 模式
 
 | 值 | 说明 |
 |-----|------|
@@ -264,7 +262,7 @@ fn test_vision_range_boundary() { ... }
 | `full` | 玩家实时看到全地图，无视 drone 感知范围。教学/合作世界使用 |
 | `allied` | 看到所有同阵营 drone 的聚合视野 |
 
-### 5.3 ReplayPrivacy 等级
+### 8.3 ReplayPrivacy 等级
 
 | 值 | 可见范围 |
 |-----|---------|
@@ -273,7 +271,7 @@ fn test_vision_range_boundary() { ... }
 | `world` | 同世界玩家可看 |
 | `public` | 任何人（含未登录）。Arena 赛后默认 |
 
-### 5.4 组合场景
+### 8.4 组合场景
 
 | 场景 | fog_of_war | player_view | 效果 |
 |------|-----------|-------------|------|
@@ -282,7 +280,7 @@ fn test_vision_range_boundary() { ... }
 | 竞技观战 | true | drone | drone 公平受限，观众通过 `public_spectate` + `spectate_delay=100` 看延迟全图 |
 | 合作 PvE | true | allied | drone 各自感知，但玩家看到所有友方聚合视野 |
 
-### 5.5 配置示例（world.toml）
+### 8.5 配置示例（world.toml）
 
 ```toml
 [visibility]
