@@ -1894,35 +1894,22 @@ if (rules.get("empire-upkeep").config.onshortfall.value === "damage") {
 
 ## 9. 路线图
 
-### Phase 0: 架构冻结（Architecture Freeze）— ✅ 完成
+当前状态：架构设计阶段。实现进度详见 [ROADMAP.md](../ROADMAP.md)。
 
-- [x] Game API IDL 冻结（host functions + Command + Validator + SDK ABI + MCP schema 同源）→ P0-8
-- [x] Command Source Model 冻结（12 sources: WASM/MCP_Deploy/MCP_Query/Admin/Replay/TestHarness/Tutorial/Deploy/Rollback/RuleMod/Simulate/DryRun）→ P0-9
-- [x] Determinism Contract 冻结（PRNG=Blake3 XOF, hash=Blake3, 禁 f64/Rhai 浮点/禁 std::hash, IndexMap, ECS .chain()）→ DESIGN §8.8
-- [x] Tick Protocol 拉齐（FDB commit in EXECUTE, tick abandon behavior, NATS ack）→ P0-1
-- [x] World Rules Engine capability model 收敛为 Rhai 模组 → P0-7
-- [x] Deferred Command Model 统一（tick() → JSON, 禁 imperative host functions）→ P0-4 §3
+### 已完成
+
+- [x] Game API IDL（host functions + Command + Validator + SDK ABI + MCP schema 同源）→ P0-8
+- [x] Command Source Model（12 sources: WASM/MCP_Deploy/MCP_Query/Admin/Replay/TestHarness/Tutorial/Deploy/Rollback/RuleMod/Simulate/DryRun）→ P0-9
+- [x] Determinism Contract（PRNG=Blake3 XOF, hash=Blake3, 禁 f64, IndexMap, ECS .chain()）→ DESIGN §8.8
+- [x] Tick Protocol（FDB commit in EXECUTE, tick abandon behavior, NATS ack）→ P0-1
+- [x] World Rules Engine 收敛为 Rhai 模组 → P0-7
+- [x] Deferred Command Model（tick() → JSON, 禁 imperative host functions）→ P0-4 §3
 - [x] Fuel Refund 安全模型（时序/上限/滥用检测）→ P0-2 §7
 - [x] 全局存储反制机制（累进税/隐匿性/运输时间）→ DESIGN §8.2
 - [x] P0-9 Source Gate 完整矩阵（12 sources × capability/budget/visibility）→ P0-9
 - [x] Tick 输出 JSON Schema 校验 → P0-2 §1.1
 
-**Phase 0 冻结日期**: 2026-06-14
-
-### 阶段概览
-
-| Phase | 名称 | 目标 | 时间 |
-|-------|------|------|------|
-| 0 | 架构冻结 | 设计合同闭环 | ✅ 完成 |
-| 1 | 核心 MVP | 单人垂直切片 | 4-6 周 |
-| 2 | MCP + 多人 | AI/人类并行 | 6-8 周 |
-| 3 | 持久化 + Rhai | 数据落地 + 模组 | 6-8 周 |
-| 4 | 教程 + 调试 | 新手上手 + 回放 | 4-6 周 |
-| 5 | Web 客户端 | 完整产品体验 | 6-8 周 |
-| 6 | 战斗 + Arena | 游戏化收官 | 8-10 周 |
-| 7 | 生产化 | 公测标准 | 8-12 周 |
-
-详细交付物、依赖、验收标准见 [实施计划](ROADMAP.md)。
+架构冻结日期: 2026-06-14
 
 ---
 
@@ -1985,4 +1972,4 @@ Swarm 不追求与 Screeps API 兼容。设计哲学不同：
 
 ---
 
-*最后更新: 2026-06-14 — Phase 0 Architecture Freeze 确认（R14 终审通过）*
+*最后更新: 2026-06-15*
