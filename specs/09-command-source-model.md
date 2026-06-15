@@ -1,5 +1,7 @@
 # Command Source Model — 指令来源模型
 
+> 详见 DESIGN §3
+
 > **目标**: 所有指令来源显式建模，不可伪造 auth context
 
 ## 1. 原则

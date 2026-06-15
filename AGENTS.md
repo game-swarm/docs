@@ -17,7 +17,16 @@
 
 DESIGN.md、specs/、api/ 中的所有文档，读起来应该像一件成品的规格说明书。
 
-## 文档层次
+**引用方向（单向向上）：**
+
+```
+DESIGN.md  ←──  specs/  ←──  api/
+ (被引用)       (引用设计)    (引用规范)
+```
+
+- DESIGN.md 自足，不引用 specs
+- 每个 spec 头部声明 `> 详见 DESIGN §X`
+- api/ 文档引用对应 spec
 
 ```
 DESIGN.md      设计真相源 — 架构全景 + 设计决策

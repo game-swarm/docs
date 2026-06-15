@@ -1,6 +1,8 @@
 # Command API 参考
 
-> 当前版本。WASM 模块通过 `tick(snapshot) → Command[]` JSON 返回指令。
+> 详见 `specs/08-game-api-idl`、`specs/02-command-validation`
+
+WASM 模块通过 `tick(snapshot) → Command[]` JSON 返回指令。
 
 ## 通用字段
 

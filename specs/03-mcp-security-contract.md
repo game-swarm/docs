@@ -1,5 +1,7 @@
 # MCP 接口规范 — AI 玩家的完整操作界面
 
+> 详见 DESIGN §4
+
 **核心原则**: MCP 与 Web UI 同级——人类有 Monaco + PixiJS，AI 有 MCP。双方都通过 WASM 沙箱进入世界。
 
 ## 1. 架构定位

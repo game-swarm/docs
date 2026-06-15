@@ -418,8 +418,6 @@ AI：  MCP 看世界 → 生成 WASM → 部署 ───┘
 
 ### 4.1 MCP 工具分类
 
-> 完整 24 工具列表见 `specs/03-mcp-security-contract.md` 和 `api/mcp-tools.md`。
-
 | 类别 | 工具 | 用途 |
 |------|------|------|
 | **世界查看** | `swarm_get_snapshot` | 获取可见世界状态 |
@@ -447,8 +445,6 @@ AI：  MCP 看世界 → 生成 WASM → 部署 ───┘
 
 MCP 不做游戏动作。不存在 `swarm_move`、`swarm_attack`、`swarm_build` 等工具。AI agent 必须**编写 WASM 代码**来实现策略，和人类玩家完全一样。
 
-详见 `specs/03-mcp-security-contract.md`。
-
 ---
 
 ## 5. 游戏 API（Deferred Command Model）
@@ -461,7 +457,7 @@ tick(snapshot_json) → Command[]
 
 1. 引擎将快照 JSON 写入 WASM 线性内存
 2. 调用 `tick(ptr, len)` — WASM 模块接收快照，返回指令 JSON 列表
-3. 引擎校验所有指令 → 通过 specs/02-command-validation → 应用到世界
+3. 引擎校验所有指令 → 应用到世界
 
 ### 5.1 允许的 Host Function（查询专用，只读）
 
@@ -491,7 +487,7 @@ fn host_get_world_rules(out_ptr: i32, out_len: i32) -> i32;
 - ❌ `host_attack` / `host_ranged_attack` / `host_heal`
 - ❌ `host_spawn` / `host_recycle`
 
-> **设计合同**: WASM 模块不直接调用 mutating host function。所有状态变更通过 `tick() → JSON` 延迟模型提交。完整 IDL 见 P0-8。
+> **设计合同**: WASM 模块不直接调用 mutating host function。所有状态变更通过 `tick() → JSON` 延迟模型提交。
 
 ---
 

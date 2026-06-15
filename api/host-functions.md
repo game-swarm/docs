@@ -1,6 +1,6 @@
 # WASM Host Functions 参考
 
-> 当前版本。WASM 模块仅可调用以下只读 host function。
+> 详见 `specs/04-wasm-sandbox-baseline`
 
 ## 允许的 Import
 

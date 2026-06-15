@@ -1,5 +1,7 @@
 # Game API IDL Spec — 游戏 API 接口定义语言
 
+> 详见 DESIGN §5
+
 > **目标**: host functions / Command / Validator / SDK / MCP schema 单一真相来源
 
 ## 1. 原则
