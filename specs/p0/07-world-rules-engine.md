@@ -413,3 +413,34 @@ fn validate_config(config: &WorldConfig) -> Result<(), Vec<String>> {
 2. 在 Command 执行**后**补充（如手动控制追加）
 3. 修改 ECS 资源/组件（如传播系统修改 CodeVersion）
 4. 绝不可绕过 Command 校验管线
+
+---
+
+## 附录 A: Phase 0 后增补 (2026-06-15)
+
+以下 schema 在 Phase 0 冻结后由代码审计驱动新增，已全部实现。
+
+### A.1 身体部件类型 (`[[body_part_types]]`)
+
+参见 DESIGN.md §8.2。身体部件可通过 world.toml 定义和模组扩展。8 字段 schema:
+`name` / `description` / `action` / `passive` / `damage_type` / `base_damage` / `base_heal` / `range` / `cost`。
+默认 8 种: Move, Work, Carry, Attack, RangedAttack, Heal, Claim, Tough。
+
+### A.2 建筑类型 (`[[structure_types]]`)
+
+参见 DESIGN.md §8.2。建筑类型可配置。10 字段 schema:
+`name` / `description` / `category` / `hits` / `rcl_required` / `max_per_room` / `capacity` / `attack` / `sight_range` / `cost`。
+默认 12 种: Spawn, Extension, Tower, Storage, Link, Extractor, Lab, Terminal, Observer, PowerSpawn, Factory, Nuker。
+
+### A.3 自定义 CommandAction (`[[custom_actions]]`)
+
+参见 DESIGN.md §8.2。当新 body part 需要无法映射到现有 CommandAction 的动作时使用。
+8 字段 schema: `name` / `description` / `damage_type` / `base_damage` / `range` / `special_effect` / `cooldown` / `cost`。
+内置 special_effect: heal_self, scramble_commands, convert_to_structure, disrupt, fortify。
+Rhai 模组可通过 `actions.register_action_handler()` 注册自定义 handler。
+
+### A.4 伤害类型 (`[[damage_types]]`)
+
+参见 DESIGN.md §8.2。6 种默认类型: Kinetic, Thermal, EMP, Sonic, Corrosive, Psionic。
+抗性两层叠加: 组件抗性 (body part/结构) + 属性抗性 (Rhai 动态赋予)。
+模组可通过 `actions.add_damage_type()` / `actions.set_resistance()` 扩展。

@@ -88,3 +88,12 @@
 | G4 | 无属性级抗性 | Rhai 模组动态属性 | ✅ done (`0e2454e`) | DESIGN §8.2 |
 | G5 | StructureType 不可配置 | `[[structure_types]]` | ✅ done (`1381e7a`) | DESIGN §8.2 |
 | G6 | CommandAction 不可扩展 | `[[custom_actions]]` | ✅ done (`1381e7a`) | DESIGN §8.2 |
+
+---
+
+## H1-H2: 特殊攻击 + 回收 (DESIGN §8.2 未实现)
+
+| 任务 | 缺口 | DESIGN 锚定 |
+|------|------|-----------|
+| H1 | 特殊攻击 (Hack/Drain/Overload/Debilitate/Leech/Fabricate + Disrupt/Fortify完善) | DESIGN §8.2 特殊攻击方式表 |
+| H2 | Recycle 命令 (回收 drone 退还 50% 资源) | DESIGN §8.2 Drone 身体规划 |
