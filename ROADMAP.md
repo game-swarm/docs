@@ -5,13 +5,13 @@
 
 ## 总览
 
-| 模块 | 仓库 | ✅ 已实现 | ❌ 待实现 | 进度 |
-|------|------|----------|----------|------|
-| engine | `engine/` | 151 tests | 14 gaps (G1-G14) | 待评估 |
-| sandbox | `sandbox/` | 10 tests | 1 gap (G22) | 待评估 |
-| gateway | `gateway/` | 9 tests | 5 gaps (G15-G19) | 待评估 |
-| frontend | `frontend/` | 8 tests | 2 gaps (G20-G21) | 待评估 |
-| **总计** | | **197** | **22** | |
+| 模块 | 仓库 | 进度 |
+|------|------|------|
+| engine | `engine/` | 8/14 done (G2+G3✅, G7✅, G11-G14✅) — 6 remaining |
+| sandbox | `sandbox/` | G22 merged into G1 |
+| gateway | `gateway/` | ✅ 5/5 done (G15-G19) |
+| frontend | `frontend/` | ✅ 2/2 done (G20-G21) |
+| **总计** | | **15/22 done — 7 remaining** |
 
 ---
 
