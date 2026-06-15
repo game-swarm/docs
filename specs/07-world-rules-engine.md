@@ -344,7 +344,7 @@ Rhai 脚本执行
        世界状态已更新
 ```
 
-**超时回滚**：若任一 Rhai 脚本超过墙钟预算（默认 100ms），整个 `RhaiActionBuffer` 丢弃，世界状态不变。墙钟预算仅作为安全网，隔离脚本副作用——一个脚本超时不影响其他脚本或核心引擎。
+**超时回滚**：若任一 Rhai 脚本超过确定性节点预算（默认 100,000 AST 节点），整个 `RhaiActionBuffer` 丢弃，世界状态不变。AST 节点是确定性度量——同一输入在任何硬件上终止于相同节点，保证回放/重模拟一致性。墙钟仅用于运维告警（如单模组 >2s 触发告警），不作为状态决定因素。隔离脚本副作用——一个脚本超限不影响其他脚本或核心引擎。
 
 **部分失败处理**：
 - 单个 `actions.*` 调用失败（如 deduct 资源不足）→ 该 action 被跳过，不影响 buffer 中其他 action
@@ -356,6 +356,63 @@ Rhai 脚本执行
 - Rhai 脚本**不能**直接写入 ECS 组件——只能通过 `actions.*` API
 - Rhai 脚本**不能**访问其他玩家的私有数据
 - Buffer apply 阶段由引擎核心在 FDB 事务中执行，保证确定性
+
+**进程隔离模式**（默认配置）：Rhai engine 运行于独立 sandbox 进程，通过 IPC 与核心引擎通信。Sandbox 进程受以下加固：
+- **cgroup 限制**: CPU 配额与内存上限（默认 256MB），超限进程被 OOM killer 终止
+- **seccomp 加固**: 仅允许 `read/write/sendmsg/recvmsg` 等 IPC 必需的系统调用，禁止 `fork/exec/open/socket` 等
+- 模组崩溃或恶意行为不影响核心引擎进程——该模组本 tick 的 actions 全部丢弃，其他模组正常执行
+
+服主可通过 `world.toml` 切换为进程内模式（`[rhai] isolation = "inprocess"`），性能优先但需信任所有模组来源。
+
+**模组签名机制**：每个 `.rhai` 文件附带 `.sig` 文件（Ed25519 签名），引擎启动时验签：
+
+```
+empire-upkeep/
+├── mod.toml
+├── init.rhai
+├── init.rhai.sig           # Ed25519 签名（对 init.rhai 的 SHA-256 摘要签名）
+├── tick_start.rhai
+├── tick_start.rhai.sig
+├── tick_end.rhai
+└── tick_end.rhai.sig
+```
+
+- 签名由模组开发者使用 `swarm mod sign` 生成
+- 服主可配置信任的公钥列表（`world.toml` 中 `[rhai] trusted_keys = [...]`）
+- 引擎启动时验签：未签名或签名无效的 `.rhai` 文件**拒绝加载**，记录安全审计日志
+- `mod.toml` 也需签名（`mod.toml.sig`），防止配置篡改
+
+#### 模组签名
+
+模组签名确保只有经过认证的模组代码能在世界中执行。签名流程：
+
+```
+开发者侧:
+  1. 编写模组（.rhai 文件 + mod.toml）
+  2. swarm mod sign ./my-mod --key ~/.swarm/keys/mod-author.key
+     → 为每个 .rhai 文件和 mod.toml 生成对应的 .sig 文件
+
+服主侧:
+  1. 安装模组: swarm mod install my-mod
+  2. 添加信任: swarm mod trust my-mod --key <author_pubkey>
+     或 world.toml 中配置:
+     [rhai]
+     trusted_keys = [
+       "kagurazaka:ed25519:abc123...",
+       "community:ed25519:def456..."
+     ]
+  3. 引擎启动时自动验签——未经信任密钥签名的模组拒绝加载
+```
+
+**签名验证流程**（引擎侧）：
+
+1. 加载模组时，对每个 `.rhai` 文件计算 SHA-256 摘要
+2. 读取对应的 `.sig` 文件，使用声明方公钥验证 Ed25519 签名
+3. 公钥必须在 `trusted_keys` 白名单中
+4. 验证通过 → 正常加载；验证失败 → 拒绝加载 + 记录 `SecurityEvent::ModSignatureInvalid`
+5. `.sig` 文件缺失视为未签名 → 拒绝加载（无"允许未签名"的宽松模式）
+
+> **设计理由**: 无"允许未签名"模式——防止服主疏忽导致恶意模组注入。开发调试时使用 `swarm dev sign` 生成临时开发密钥签名。
 
 ## 8. World vs Arena 默认值
 

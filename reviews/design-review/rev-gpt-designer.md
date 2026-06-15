@@ -1,454 +1,380 @@
-# Swarm DESIGN — Game Design Review (rev-gpt-designer)
+# Swarm 游戏设计评审 — rev-gpt-designer
 
 Reviewer: rev-gpt-designer
-Focus: player experience, game feel, complexity/accessibility, strategic depth, clarity/completeness, fun/engagement loops
-Scope: `/data/swarm/docs/design/DESIGN.md` only; this is a game design review, not spec-compliance review.
+Focus: 游戏乐趣、UX 模式、社区动力学、玩家心理学、AI 可玩性
+Scope:
+- /data/swarm/docs/design/DESIGN.md
+- /data/swarm/docs/design/tech-choices.md
+- /data/swarm/docs/ROADMAP.md
+- /data/swarm/docs/specs/*.md
 
-## VERDICT: CONDITIONAL_APPROVE
+Note: 用户指定的 `/data/swarm/docs/specs/p0/` 在当前文件树中不存在；实际 P0 规范位于 `/data/swarm/docs/specs/01-...09-....md`，本评审按现有 P0 规范文件审阅。
 
-Swarm has a strong core fantasy: “your code is your army” in a persistent programmable MMO RTS, with AI and human players sharing the same WASM path. The design is strategically rich and has a real chance to become a modern Screeps successor rather than a clone.
+## Verdict: CONDITIONAL_APPROVE
 
-However, as a game design document, it is currently too systems-heavy and not yet player-experience-complete. It specifies architecture, determinism, moddability, rule extensibility, and simulation contracts in impressive detail, but it under-specifies the first hour, onboarding, moment-to-moment feedback, early goals, player-readable progression, failure recovery, and the social/community loops that make a persistent programming game sticky.
+Swarm 的核心幻想非常强：“你的代码就是你的军队 / Write once, fight forever”。它不是传统 RTS，也不是简单 Screeps clone，而是一个面向人类程序员和 AI agent 的可编程持久世界 + 竞技场平台。World/Arena 双模式、WASM 公平执行、MCP 作为 AI 的“屏幕和鼠标”、TickTrace/Replay/Explainability、World Rules Engine 和模组体系共同构成了一个有长期生命力的设计方向。
 
-Condition for approval: keep the architecture direction, but add a dedicated “Player Experience / Core Game Loop” layer before implementation: first-hour flow, tutorial ladder, default world rules, early progression milestones, UI/debugging feel, replay/sharing, and long-term goals beyond RCL/GCL-style room progression.
+我给出 CONDITIONAL_APPROVE，而不是 APPROVE，原因是：
 
----
+1. 设计已经解决了很多“能不能安全、公平、确定地运行”的问题；
+2. P0-6 已经补上了教程、starter bot、dry run、explain last tick、replay、metrics、Arena 等关键体验闭环；
+3. 但从游戏设计角度看，默认体验仍有显著的 complexity risk：DESIGN.md 和 P0 规范把 Vanilla、Advanced、Modded、Future Expansion 混在同一层级，可能导致第一个小时认知负担过高；
+4. 长期追求、社区传播、玩家身份、策略分享、观看体验虽然有基础设施，但还没有产品化为足够强的社区循环。
 
-## Strengths
-
-### S1 — Core fantasy is clear and compelling
-The slogan “你的代码就是你的军队 / Write once, fight forever” is excellent. It communicates the emotional promise quickly: players are not just issuing commands; they are building autonomous systems that persist and fight while they are away.
-
-The strongest identity choices are:
-- all players, including AI agents, deploy WASM rather than using privileged action tools;
-- deterministic ECS simulation enables replay, debugging, and legitimacy;
-- programmable drones create an engineering mastery loop instead of a hand-speed loop;
-- World and Arena modes separate sandbox persistence from fair competition.
-
-This gives the project a distinct place between Screeps, Factorio automation, RTS, bot tournaments, and open-source modded servers.
-
-### S2 — Strategic depth is high
-The design has many meaningful strategic axes:
-- body composition and irreversible body planning;
-- local vs global storage tradeoffs;
-- code deployment timing/cost/propagation;
-- fog-of-war and information asymmetry;
-- logistics vs combat vs economy allocation;
-- RCL unlock timing;
-- rule-modified worlds;
-- Arena code-locking for fair competitions.
-
-The local/global storage split is especially promising: it gives casual worlds a simplified economy while allowing hardcore logistics worlds to exist without forcing that burden on everyone.
-
-### S3 — AI/human fairness is a major design advantage
-The document correctly avoids giving AI players direct MCP action tools. MCP is “screen and mouse,” not gameplay authority. This preserves the core fantasy and prevents a design split where AI agents are playing a different game from humans.
-
-From a community perspective, this is important: AI agents become legitimate players, not automation cheats.
-
-### S4 — World Rules Engine supports community longevity
-Configurable resources, structures, body parts, damage types, special effects, visibility, and Rhai rule mods can turn Swarm from “one game” into a server ecosystem. This can create Minecraft-like community variety:
-- beginner worlds;
-- hardcore logistics worlds;
-- PvE survival worlds;
-- Arena ladders;
-- experimental modded rule sets;
-- AI-only bot leagues.
-
-That is a strong long-term retention engine if paired with good discovery and governance tools.
-
-### S5 — Replay, spectate, and privacy are already present
-The visibility model explicitly mentions `public_spectate`, `spectate_delay`, and `replay_privacy`. This is essential for community spread, tournament legitimacy, learning, and content creation.
+批准条件：保留当前技术/架构方向，但在正式实现或公开测试前，必须补齐“Default Vanilla Swarm / First Hour / Community & Progression”三份玩家体验设计，把复杂系统分层投放。
 
 ---
 
-## Issues by Severity
+## 发现的问题
 
-## Critical / Blocker
+### G1 — 默认游戏复杂度过高，缺少清晰的 Vanilla ruleset
+severity: High
 
-### G1 — The first-hour experience is not designed yet
-The document describes the engine and world rules in depth, but not the player’s first hour.
+问题：
+DESIGN.md 同时包含动态资源、多资源经济、全局/本地存储、累进税、运输拦截、RCL、drone age、Depot 后勤、特殊攻击、伤害类型/抗性、custom_actions、Rhai mods、code propagation、visibility modes、market、Arena、spectator/replay 等大量机制。每个机制单独看都有价值，但放在默认文档中会让新玩家无法判断“我第一天到底需要理解哪些规则”。
 
-Missing questions:
-- What does a new player see after account creation?
-- What is their first successful action within 2 minutes?
-- Do they start with a working bot template?
-- What does “success” look like in the first 10, 30, and 60 minutes?
-- When does the player first experience the “I wrote code and the world changed” dopamine hit?
-- How are compile errors, invalid commands, fuel exhaustion, and rejected actions explained?
-- How does a non-Screeps veteran learn body parts, resources, spawning, harvesting, transfer, building, and controller upgrading?
+P0-6 已补上教程和 starter bot，但并未给出一个严格裁剪的 Default Vanilla Swarm 体验边界。
 
-Risk: the game may be technically powerful but feel like “read 80 pages and debug JSON before fun starts.” For a programming MMO, onboarding is not a secondary concern; it is the main funnel.
+风险：
+- 第一个小时变成阅读规则和排查失败，而不是“写一行代码，世界产生变化”的爽点。
+- 玩家无法形成稳定 mental model。
+- AI agent 也会被过多规则扰动，生成策略时难以聚焦。
 
-Recommendation:
-Add a dedicated section: “First Hour Player Journey.” Suggested milestones:
-1. Spawn into Tutorial World with full vision and safe rules.
-2. Run a preloaded starter WASM bot.
-3. Watch first drone harvest and transfer energy.
-4. Edit one line: target resource/source/role threshold.
-5. Deploy and see visible improvement.
-6. Build first Extension.
-7. Upgrade Controller to RCL2.
-8. Receive first replay/debug explanation: “your drone failed because it had no Carry part.”
-9. Graduate into Beginner World or Arena sandbox.
+建议：
+定义 Default Vanilla Swarm v1：
+- 只启用 Energy 一种资源；
+- 初期只开放 Move / Work / Carry / Attack / Heal / Claim / Tough 的基础语义；
+- 禁用 Hack / Drain / Overload / Debilitate / Fabricate 等特殊攻击；
+- Tutorial 和 Beginner World 中隐藏或简化 global/local storage；
+- RCL 只展示 1–3 的短期目标；
+- Mods 只在 Advanced/Community Worlds 中启用；
+- 用 UI 明确标注“Advanced rule disabled in this world”。
 
-Acceptance bar: a player should be able to feel smart and successful before they understand the whole system.
-
-### G2 — Complexity budget is too high for the default game
-The design includes dynamic resources, dynamic structures, damage types, resistances, special attacks, global/local storage, progressive taxes, logistics interception, body parts, custom actions, mods, visibility modes, RCL, code propagation, memory upkeep, and more.
-
-Each subsystem is individually interesting. Together, they risk overwhelming both players and implementers. The current document does not clearly separate:
-- default launch rules;
-- advanced optional rules;
-- modded-world examples;
-- future expansion ideas.
-
-Risk: the MVP becomes unfocused, and new players cannot form a stable mental model.
-
-Recommendation:
-Define a “Default Vanilla Swarm” ruleset with a strict complexity budget:
-- one resource: Energy;
-- no custom damage types beyond basic Attack/Ranged/Heal initially;
-- no special attacks in beginner/default worlds;
-- global storage either disabled or simplified in Tutorial;
-- local logistics introduced only after basic harvest/spawn/build loop;
-- RCL1–3 only for MVP progression;
-- mods disabled in official beginner worlds.
-
-Move exotic mechanics such as Hack, Drain, Overload, Debilitate, Psionic/EMP/Sonic/Corrosive, Fabricate, custom action registration, and multi-resource economies into “Advanced Worlds / Future Modules,” unless they are required for Phase 1.
-
-## High Severity
-
-### G3 — Core engagement loop is implied, not explicitly specified
-The design has many systems, but the repeatable fun loop is not cleanly stated.
-
-A strong loop could be:
-Observe → Diagnose → Edit Strategy → Deploy → Watch Outcome → Inspect Trace → Improve → Expand/Compete.
-
-The document covers Deploy, simulation, and trace infrastructure, but not the player-facing feel of Observe, Diagnose, Watch Outcome, or Improve.
-
-Risk: players spend more time fighting tooling than enjoying optimization.
-
-Recommendation:
-Add a “Core Loops” section with separate loops for:
-- Micro loop: each tick’s command outcomes and rejected-command feedback.
-- Coding loop: edit, validate, deploy, compare before/after metrics.
-- Economic loop: harvest, store, spawn, build, upgrade.
-- Strategic loop: scout, expand, defend, specialize, trade, attack.
-- Social loop: spectate, replay, fork strategy, challenge, tournament.
-
-### G4 — Debugging and feedback are underspecified as game feel
-For this genre, debugging is part of game feel. The document lists tools such as `swarm_explain_last_tick`, `swarm_profile`, `swarm_dry_run_commands`, and TickTrace, but it does not define the UX quality bar.
-
-Important player-facing questions:
-- Does each rejected command have a human-readable explanation?
-- Can the player click a drone and see “planned / attempted / succeeded / failed” for the last tick?
-- Can they compare two deployments over time?
-- Can they set breakpoints or watch expressions in a simulated tick?
-- Can they time-travel a replay and inspect state diffs?
-- Can AI players retrieve enough docs and schema through MCP to self-correct without web browsing?
-
-Recommendation:
-Add a “Debugging as Gameplay” section. The UI should make failure legible:
-- command timeline per drone;
-- rejection reasons with suggested fixes;
-- fuel flamegraph/profile;
-- before/after deployment metric cards;
-- replay scrubber with entity selection;
-- “why did this drone idle?” explanation.
-
-### G5 — Strategic depth may become opaque rather than readable
-Many mechanics are deep, but some are hard to reason about from player intuition:
-- special attacks use multiple resistance types and success formulas not fully described;
-- `damage_multiplier` affecting special attack success/effect is unintuitive;
-- Hack turns a drone Neutral for 5 tick then restores owner, which may feel less like “hack” and more like temporary stun/confusion;
-- global/local storage includes conversion, cost, time, privacy, interception, and tax in one subsystem;
-- code propagation speed can be strategically interesting but may be frustrating if poorly visualized.
-
-Risk: high-skill players may enjoy it, but average players will not understand why they lost.
-
-Recommendation:
-For every major mechanic, add three things:
-1. Player-facing explanation in one sentence.
-2. Example scenario.
-3. Counterplay.
-
-Example:
-“Overload reduces enemy CPU temporarily; counterplay is EMP resistance, redundant low-fuel fallback code, or Fortify.”
-
-### G6 — Long-term progression beyond room/controller level is weak
-The prompt asks: besides GCL and room level, what are the long-term pursuits? The current design has RCL-like room progression and world/mod variety, but not enough persistent aspiration for players.
-
-Potential long-term goals are underdeveloped:
-- strategy library/version history mastery;
-- league/tournament ranking;
-- public bot reputation;
-- mod/world ownership;
-- alliance diplomacy;
-- market/economy dominance;
-- achievement/challenge ladder;
-- research/unlocks that do not create pay-to-win or snowball issues;
-- cosmetics/profile identity;
-- public replay portfolio.
-
-Recommendation:
-Add a “Long-Term Player Motivation” section. Suggested axes:
-- Competitive: Arena rating, seasonal leagues, bot ELO, challenge badges.
-- Creative: publish strategy modules, SDK packages, templates, mods.
-- Social: alliances, team arenas, shared replay annotations.
-- Mastery: optimization benchmarks, fuel-efficiency records, puzzle worlds.
-- Collection/identity: profile page, bot lineage, world trophies, cosmetic drone skins for spectators only.
-
-## Medium Severity
-
-### G7 — World vs Arena split is strong but needs product framing
-The table in §10 is good, but the document should be clearer about which mode is the primary new-user experience.
-
-World mode is emotionally sticky but unfair. Arena mode is fair but less persistent. New players may need both:
-- Tutorial World for learning;
-- Beginner Persistent World for attachment;
-- Arena Puzzles for fast feedback;
-- Ranked Arena after competency.
-
-Recommendation:
-Define entry paths:
-- “I want to learn programming” → guided Tutorial + puzzles.
-- “I want to optimize bots” → Arena ladder.
-- “I want a persistent empire” → World server.
-- “I want to watch AI wars” → public Arena/replay browser.
-
-### G8 — Spectator and replay sharing need to become first-class community loops
-The document has privacy controls, but not a sharing product.
-
-For community spread, Swarm needs shareable artifacts:
-- replay links with timeline and camera bookmarks;
-- “bot vs bot” match pages;
-- post-match stats cards;
-- embeddable GIF/video clips;
-- annotated replays for tutorials;
-- public strategy writeups linked to versions;
-- weekly “best battle / most efficient bot / weirdest mod” highlights.
-
-Recommendation:
-Add “Replay and Spectator Experience” as a top-level design concern, not just a config table. Arena mode should default to producing shareable public replay pages.
-
-### G9 — AI players can query docs, but learnability via MCP is not fully proven
-The design includes `swarm_get_docs`, `swarm_get_schema`, `swarm_get_world_rules`, and available actions. That is promising. But an AI agent needs task-oriented resources, not just raw schemas.
-
-Missing MCP learning resources:
-- “getting_started” guide;
-- minimal working bot examples per language;
-- world-specific objective summary;
-- current bottleneck diagnosis;
-- common rejection reason explanations;
-- allowed commands with examples using currently visible entity IDs;
-- tutorial task state.
-
-Recommendation:
-Ensure MCP resources answer: “What should I do next?” not only “What APIs exist?” Add curated MCP docs/resources:
-- `swarm_get_tutorial_step`
-- `swarm_get_strategy_examples`
-- `swarm_explain_objective`
-- `swarm_get_common_failures`
-
-### G10 — Default numbers are placeholders but read as final balance
-The document lists many numbers: RCL progress, drone caps up to 500 per room, costs, cooldowns, damage, tax rates, fuel reduction values, lifespan, tick length, etc. These may be acceptable as draft values, but the document does not label them as tuning targets or balance hypotheses.
-
-Risk: implementers may hard-code untested balance into the MVP; reviewers may debate numbers before fun is validated.
-
-Recommendation:
-Mark numeric values as “initial tuning candidates” and define balance goals:
-- time to first drone;
-- time to first Extension;
-- time to RCL2/RCL3;
-- expected drones per beginner room after 1 hour/day/week;
-- acceptable idle/failure rate for starter bot;
-- average Arena match length;
-- comeback window after losing a skirmish.
-
-## Low Severity / Polish
-
-### G11 — Some terminology may confuse new players
-“Drone,” “Controller,” “RCL,” “global storage,” “world storage,” “fuel,” “body part,” “CommandAction,” “special effects,” “MCP,” “WASM” all appear quickly.
-
-Recommendation:
-Add a player-facing glossary separate from implementation terms. Consider hiding terms like ECS, CommandAction, Rhai, and FoundationDB from player-facing docs unless in advanced/modder sections.
-
-### G12 — The design document mixes game design, architecture, implementation, and product roadmap
-This is useful for alignment, but it makes the game design harder to review. Player experience concerns are buried inside architecture.
-
-Recommendation:
-Split or add clear front sections:
-1. Player Fantasy
-2. Target Audiences
-3. First Hour
-4. Core Loops
-5. Default Ruleset
-6. Progression and Social Systems
-7. Advanced/Modded Systems
-8. Technical Architecture
+验收标准：新玩家在不读完整 DESIGN.md 的情况下，能在 5 分钟内理解“spawn drone → harvest → transfer → build/upgrade”。
 
 ---
 
-## Missing Design Content
+### G2 — First Hour 已有组件，但缺少完整玩家旅程脚本
+severity: High
 
-### M1 — Target audience and skill ladder
-Define intended audiences:
-- programming beginners;
-- Screeps veterans;
-- competitive bot authors;
-- AI-agent experimenters;
-- server/mod creators;
-- spectators.
+问题：
+P0-6 定义了 5 分钟教程、starter bot、MCP 教程、本地模拟和解释工具，这是很好的补强。但它仍偏功能清单，没有完整描述 first-hour emotional arc：玩家何时获得第一次成就感、何时第一次失败、失败如何被解释、何时毕业到 World/Arena。
 
-Each audience needs different onboarding and retention.
+建议补充 First Hour Journey：
 
-### M2 — Tutorial design
-The document mentions Tutorial worlds only briefly. It needs a full tutorial ladder:
-- no-code observe mode;
-- run starter bot;
-- edit constants;
-- write first role split;
-- debug rejected command;
-- spawn body variants;
-- build/upgrade;
-- defend;
-- scout;
-- enter Arena.
+0–2 分钟：
+- OAuth 登录或本地 guest 教程；
+- 自动加载 basic-harvester；
+- 玩家立即看到 drone 采集并返回能量。
 
-### M3 — Starter bot templates
-A programming game needs “playable before programmable.” Provide default bots:
-- TypeScript basic harvester/builder/upgrader;
-- Rust equivalent;
-- minimal WASM “do nothing but valid” bot;
-- Arena starter bot;
-- commented examples for each body part/action.
+2–5 分钟：
+- 引导改一行参数，如 `MAX_HARVESTERS = 3`；
+- 一键 deploy；
+- UI 展示“部署前/部署后”的能量增长对比。
 
-### M4 — Loss, recovery, and anti-frustration design
-Persistent PvP games need explicit safety valves:
-- what happens after wipeout;
-- how beginner protection works;
-- how griefing is limited;
-- how players relocate;
-- whether inactive players decay;
-- how much progress is lost;
-- whether private/safe learning worlds exist.
+5–15 分钟：
+- 建第一座 Extension；
+- 通过 explain_last_tick 理解一次 rejected command；
+- 学会 body part 基本约束。
 
-### M5 — Social systems
-Missing or underdeveloped:
-- alliances;
-- team ownership/permissions;
-- diplomacy/truces;
-- public profiles;
-- bot/version pages;
-- strategy sharing/forking;
-- mod marketplace governance;
-- server discovery.
+15–30 分钟：
+- 升到 RCL2；
+- 解锁 Road/Container/Extension；
+- 引导建立“采集者/搬运者/建造者”的角色分工。
 
-### M6 — Spectator UX and content creation
-Replay privacy is specified, but not the actual viewer experience:
-- match summary;
-- timeline events;
-- camera bookmarks;
-- heatmaps;
-- economic graph overlays;
-- code version markers;
-- shareable highlights.
+30–60 分钟：
+- 选择进入 Beginner World、Arena puzzle 或观看公开 replay；
+- 给出下一目标：更高能量效率、低 fuel 策略、第一场 Arena。
+
+验收标准：第一个小时不是“学完规则”，而是完成 3 次可感知改进：更多采集、更少 idle、完成第一个建筑/升级。
+
+---
+
+### G3 — Debugging as Gameplay 方向正确，但 UX 质量 bar 需要更明确
+severity: High
+
+问题：
+P0-6 的 `swarm_explain_last_tick`、“为什么闲置？”、回放查看器、策略指标仪表盘非常关键。对编程游戏来说，debugging 不是附属工具，而是核心手感。但目前规范仍主要列 API/JSON，没有定义前端和 MCP 输出的体验标准。
+
+风险：
+如果错误解释不够具体，玩家会把游戏体验理解为“我的 bot 莫名其妙不动”。
+
+建议定义 Debug UX quality bar：
+- 每个 drone 有 per-tick command timeline：planned / attempted / accepted / rejected / no-op；
+- 每条 rejection 有：原因、当前位置、目标、所需条件、可执行修复建议；
+- “Idle reason” 必须排序显示主因，而不是列出所有可能；
+- Deploy 后自动生成 A/B metric cards：energy/tick、idle rate、rejection rate、fuel usage；
+- Replay 支持选择实体并查看每 tick state diff；
+- AI MCP 的 `swarm_explain_last_tick` 应返回 machine-readable suggestion，不只是自然语言。
+
+验收标准：一个初学者看到 OutOfRange、MissingBodyPart、Fatigued、CarryFull 时，能直接知道下一次该改代码、改 body，还是改路线。
+
+---
+
+### G4 — AI 可玩性基础扎实，但 “仅通过 MCP resources 学会怎么玩” 还需要任务型资源
+severity: Medium
+
+问题：
+MCP 设计方向正确：MCP 不提交 gameplay 指令，AI 必须写 WASM；`swarm_get_docs`、`swarm_get_schema`、`swarm_get_world_rules`、`swarm_get_available_actions`、`swarm_dry_run_commands`、`swarm_explain_last_tick` 形成了 AI 学习闭环。
+
+不足：
+AI 只拿 raw schema 和规则可能仍不够。AI agent 最需要的是 task-oriented resources：当前目标、最小可运行 bot、常见失败、当前世界策略建议。
+
+建议新增或规范化 MCP resources：
+- `swarm://tutorial/current-step`
+- `swarm://examples/basic-harvester-ts`
+- `swarm://examples/basic-harvester-rust`
+- `swarm://objectives/current-world`
+- `swarm://failures/common-rejections`
+- `swarm://strategy/vanilla-opening`
+- `swarm_explain_next_best_action` 或等价只读诊断：不替玩家执行，只解释可选方向。
+
+验收标准：一个无先验上下文的 AI agent 通过 MCP docs/resources 可以完成：部署 starter bot → 修复一次 rejection → 提升 energy/tick → 进入 Arena dry run。
+
+---
+
+### G5 — 长期追求仍偏系统指标，缺少玩家身份与荣誉结构
+severity: Medium
+
+问题：
+已有 GCL/RCL、房间数、Arena ladder、tournament、modded worlds、market、Replay，但长期动机还没有被组织成玩家看得见的 aspiration map。
+
+仅靠 RCL/GCL 会产生 Screeps 式“越滚越大”的老玩家优势；仅靠 Arena ELO 又会让 World 的情感资产弱化。
+
+建议加入长期追求体系：
+
+Competitive：
+- Arena rating / bot ELO / seasonal leagues；
+- AI-only、Human-authored、AI-assisted 分榜；
+- Weekly challenge maps。
+
+Mastery：
+- fuel efficiency records；
+- fastest RCL2/RCL3；
+- lowest-code-size bot；
+- puzzle worlds with deterministic seeds。
+
+Creative：
+- published strategy modules；
+- public bot templates；
+- mod/world author reputation；
+- annotated replay tutorials。
+
+Social：
+- alliances；
+- team arenas；
+- spectator commentary；
+- “fork this bot” lineage graph。
+
+Identity / Collection：
+- profile page；
+- public replay portfolio；
+- trophies/badges；
+- cosmetic-only drone skins in spectator view。
+
+验收标准：玩家即使不扩更多房间，也有可追求的荣誉、作品、排名、社交身份。
+
+---
+
+### G6 — Spectator / Replay 已有技术设计，但社区传播产品还不够强
+severity: Medium
+
+问题：
+P0-5/P0-6 已定义 spectator view、replay privacy、Arena 赛后公开 replay、回放查看器、观战解说。这是亮点。但还需要明确“如何传播”。
+
+建议把 Replay 视为社区内容核心，而不仅是 debugging 工具：
+- 每场 Arena 自动生成 match page；
+- 时间线 bookmarks：first contact、first kill、base breach、turning point；
+- Post-match stat cards：energy curve、unit count、fuel efficiency、rejection spikes；
+- 一键导出 GIF/短视频；
+- 可分享 fog-of-war toggle 链接；
+- replay annotations，可作为教学文章嵌入；
+- weekly highlights：最佳战斗、最离谱 bug、最高效率 bot、最佳 mod world。
+
+验收标准：一个精彩 Arena match 可以像棋谱、SC2 replay 或 speedrun clip 一样被分享和讨论。
+
+---
+
+### G7 — World vs Arena 的入口定位需要产品化
+severity: Medium
+
+问题：
+World/Arena 区分非常正确：World 是持久、有机、不公平；Arena 是对称、公平、可排名。但新玩家进入时应该如何选择仍需更明确。
+
+建议设置四条入口：
+- Learn：Tutorial World + Puzzle Arena；
+- Build：Beginner Persistent World；
+- Compete：Ranked Arena；
+- Watch：Public Arena / Replay Browser。
+
+并在 UI 中用一句话解释：
+- World: “建立长期殖民地，不保证公平”；
+- Arena: “公平对局，代码锁定，赛后公开回放”；
+- Tutorial: “安全试错，100% recycle refund”；
+- Community Worlds: “不同服主规则，可能非常复杂”。
+
+验收标准：玩家不是被丢进一个总入口，而是按动机选择体验。
+
+---
+
+### G8 — 特殊攻击和抗性体系可能策略深，但玩家可读性弱
+severity: Medium
+
+问题：
+Hack/Drain/Overload/Debilitate/Disrupt/Fortify、Kinetic/Thermal/EMP/Sonic/Corrosive/Psionic、属性抗性、特殊效果 registry 都很强，但容易变成玩家不理解的“状态效果汤”。
+
+尤其：
+- Hack 夺取后 Neutral 5 tick 再恢复 owner，直觉上更像 stun/confuse，不像永久 hack；
+- Overload 攻击 fuel budget 是很有主题性的“攻击对方代码执行能力”，但必须非常清晰地展示；
+- `damage_multiplier` 同时影响特殊效果成功率/效果量不够直观。
+
+建议：
+- Beginner/Vanilla 禁用特殊攻击；
+- Advanced worlds 才启用；
+- 每个特殊攻击必须有三段说明：用途、反制、观战表现；
+- Replay/UI 中必须有状态图标、剩余 tick、来源、可反制方式；
+- Hack 可以重新命名为 Jam/Disable，或明确区分 temporary hack vs permanent capture。
+
+验收标准：玩家输给 Overload/Hack 后能从 replay 中理解“为什么输、如何反制”。
+
+---
+
+### G9 — 数值表很多，但缺少 balance goals 和调参假设
+severity: Low
+
+问题：
+文档列出大量数值：RCL progress、drone cap、cooldown、fuel、damage、tax、lifespan、range、cost 等。这些作为设计草案可以，但应明确“initial tuning candidates”，否则实现者会误以为是最终平衡。
+
+建议补充 balance goals：
+- time to first drone；
+- time to first successful harvest；
+- time to first Extension；
+- time to RCL2/RCL3；
+- beginner bot expected idle rate；
+- starter bot expected rejection rate；
+- Arena target duration；
+- comeback window after losing first skirmish；
+- World expected expansion pace after day 1/week 1。
+
+验收标准：调数时围绕体验目标，而不是争论单个 cost 是否“看起来合理”。
+
+---
+
+### G10 — 文档结构仍偏架构，玩家体验内容被埋在技术规范中
+severity: Low
+
+问题：
+DESIGN.md 非常强，但它把 game design、architecture、security、rules、modding、deployment、roadmap 混在一起。作为工程总设计可以；作为玩家体验文档不够聚焦。
+
+建议拆出或新增：
+- PLAYER-EXPERIENCE.md：目标玩家、first hour、core loops、UX principles；
+- VANILLA-RULESET.md：默认世界启用/禁用规则；
+- COMMUNITY.md：replay、spectate、tournaments、mods、sharing；
+- BALANCE-GOALS.md：调参目标与观测指标。
+
+验收标准：设计评审可以单独审“玩家玩起来怎样”，而不是从架构中推断体验。
+
+---
+
+## 亮点
+
+### S1 — 核心幻想强且一句话可传播
+“你的代码就是你的军队”是非常好的产品核心。它同时吸引 Screeps veteran、自动化游戏玩家、AI agent 开发者、竞技 bot 作者和开源 mod 社区。
+
+### S2 — AI 与人类同走 WASM 路径，公平性设计正确
+MCP 是 AI 的 screen/mouse，不是 action controller。AI 不通过 `swarm_move` 等特权工具玩游戏，而是写 WASM。这一点非常关键：它让 AI 玩家成为合法玩家，而不是外挂。
+
+### S3 — P0-6 的反馈闭环方向非常好
+Learn → Decide → Act → Understand 的闭环是编程游戏成败关键。starter bot、dry run、explain last tick、idle explanation、local sim、replay viewer、metrics dashboard 都是正确的体验组件。
+
+### S4 — Deterministic replay 是游戏信任与内容传播的基础
+确定性 ECS、TickTrace、Command replay、state checksum 让调试、反作弊、观战、赛后分析、AI 训练都站得住。这不只是技术点，也是社区信任机制。
+
+### S5 — World/Arena 双模式解决了持久性与公平性的冲突
+World 不追求公平，提供情感资产和长期经营；Arena 追求公平，提供排名、赛事和公开 replay。这个分离是正确的，避免一个模式同时承担互相冲突的目标。
+
+### S6 — World Rules Engine 有潜力形成服务器生态
+Rhai mods + world.toml + dynamic resources/body/structures/actions 可以形成 Minecraft/Factorio modded server 式生态。长期看，这比单一官方规则更有生命力。
+
+### S7 — 可见性和 spectator privacy 有成熟思路
+P0-5 把 drone snapshot、公平视野、player view、spectator view、replay privacy 区分开，避免了“为了观战破坏竞技公平”的常见问题。
+
+### S8 — 本地模拟与 Arena 对 AI 生态很友好
+`swarm sim --ticks=5000 --speed=100x` 和 Arena tournament 会吸引 bot optimization 社区。对 AI agent 来说，可重复、可测量、可回放的环境比普通 MMO 更适合持续改进。
+
+---
+
+## Missing / 建议新增文档
+
+1. PLAYER-EXPERIENCE.md
+   - target audience
+   - first-hour journey
+   - core loops
+   - failure/recovery UX
+   - emotional beats
+
+2. VANILLA-RULESET.md
+   - Tutorial rules
+   - Beginner World rules
+   - Standard World rules
+   - Advanced/Modded rules
+   - 哪些机制默认禁用
+
+3. COMMUNITY-LOOPS.md
+   - replay sharing
+   - public match pages
+   - strategy publishing
+   - bot lineage/forking
+   - mod/world discovery
+   - seasonal events
+
+4. BALANCE-GOALS.md
+   - time-to-first-action
+   - time-to-first-building
+   - RCL pacing
+   - Arena duration
+   - starter bot success metrics
+
+5. MCP-LEARNABILITY.md
+   - AI agent from zero context walkthrough
+   - required MCP docs/resources
+   - example prompts/resources
+   - machine-readable error repair suggestions
 
 ---
 
 ## Fresh Ideas
 
-### F1 — “Bot Garage” as the home screen
-Instead of starting from the map, start from the player’s bot as a living artifact:
-- current deployed version;
-- last tick health;
-- fuel usage;
-- failed command count;
-- economic trend;
-- “watch latest replay”;
-- “run simulation”;
-- “deploy safely.”
+1. Bot Lineage Graph
+玩家可以 fork starter bot 或他人的 public bot template。Profile 展示 lineage：“这个 bot forked from basic-harvester, evolved through 12 versions, won Bronze Arena S1”。这会制造社区学习链条。
 
-This reinforces that the player is designing an autonomous organism, not just playing a map.
+2. Replay-to-Tutorial
+任何公开 replay 可以被作者加注释，转换成 tutorial：在 tick 1200 暂停，解释“这里我切换到 defender production，因为 scout 发现敌方 rush”。
 
-### F2 — Replay-driven learning
-After every meaningful failure, generate a mini lesson:
-- “Your drone reached the source but had no Work part.”
-- “Your hauler is idle because no storage target is in range.”
-- “Your attack failed because target is behind rampart / out of range / safe mode.”
+3. Puzzle Worlds
+每天/每周固定 seed 的小型挑战：1000 tick 内最高能量、最少 fuel 达成 RCL2、固定敌人 rush 下存活。适合新手、AI、竞速社区。
 
-Let players click “show me in replay.”
+4. Strategy Cards
+每次部署生成一张 strategy card：版本、核心指标、优劣、常见失败。可分享到社区，也可供 AI 读取比较。
 
-### F3 — Public bot cards
-Each public bot/version gets a shareable card:
-- language;
-- age;
-- Arena rating;
-- favorite body composition;
-- average fuel/tick;
-- best match replay;
-- author notes;
-- fork button.
+5. Spectator Heatmaps
+Replay 中显示交通拥堵、资源流向、死亡热区、fuel spike。Swarm 的视觉传播不一定靠单位动画，可以靠“系统行为可视化”。
 
-This creates community identity around code artifacts.
+6. Safe Beginner Worlds with Graduated Complexity
+Beginner World 每隔阶段解锁一个概念：先 harvest/transfer，再 build/upgrade，再 defense，再 scout，再 market。复杂性分批投放。
 
-### F4 — Puzzle/Arena ladder for fast dopamine
-Persistent worlds are slow. Add short deterministic challenges:
-- harvest optimization puzzle;
-- pathfinding puzzle;
-- defend for 500 ticks;
-- break a tower defense;
-- win with limited fuel;
-- multi-resource logistics challenge.
+7. AI League With Explainable Bots
+AI-only tournaments 要求 bot 提交 README/strategy summary 或自动生成 explainability page，观众能理解“这个 AI 为什么强”。
 
-These become onboarding, benchmarks, and shareable competitions.
-
-### F5 — Strategy module ecosystem
-Encourage players to publish reusable strategy packages:
-- pathing module;
-- role scheduler;
-- spawn planner;
-- market trader;
-- defense planner;
-- replay analyzer.
-
-This makes the community productive even for players who are not top Arena competitors.
-
-### F6 — “What changed after deploy?” diff view
-Every deployment should produce a visible comparison:
-- command success rate before/after;
-- energy per tick;
-- idle drone percentage;
-- fuel/tick;
-- distance traveled;
-- spawn uptime;
-- combat damage dealt/taken.
-
-This turns code deployment into a satisfying feedback event.
-
-### F7 — Delayed public spectating as default Arena virality
-Arena matches should automatically create public delayed spectator pages with:
-- fog removed for viewers;
-- commentary timeline;
-- player code version names, not necessarily source code;
-- highlight markers for first contact, first kill, base breach, economic swing.
-
-This can make Swarm watchable even to people who cannot read the code.
+8. Public Benchmarks
+官方维护 benchmark suites：economy-basic、defense-rush、logistics-maze、arena-duel。玩家和 AI 都可以跑分，形成优化文化。
 
 ---
 
 ## Final Recommendation
 
-CONDITIONAL_APPROVE.
+CONDITIONAL_APPROVE。
 
-The design is strong enough to proceed as a strategic/technical direction, but it should not be considered game-design-complete. Before implementation locks in the player-facing product, add the missing PX layer:
+Swarm 的技术和系统设计已经足够有野心，也具备成为现代可编程 MMO RTS / AI bot arena 的潜力。当前最重要的风险不是“系统不够深”，而是“默认体验太深”。
 
-1. First-hour journey.
-2. Default vanilla ruleset and complexity budget.
-3. Core engagement loops.
-4. Debugging/replay UX as game feel.
-5. Long-term progression beyond RCL/GCL.
-6. Spectator/community sharing design.
-7. AI-learnability resources through MCP.
-
-If these are added, Swarm’s design could support both deep expert play and a much broader community than Screeps-style programming games usually reach.
+下一步不应继续增加机制，而应冻结 Default Vanilla Swarm、写清 First Hour、产品化 Replay/Spectator，并把 AI learnability 从“有 schema”提升到“能通过 MCP 完成任务”。做到这些后，Swarm 的设计可以进入 APPROVE。

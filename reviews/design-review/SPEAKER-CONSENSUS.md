@@ -1,335 +1,349 @@
-# Swarm DESIGN — Speaker 最终共识报告
-
-> Speaker: rev-speaker  
-> 输入: `/data/swarm/docs/reviews/design-review/` 下 9 份评审报告 + `claude-architect-findings.md`  
-> 覆盖: `SPEAKER-CONSENSUS.md`  
-> 说明: 本报告只综合评审共识与分歧，不新增独立技术评审结论。
-
-## 总体裁决
-
-**APPROVE_WITH_RESERVATIONS / CONDITIONAL_APPROVE（带保留批准）**
-
-9 位评审员均未建议 Reject，也没有认为核心方向需要推倒重来。共同判断是：Swarm 的核心架构与核心玩法骨架成立，可以进入实现前规格收口阶段，但还不能直接冻结 ABI / IDL、默认 ruleset 或 persistent MMO 玩法参数。
-
-被广泛认可的核心包括：
-
-- **WASM-only player agency**：人类玩家与 AI agents 走同一条 WASM 部署与执行路径，MCP 只作为观察、部署、调试与管理界面，不具备直接 gameplay mutation 权限。来源：rev-claude-architect, rev-claude-security, rev-claude-designer, rev-dsv4-architect, rev-dsv4-security, rev-dsv4-designer, rev-gpt-architect, rev-gpt-security, rev-gpt-designer。
-- **Deferred Command Model**：`tick(snapshot) -> Command[]` + Rust core validation 将不可信玩家代码与可信世界状态隔离，是 replayability、anti-cheat、resource accounting 与 AI/human fairness 的正确边界。来源：全部方向多名评审员。
-- **Deterministic ECS / replay-first**：固定 PRNG/hash、ordered collections、ECS ordering、fuel metering、replay checksum 等方向正确。来源：Architect/Security/Designer 三方向均认可。
-- **World/Arena split**：Persistent World 允许 emergent asymmetry，Arena 承担 ranked fairness，是健康的产品与规则分层。来源：rev-gpt-architect, rev-gpt-security, rev-gpt-designer, rev-dsv4-designer, rev-claude-designer。
-- **World Rules Engine / moddability**：动态资源、body parts、damage types、Rhai rules 与 machine-readable rules 对社区 longevity 有价值。来源：rev-dsv4-architect, rev-dsv4-designer, rev-gpt-architect, rev-gpt-designer。
-
-保留项集中在五类：
-
-1. **Determinism Contract 尚未闭合**：Rhai wall-clock timeout、mod order、runtime/version pinning、tick overrun semantics 等会破坏 replay/re-simulation。
-2. **MMO scalability 与 topology 尚未设计完**：single-world 上限、sharding/cross-shard、FoundationDB transaction limits、snapshot/query budgets、command execution bottleneck 需要明确。
-3. **Gameplay exploit surfaces 需要 invariants**：resource ledger、storage transfer、special effects/status stacking、controller lifespan、refund/recycle、safe mode、market escrow 等必须规格化。
-4. **Trusted mod / Rhai trust model 需要分级**：private trusted worlds、public worlds、ranked Arena 不能共享同一信任假设。
-5. **Player experience layer 缺失**：first hour、onboarding、starter bot、debugging as gameplay、failure recovery、long-term goals、social/replay loops 还不足以支撑留存。
-
-因此 Speaker 裁决：**批准方向，不批准冻结**。在 P0/P1 行动项完成前，不应冻结 ABI/IDL、默认 balance numbers、ranked Arena policy 或 public persistent World rules。
-
-## 跨方向共识发现（≥2 方向独立发现）
-
-### C1. Deferred Command + WASM sandbox 是正确的核心信任边界
-
-**来源**: rev-claude-architect, rev-claude-security, rev-claude-designer, rev-dsv4-architect, rev-dsv4-security, rev-dsv4-designer, rev-gpt-architect, rev-gpt-security, rev-gpt-designer
-
-三方向都独立确认：玩家/AI 代码只能提交 intent / Command，不能直接 mutate world state；Rust core 统一 validation 与 execution。这使攻击面集中在 Command schema / validation pipeline，可被枚举、测试与审计。该点是 Swarm 当前最强共识。
-
-### C2. AI 与 human players 同路径是公平性与产品 identity 的核心优势
-
-**来源**: rev-claude-designer, rev-gpt-designer, rev-gpt-architect, rev-gpt-security, rev-dsv4-designer, rev-claude-security
-
-AI agents 不通过 MCP 直接调用 gameplay actions，而是和人类一样编译/部署 WASM。这避免 AI-only privileged API，保留“your code is your army”的游戏幻想，也减少公平性与权限绕过风险。必须在后续 MCP / tooling 扩展中保持该边界。
-
-### C3. Determinism 是 anti-cheat、debugging、replay 与 competitive legitimacy 的地基，但当前仍有破口
-
-**来源**: rev-claude-architect A1/A7, claude-architect-findings.md, rev-claude-security C1/M4, rev-gpt-security, rev-gpt-architect, rev-dsv4-designer, rev-dsv4-architect
-
-共识是 determinism-first 方向正确，但若任何状态结果依赖 wall-clock、runtime drift、mod unordered execution、tick overload 不确定处理、non-canonical JSON 或 unresolved conflict semantics，replay/re-simulation 就会失效。尤其 `Rhai 100ms wall-clock terminate + rollback` 被 Claude Architect 与 Claude Security 同时标为 critical，其他评审员虽对 Rhai wall-clock 严重性判断不同，但也普遍要求 version pinning、deterministic ordering 与 replay metadata。
-
-### C4. Rhai / mods 的“trusted server operator”假设需要按 game mode 分级
-
-**来源**: rev-claude-security C2, rev-gpt-security High #2, rev-gpt-architect A13, rev-dsv4-security C2/H4, rev-dsv4-designer, rev-dsv4-architect
-
-多位评审员指出 Rhai 具备 `award_resource`、`deduct_resource`、`damage_entity`、`set_entity_flag` 等高权限能力。对于 private server，“服主可信”可以成立；但 public worlds、mod marketplace、ranked Arena 中，可信假设会因分发、复用、二次打包与 opaque server policy 崩塌。共识建议是：capability manifest、source/config hash、signature、allowlist、mode-specific policy、deterministic mod ordering 与 replay commitment。
-
-### C5. Resource / storage / market 必须有 canonical ledger 与 conservation invariants
-
-**来源**: rev-gpt-security High #1, rev-gpt-architect A5/A10, rev-dsv4-security C3/M2/I1, rev-dsv4-architect D6, rev-claude-architect A3, rev-claude-security M1
-
-Global/local storage、in-transit transfer、market orders、Terminal trading、interception、rollback、capture/destruction 与 FDB commit 都涉及 temporal accounting。跨方向共识是：必须定义 `available -> reserved -> in_transit -> settled/lost/refunded/burned` 等状态机，并保证任意 tick 中每一份 resource 只在一个 ledger bucket 内。否则 MMO economy 会出现 double-spend / duplication / tax evasion / rollback ambiguity。
-
-### C6. Special attacks / status effects 有深度，但默认/早期引入风险高
-
-**来源**: rev-claude-designer G3/G4/R2/R4, rev-gpt-architect A3, rev-gpt-security High #3, rev-dsv4-security H1/H5, rev-dsv4-designer S3/G concern, rev-claude-security H3/M3
-
-Hack、Drain、Overload、Debilitate、Fortify、Fabricate 等机制可增加战术深度，但跨方向一致认为当前 status stacking、immunity windows、refresh、cleanup on death/ownership change、per-target cooldown、aggregate caps、ranked policy 尚未足够明确。尤其 Overload 攻击 player fuel/CPU budget，被多名评审员视为 denial-of-play / griefing 风险。
-
-### C7. Controller lifespan / drone aging 机制需要重构为明确 maintenance rule
-
-**来源**: rev-claude-designer G2/R1, rev-dsv4-security C1, rev-gpt-architect A6, rev-gpt-security Medium #5, rev-dsv4-architect D4/D5
-
-多位评审员独立指出：Controller 对 drone age 的全局回退会导致“2 controllers finite, 3 controllers immortal”式 cliff 或 mature empires 的永久 drone，削弱 lifespan 作为 sink 的意义，并放大 snowball。需要明确 fixed-point math、floor/cap、controller eligibility、phase ordering、Neutral/Hack interaction，并保留 minimum aging rate 或改为 local/radius maintenance。
-
-### C8. Default numbers 是 balance hypotheses，不应视为 frozen spec
-
-**来源**: rev-claude-designer G1/G6, rev-gpt-designer G10, rev-gpt-architect A11, rev-gpt-security Informational #3, rev-dsv4-designer, rev-claude-architect A6
-
-RCL thresholds、storage tax、transfer cost/time、drone caps、fuel effects、lifespan、cooldowns、damage、body costs 等数值目前缺乏 simulation / telemetry 支撑。跨方向共识是：接口与 invariants 可以先冻结，balance numbers 应标记为 initial tuning candidates，并通过 agent-based / adversarial simulation 验证后再进入默认 ruleset。
-
-### C9. Player experience / onboarding / first-hour 是设计阻塞项，不是 UI 后置项
-
-**来源**: rev-gpt-designer G1/G3/G4/M2/M3/M4, rev-claude-designer Missing, rev-dsv4-designer G1/G2/G4/G7, rev-gpt-architect A2/A14
-
-Designer 方向全体一致，Architect 也从 new-player survival / tutorial world 角度支持：当前文档更像 engine design spec，而不是完整 game design。first successful action、starter bot、tutorial ladder、debugging feedback、failure recovery、newbie protection、long-term motivation 与 social loops 必须进入首个可玩里程碑，否则技术骨架成立但留存失败。
-
-### C10. Visibility / MCP / replay / spectator endpoints 需要字段级 matrix 与 redaction rules
-
-**来源**: rev-gpt-architect A8, rev-gpt-security Medium #6, rev-claude-security H2/M2/I2, rev-dsv4-security M2, rev-dsv4-architect P0-5 consistency, rev-gpt-designer G8
-
-Visibility model 方向正确，但所有输出面——WASM snapshot、player UI、MCP `inspect/explain/profile/dry_run`、replay、spectator、admin/audit——必须共享一套 field-level visibility matrix。否则 debug tools 会成为 hidden-state oracle 或 live Arena side channel。
-
-### C11. MMO scalability 不能只靠部署图表达，需要 gameplay-level topology / sharding model
-
-**来源**: rev-claude-architect A2/A3/A4, rev-dsv4-architect D1/C1, rev-gpt-architect A1/scalability, rev-gpt-security Medium #3, rev-claude-security H1
-
-共识是单世界串行 EXECUTE、snapshot serialization、host pathfinding/range queries、FDB transaction limit、replay volume 与 global storage/market coordination 都会成为 MMO scale 约束。需要明确：Phase 1 是 single engine vertical scale 还是 sharded rooms；10000 players 是多世界水平扩展目标还是 single world 目标；cross-shard interaction 是否存在。
-
-### C12. World/Arena split 正确，但 ranked Arena 需要更严格 commitments
-
-**来源**: rev-gpt-security Medium #2, rev-gpt-architect, rev-gpt-designer G7/G8, rev-dsv4-designer, rev-claude-security M2/H4
-
-World 可容忍 emergent unfairness，但 Arena 必须绑定 engine/rules/mod/map/WASM/compiler/SDK/initial-state hashes，live spectate delay 必须 non-zero，code lock 与 replay privacy 要明确。Arena 不应默认启用 arbitrary Rhai 或 high-risk special effects。
-
-## 方向内共识
-
-### Architect 方向共识
-
-**A1. 架构核心可行，但 implementation freeze 前必须先冻结 determinism / ABI / topology contracts。**  
-来源: rev-claude-architect, rev-dsv4-architect, rev-gpt-architect
-
-三位 Architect 都给出 Conditional / Approve with reservations。共同认可 deferred command、WASM sandbox、deterministic ECS 与 World Rules Engine；共同要求在实现前补全 topology/sharding、Phase 2a/2b boundary、resource custody、visibility matrix、custom CommandAction vs stable SDK、tick overload semantics。
-
-**A2. 单世界扩展上限与 sharding 策略必须显式声明。**  
-来源: rev-claude-architect A2/A3, rev-dsv4-architect D1/C1, rev-gpt-architect A1/scalability
-
-Claude Architect 更强调单世界串行 EXECUTE 与 FDB 事务硬限制；DSV4 Architect 建议 Phase 1-3 采用 single engine vertical scale 并把 horizontal sharding 延后；GPT Architect 要求 world topology / territory model 与 cross-shard gameplay model。共识不是“现在必须实现 sharding”，而是“必须写清楚当前阶段不承诺 single massive world”。
-
-**A3. Phase 2 execution semantics 需要形式化。**  
-来源: rev-claude-architect A5, rev-dsv4-architect D2/D3/D4/D5, rev-gpt-architect A7
-
-Inline command execution、deferred ECS systems、spawn room cap、combat simultaneous resolution、death/recycle/age ordering、first-come conflict resolution 都必须被规格化，否则会产生 race condition、double-apply、unfair turn advantage 或 replay ambiguity。
-
-**A4. Stable SDK/IDL 与 dynamic extensibility 存在结构张力。**  
-来源: rev-claude-architect A6, rev-gpt-architect A4/internal consistency, rev-dsv4-architect S5 + D2 concerns
-
-新 CommandAction 要求 engine registration / IDL / SDK regeneration，而文档又暗示 TOML/Rhai 可动态注册 custom actions。方向共识是分层：Core Ruleset 稳定；safe config 不改 SDK；experimental custom actions 需要 world-specific schema/SDK，不能直接进入 ranked/default。
-
-### Security 方向共识
-
-**S1. 安全基线强，但信任边界必须更硬。**  
-来源: rev-claude-security, rev-dsv4-security, rev-gpt-security
-
-三位 Security 均给 Conditional Approve。共同认可 WASM untrusted、Rhai trusted、Rust core 的三层模型与 source gate/deferred command；共同指出风险集中在 Rhai 权限、Command validation、resource/state transitions、special effects 与 visibility/debug endpoints。
-
-**S2. Command validation 是唯一收口点，必须字段级穷举。**  
-来源: rev-claude-security C3, rev-gpt-security Medium #4, rev-dsv4-security S1/S2 + verification checklist
-
-需要所有权、范围、类型、数量、坐标、entity_id、overflow、unknown fields、JSON size/depth/string length、Command[] length、per-tick caps、canonical JSON、DoS budgets。Validation 自身也必须有 cost limits。
-
-**S3. Rhai/mods 需要 capability sandbox + signing/hash policy。**  
-来源: rev-claude-security C2, rev-gpt-security High #2, rev-dsv4-security C2/H4
-
-Security 方向一致要求：私服、公共 World、ranked Arena 分别定义不同 mod policy；mod source/config hash 写入 replay/tournament commitments；capability manifest 限制 award/deduct/damage/ownership/flags/economy reads；多 mod 顺序与冲突必须 deterministic。
-
-**S4. Economic exploits 是 MMO 最高价值攻击面。**  
-来源: rev-gpt-security High #1, rev-dsv4-security C3/M2/I1, rev-claude-security H1/M1/M3
-
-Global/local storage、transfer losses、market escrow、refund/recycle、tutorial isolation、in-transit visibility、resource tax evasion、custom effects resource injection 都应按 adversarial economy 处理。必须有 conservation invariant 与 automated exploit tests。
-
-### Game Designer 方向共识
-
-**G1. 玩法骨架强，但文档缺 Player Experience layer。**  
-来源: rev-claude-designer, rev-dsv4-designer, rev-gpt-designer
-
-三位 Designer 都认可 core fantasy、AI/human parity、deferred tick loop、World/Arena split、strategic depth 与 moddability；也一致指出 DESIGN.md 过于 systems-heavy，缺 first-hour、tutorial ladder、starter bots、debugging feel、failure recovery、long-term motivation、social/replay loops。
-
-**G2. 默认 complexity budget 过高，需要 Default Vanilla / Core Ruleset。**  
-来源: rev-gpt-designer G2, rev-claude-designer G3/G5, rev-dsv4-designer G1/G2 + strategy analysis
-
-Designer 方向建议先给玩家一个清晰可学的 default game：single resource 或极简资源、基础 combat、RCL1-3 MVP、无/少 special attacks、无 arbitrary mods、local logistics 渐进解锁。Advanced mechanics 应进入 optional worlds / future modules。
-
-**G3. Onboarding、失败恢复与新手保护是留存核心。**  
-来源: rev-gpt-designer G1/M2/M3/M4, rev-claude-designer Missing, rev-dsv4-designer G1/G7
-
-需要 preloaded starter bot、5/15/30/60 分钟 milestones、human-readable rejection reasons、“why idle?” explanation、safe tutorial economy、wipeout recovery、beginner protection、respawn/relocation policy。
-
-**G4. 长期动机与 social/replay/community loops 需要一等公民化。**  
-来源: rev-gpt-designer G6/G8/M5/M6/F ideas, rev-dsv4-designer G2/G4/G5, rev-claude-designer Missing
-
-World 模式不能只有 RCL/GCL 数字积累；Arena 也不能只有比赛规则。需要 leagues、seasonal goals、bot/version pages、public replay portfolio、strategy sharing/forking、alliances/diplomacy、server/mod discovery、spectator content loop。
-
-## 未解决分歧（需用户裁决）— 全部已解决 ✅
-
-| # | 问题 | 结论 |
-|---|------|------|
-| D1 | Rhai wall-clock | 紧急保险丝，全回滚 = 确定性的，保留 ✅ |
-| D2 | 单世界 vs 多世界 | 联邦宇宙模型 ✅ |
-| D3 | 特殊攻击归属 | 默认启用的官方扩展 ✅ |
-| D4 | Controller 永久 drone | 范围限制 + 每 tick 总量上限 ✅ |
-| D5 | 产品定位 | 可配置平台 + 官方 curated default ✅ |
-
-### D1. Rhai wall-clock timeout 是否可作为状态决定因素 — ✅ 已解决
-
-**结论**: 设计意图已澄清——100ms 墙钟是紧急保险丝，不是主要预算。触发时**整个模组本 tick 所有 actions 全回滚**（事务隔离），因此结果是确定性的：无论在哪台机器、在哪个 AST 节点触发，canonical state 都是"该模组本 tick 零 effect"。AST 节点数（10,000）才是主要确定性预算。分歧已闭合。
-
-### D2. 单世界 MMO vs 多世界实例 — ✅ 已解决
-
-**结论**: 采用**联邦宇宙模型**——每个世界独立引擎、独立 tick、确定性自治。玩家可跨世界拥有身份和资产，世界间支持异步交互（如跨世界转移资源、共享排名），但无同步实时交互（无跨世界 combat、无跨世界同步 market）。类似 Mastodon 实例间的关系：独立运行，但可互通。
-
-### D3. Default Vanilla 是否应保留高级特殊攻击 — ✅ 已解决
-
-**结论**: 默认世界包含特殊攻击，但特殊攻击与 body part、建筑、伤害类型一样，本质是**默认启用的官方扩展**——通过 world.toml 配置声明，非引擎硬编码。服主可禁用/修改/替换。引擎核心只提供 validation + execution pipeline，具体内容由 world.toml 决定。
-
-### D4. Controller lifespan 是 anti-snowball sink 还是 empire maintenance reward — ✅ 已解决
-
-**结论**: 
-
-1. **Age 上限由 body part 类型决定**：`age_max = BASE_AGE + sum(每个部件的 age_modifier)`，其中 `age_modifier` 定义在 `[[body_part_types]]` 中，世界可配置。重型战斗部件（ATTACK -80, HEAL -30）折寿，耐用部件（TOUGH +100）延寿。
-2. **Drone 必须主动返回 Controller 才能降低 age**（非被动光环）。Controller 的维修容量有上限（每 tick 可服务的 drone 数 / 总 age 回退量），RCL 越高容量越大。
-3. **Healer 只能恢复 HP，不能降低 age**——age 是战略级物流约束，HP 是战术级。
-4. **活动 drone 衰老加速**：idle 正常流逝，每 tick 执行命令 +10% 流逝，防止挂机囤兵。
-
-### D5. Swarm 初版定位 — ✅ 已解决（由 D3 导出）
-
-**结论**: 引擎是**可配置平台**，官方 Default World 是**一套默认启用的扩展组合**（8 body parts + 12 structures + 6 damage types + 8 special attacks + 1 resource）。两者不矛盾——引擎提供 world.toml 配置机制，官方 curated default 是推荐的起点配置。服主可以在此基础上禁用、修改、或从头定义自己的世界规则。
-
-## 行动建议（P0/P1/P2/P3 优先级排序）
-
-### P0 — ABI/IDL / implementation freeze 前必须完成
-
-1. **写入 Determinism Contract v1**  
-   - 移除或隔离 Rhai wall-clock 对 canonical state 的影响；采用 deterministic AST/instruction/action budgets。  
-   - 规定 mod execution order、JSON canonicalization、runtime/version pinning、replay metadata、tick overrun behavior。  
-   - 来源: C3, D1；rev-claude-architect, rev-claude-security, rev-gpt-security, rev-gpt-architect。
-
-2. **定义 Command Validation Schema 与 abuse limits**  
-   - 每个 CommandAction 的 ownership/range/type/resource/coordinate/entity/status validation 表。  
-   - Command[] length、JSON bytes、string length、depth、resource map entries、unknown fields、overflow behavior、per-drone/per-player/per-tick caps。  
-   - 来源: S2；rev-claude-security, rev-gpt-security, rev-dsv4-security。
-
-3. **建立 Resource Ledger / Custody State Machine**  
-   - `available/reserved/in_transit/escrow/settled/refunded/lost/burned/taxed`。  
-   - conversion、market、terminal、interception、capture/destruction、rollback、FDB commit failure、shutdown 都有 deterministic settlement。  
-   - 添加 conservation invariant 与 exploit tests。  
-   - 来源: C5；rev-gpt-security, rev-gpt-architect, rev-dsv4-security, rev-claude-architect。
-
-4. **明确 Phase 2a/2b execution semantics 与 conflict resolution**  
-   - Inline vs deferred 原则；combat simultaneous vs first-come；spawn cap race；death/recycle/age ordering；resource conflict pro-rata/exclusive 分类。  
-   - TickTrace 记录 conflict outcomes。  
-   - 来源: A3；rev-dsv4-architect, rev-claude-architect, rev-gpt-architect, rev-gpt-security。
-
-5. **确定 World topology / scale promise / sharding boundary**  
-   - 房间尺寸、坐标、邻接、room transitions、spawn placement、territory/controller rules、single-world hard limits。  
-   - 明确 Phase 1-3 是否 single engine vertical scale；10000 players 是否为多世界平台指标。  
-   - 来源: C11/D2；rev-claude-architect, rev-dsv4-architect, rev-gpt-architect。
-
-6. **定义 Ranked Arena trust commitments**  
-   - WASM hash、SDK/compiler/engine/Wasmtime/rules/mod/map/initial-state hashes；non-zero spectate delay；code lock；mod allowlist。  
-   - 来源: C12；rev-gpt-security, rev-claude-security, rev-gpt-designer。
-
-7. **Rhai/mod trust policy 分级**  
-   - Private trusted, public disclosed, ranked allowlisted 三层。  
-   - Capability manifest、source/config hash、signature、deterministic ordering、per-action validators。  
-   - 来源: C4/S3；rev-claude-security, rev-gpt-security, rev-dsv4-security。
-
-### P1 — 首个可玩版本 / public persistent test 前必须完成
-
-1. **Default Vanilla / Core Ruleset v1**  
-   - 明确哪些是 Engine Core、Default Ruleset、Advanced Worlds、Example Mods。  
-   - MVP 建议只含基础 loop：spawn/move/harvest/carry/transfer/build/repair/attack/death/controller upgrade。  
-   - 高级 special attacks、market、arbitrary Rhai、custom actions 默认延后或禁用。  
-   - 来源: G2/D3/D5。
-
-2. **First Hour Player Journey + Tutorial Ladder**  
-   - 0-5/5-15/15-30/30-60 分钟目标；preloaded starter bot；first successful action；graduation path。  
-   - Tutorial economy 与 real worlds 完全隔离；100% refund 不得泄露到正式 economy。  
-   - 来源: C9/G3。
-
-3. **Debugging as Gameplay**  
-   - Rejected command human-readable reasons；per-drone planned/attempted/succeeded/failed timeline；“why idle?”；fuel profile；deployment before/after metrics；replay diff。  
-   - MCP docs/resources 需回答“what should I do next?”。  
-   - 来源: rev-gpt-designer G4/G9, rev-dsv4-designer G1, rev-claude-designer Missing。
-
-4. **New-player protection / failure recovery / safe mode**  
-   - Spawn zones、grace period、safe mode semantics、respawn/relocation、wipeout recovery、anti-grief restrictions、inactive decay。  
-   - 来源: rev-gpt-architect A2/A9, rev-gpt-designer M4, rev-claude-designer Missing。
-
-5. **Status Effect Resolution Model**  
-   - Stacking、refresh、duration、immunity window、aggregate cap、per-target cooldown、cleanup on death/ownership change、visibility、replay encoding。  
-   - Overload/Hack/Drain/Fortify 需专项 review 后再进 default。  
-   - 来源: C6。
-
-6. **Controller lifespan redesign**  
-   - Fixed-point age math、minimum aging、diminishing returns、local/radius vs global、Controller eligibility、phase ordering。  
-   - 来源: C7/D4。
-
-7. **Visibility / MCP / replay field matrix**  
-   - Entity fields by surface：WASM snapshot、player UI、MCP inspect/explain/profile/dry_run、spectator、replay、admin/audit。  
-   - Dry-run 不得成为 hidden-state oracle。  
-   - 来源: C10。
-
-### P2 — Multiplayer beta / economy beta 前完成
-
-1. **Host function/query budgets**  
-   - path_find、range query、snapshot serialization、visible entity count、returned object count、search nodes、cache policy、query credits/fuel charging。  
-   - 来源: C11, rev-gpt-security Medium #3, rev-claude-security H1。
-
-2. **Balance simulation plan**  
-   - RCL curve、storage tax、transfer costs/times、drone caps、lifespan、special cooldowns、combat damage、fuel effects。  
-   - Agent-based/adversarial scenarios：hoarding、zerg rush、turtle defense、drain farming、Overload lockdown、market manipulation、newbie griefing。  
-   - 来源: C8。
-
-3. **Market model or explicit deferral**  
-   - Order types、fees、escrow、partial fill、cancellation、settlement timing、regional/global market、anti-manipulation。  
-   - 若 MVP 不做 market，应明确 out of scope。  
-   - 来源: rev-gpt-architect A10, rev-gpt-security High #1。
-
-4. **FDB / persistence / replay storage strategy**  
-   - Transaction size/time limits、tick commit failure recovery、checkpoint/delta strategy、Dragonfly cache consistency、replay volume budget。  
-   - 来源: rev-claude-architect A3, rev-dsv4-architect D6/C2。
-
-5. **Supply-chain / reproducibility policy**  
-   - Engine, Wasmtime, Rhai, SDK, mods, rulesets pinned per world/tournament；CVE tracking；ranked worlds 禁止 mid-season auto-update。  
-   - 来源: rev-claude-security M4/I1, rev-gpt-security Medium #7。
-
-6. **Social / community / replay loops**  
-   - Public bot/version pages、strategy sharing/forking、alliances/diplomacy、server/mod discovery、shareable replay pages、match stats cards、annotated tutorials。  
-   - 来源: G4。
-
-### P3 — 后续扩展 / polish
-
-1. **Advanced Worlds / mod marketplace governance**  
-   - Mod review status、author identity、signatures、compatibility metadata、server discovery、world rules diff。  
-   - 支撑平台路线但不阻塞 MVP。
-
-2. **Advanced combat rollout**  
-   - Hack/Drain/Overload/Debilitate/Fortify/Fabricate 分批启用；每批基于 telemetry 与 balance simulations。  
-   - Overload 单独设计审查，因为它攻击 player compute budget。
-
-3. **Long-term progression expansion**  
-   - Seasonal leagues、bot ELO、challenge badges、optimization benchmarks、puzzle worlds、profile identity、spectator cosmetics。  
-   - 避免 pay-to-win 或不可逆 snowball。
-
-4. **Document restructuring**  
-   - 将 DESIGN 拆分或重排为：Player Fantasy、Target Audiences、First Hour、Core Loops、Default Ruleset、Progression/Social、Advanced/Modded Systems、Technical Architecture、Security/Determinism Contracts。  
-   - 使 game design 与 engine spec 都可审阅。
-
-5. **UX / terminology polish**  
-   - Player-facing glossary；隐藏 ECS/Rhai/FoundationDB/CommandAction 等实现术语；为每个核心 mechanic 提供 one-sentence explanation、example scenario、counterplay。
+# Swarm 设计评审 — Speaker 共识报告
+
+> **轮次**: 设计评审（profile-based 统一管线）  
+> **日期**: 2026-06-15  
+> **评审官**: 9/9 完成（3 方向 × 3 模型）  
+> **Speaker**: 当前 session（直接合成）
 
 ---
 
-Speaker 结论：Swarm 的核心方向获得跨方向强共识；当前风险不是“概念不成立”，而是“过早冻结未闭合的边界”。下一步应先完成 P0 contracts，再把 P1 Player Experience 与 Default Core Ruleset 拉到与 engine implementation 同等优先级。
+## 1. 裁决概要
+
+本轮为 profile-based 统一管线首次评审。9 名评审官全部完成，无缺位。7/9 给出 CONDITIONAL_APPROVE，2/9 给出 APPROVE_WITH_RESERVATIONS。**未出现 REQUEST_MAJOR_CHANGES 或 REJECT**，说明架构方向被广泛认可。
+
+核心发现集中在两个主题：(1) **确定性契约的执行细节**（墙钟终止、模组隔离、种子保密），(2) **玩家体验的抽象层次**（Vanilla ruleset 缺失、新手 onboarding、进度曲线未验证）。这些不是架构级推翻项，而是冻结前需要收口的边界执行问题。
+
+**收敛状态**: 方向收敛。架构师、安全、设计三个方向在核心关切上高度一致（跨方向 ≥5 个共识 Blocker）。Phase 0 架构冻结在此轮修正后可宣告成立。
+
+---
+
+## 2. 总体 Verdict
+
+**CONDITIONAL_APPROVE** — 设计可进入实现阶段，但须先闭合以下共识 Blocker。
+
+| 方向 | Claude Opus 4.7 | GPT-5.5 | DeepSeek V4 Pro |
+|------|:---:|:---:|:---:|
+| **Architect** | APPROVE_WITH_RESERVATIONS | CONDITIONAL_APPROVE | CONDITIONAL_APPROVE |
+| **Security** | Conditional Approve | CONDITIONAL_APPROVE | CONDITIONAL_APPROVE |
+| **Designer** | APPROVE_WITH_RESERVATIONS | CONDITIONAL_APPROVE | CONDITIONAL_APPROVE |
+
+---
+
+## 3. 共识 Blocker（≥2 方向 + ≥2 模型同意）
+
+### B1 — Rhai 墙钟 100ms 终止破坏确定性
+
+**方向 × 模型矩阵**:
+| 方向 | Claude | GPT | DSV4 |
+|------|:---:|:---:|:---:|
+| Architect | A1（严重）✅ | — | — |
+| Security | C1（Critical）✅ | — | — |
+| Designer | — | — | — |
+
+**问题**: DESIGN §8.4 规定 Rhai 脚本以 100ms 墙钟强制终止并回滚。墙钟在不同硬件/负载下不一致 → 同一 tick 的 mod 在不同机器上终止于不同 AST 节点 → 世界状态分叉。这直接违反 §1.5「确定性核心」，使回放再验证（反作弊根基）失效。
+
+**跨评审交叉引用**: Claude Architect A1 + Claude Security C1 独立发现同一问题。
+
+**裁决**: **必须修改。** 墙钟只能用于告警/监控，不能作为世界状态决定因素。改为确定性预算（AST 节点数 / 指令数），匹配 §1.5 的确定性原则。两评审官均建议 AST 节点数（10k），此方案收敛。
+
+**修正要求**:
+1. DESIGN.md §8.4: 删除 100ms 墙钟终止逻辑，改为 AST 节点数预算（10k）
+2. P0-7: 同步更新 Rhai 执行预算描述
+3. §1.5 确定性核心：增加「Rhai 执行预算必须确定性」条款
+
+---
+
+### B2 — Rhai 进程内执行、无隔离、持破坏性 API
+
+**方向 × 模型矩阵**:
+| 方向 | Claude | GPT | DSV4 |
+|------|:---:|:---:|:---:|
+| Architect | — | — | — |
+| Security | C2（Critical）✅ | High（RuleMod 能力模型）✅ | — |
+| Designer | — | — | — |
+
+**问题**: Rhai 脚本（`damage_entity`/`deduct_resource`/`set_entity_flag`）在引擎核心进程内运行为，"服主可信"假设在模组被分发/复用时崩塌。Rhai 解释器一旦存在逃逸或预算绕过 → 全进程沦陷。
+
+Claude Security 与 GPT Security 独立收敛于同一结论：需要进程/能力隔离 + 模组签名与来源校验。GPT Security 进一步指出 P0-9 将 RuleMod 能力描述为"仅经济+事件"，但 P0-7/DESIGN 实际允许更广能力（damage/effect/attribute/custom handler）→ 跨文档不一致。
+
+**裁决**: **必须修改。** 实现前收口 Rhai 隔离方案 + 模组签名机制 + P0-9/P0-7/DESIGN 能力描述对齐。
+
+**修正要求**:
+1. DESIGN.md: 新增 Rhai 隔离方案（进程隔离或能力沙箱，二选一）
+2. DESIGN.md: 新增模组签名与来源校验机制
+3. P0-7 vs P0-9: 对齐 RuleMod 能力范围描述（经济+事件 → 明确列出允许的 action 类型）
+4. tech-choices.md: 补充 Rhai 安全评估（已知 CVE 历史、逃逸风险）
+
+---
+
+### B3 — Command Validation Pipeline 单点收口完整性
+
+**方向 × 模型矩阵**:
+| 方向 | Claude | GPT | DSV4 |
+|------|:---:|:---:|:---:|
+| Architect | — | — | — |
+| Security | C3（Critical）✅ | — | HIGH-1（"Trust Downstream"）✅ |
+| Designer | — | — | — |
+
+**问题**: Command JSON 完全由不可信 WASM 构造，校验管线是 WASM 与可信世界状态之间的唯一闸口。Claude Security 要求穷举：entity_id 越权、u32 溢出、资源注入、坐标越界、畸形 JSON DoS。DSV4 Security 补充：Admin 命令如果跳过 Validation Pipeline（走 `admin_apply()` 而非 `validate_and_apply()`）→ 存在绕过路径。
+
+**裁决**: **必须修改。** 实现前须有字段级穷举校验表，且 Admin 命令必须走同一 `validate_and_apply()` 路径（仅放宽 RejectionReason 阈值）。
+
+**修正要求**:
+1. P0-2: 补充字段级穷举校验表（所有权绑定 + 范围 + 类型三重校验 + DoS 上限）
+2. P0-9: Admin 命令必须走同一 `validate_and_apply()`，不可设独立代码路径
+3. DESIGN.md §1.4: 增加"校验管线自身不可被指令数量耗尽"条款
+
+---
+
+### B4 — Overload 攻击无范围/可见性限制（跨世界侧信道 + DoS）
+
+**方向 × 模型矩阵**:
+| 方向 | Claude | GPT | DSV4 |
+|------|:---:|:---:|:---:|
+| Architect | — | A5（High）✅ | — |
+| Security | — | — | CRITICAL-2 ✅ |
+| Designer | — | — | — |
+
+**问题**: Overload 特殊攻击声明"无范围限制 — 逻辑攻击"。这意味着任何玩家可以削减全球任意玩家的 fuel 预算（500k/次），无视 fog-of-war、无视距离、无视可见性。
+
+GPT Architect 指出这是"对参与游戏能力的攻击，不只是单位状态变化"。DSV4 Security 进一步发现：(1) Overload 成功/失败会泄露目标玩家存在性和 fuel 状态（信息泄露），(2) 10 架 RangedAttack drone 可在单 tick 削减单一目标 5M fuel，(3) 这是整个可见性模型（P0-5 `is_visible_to()`）的唯一例外。
+
+**裁决**: **必须修改。** 添加可见性/范围约束，设全局冷却 + 静默失败。
+
+**修正要求**:
+1. DESIGN.md §4.4 / P0-2: Overload 添加 `requires_visibility: true`（目标玩家的任意实体在攻击者视野内）
+2. P0-2: 添加全局 Overload 冷却（同一目标 N tick 内不可被重复 Overload）
+3. P0-2: Overload 失败时返回静默错误（不泄露目标状态）
+4. P0-5: 确认 Overload 纳入 `is_visible_to()` 检查
+
+---
+
+### B5 — 默认游戏抽象层次未收敛：缺少 Vanilla Ruleset
+
+**方向 × 模型矩阵**:
+| 方向 | Claude | GPT | DSV4 |
+|------|:---:|:---:|:---:|
+| Architect | — | A2（High）✅ | — |
+| Security | — | — | — |
+| Designer | G5（High）✅ | G1（High）✅ | D4（MEDIUM）✅ |
+
+**问题**: DESIGN.md 将 Vanilla、Advanced、Modded、Future Expansion 混在同一层级。GPT Architect 指出这是经典的"过早平台化"失败模式；GPT Designer 强调第一个小时的认知负担过重；Claude Designer 指出经济三模式（A/B/C）对新手过重。
+
+三个方向三个模型独立收敛：需要一份明确的 "Official Core Ruleset Contract" 定义默认体验边界。
+
+**裁决**: **必须修改。** 新增 Official Vanilla Swarm Ruleset 章节，将可配置项收束到分层投放模型。
+
+**修正要求**:
+1. DESIGN.md: 新增 §X "Official Vanilla Swarm Ruleset" — 明确默认资源、body parts、建筑、战斗、物流模式的固定基线
+2. DESIGN.md: 明确三层扩展模型：Core（冻结） / Declarative（参数可配） / Experimental（世界特定）
+3. P0-6: 教程/starter bot 需与 Vanilla Ruleset 对齐
+4. 经济模式：默认锁定模式 B，A/C 标记为进阶解锁
+
+---
+
+### B6 — RCL 进度曲线 + Controller 续期破坏生命周期约束
+
+**方向 × 模型矩阵**:
+| 方向 | Claude | GPT | DSV4 |
+|------|:---:|:---:|:---:|
+| Architect | — | — | D4（MEDIUM）✅ |
+| Security | — | — | — |
+| Designer | G1+G2（High）✅ | — | — |
+
+**问题**:
+- RCL 7(50k)→8(150k) 是 3 倍跳跃，而 1→2 仅 200 → 中后期墙过陡，RCL8(Nuker) 沦为极少数玩家专属
+- 每 Controller/tick 回退 age 0.5，多 Controller 可完全抵消自然衰老 → 永久 drone，消解 lifespan(1500) 约束
+
+Claude Designer 与 DSV4 Architect 独立发现。这是两个独立但互相强化的滚雪球机制。
+
+**裁决**: **必须修改。** 重新定调 RCL 曲线（建议几何增长，相邻级倍率 1.6–2.0x），Controller 续期设硬上限（最多抵消 50% age 增长）。
+
+**修正要求**:
+1. DESIGN.md §3.2: 重新设定 RCL 进度曲线（建议近似几何增长）
+2. DESIGN.md §2.2: Controller 续期硬上限 `max_age_reduction = 0.5/tick`
+3. DSV4 Architect D5: 明确 age floor 行为（`age = max(0, age + 1 - min(1.0, 0.5 * controller_count))`）
+
+---
+
+### B7 — 世界拓扑 / Sharding / 领土模型未定义
+
+**方向 × 模型矩阵**:
+| 方向 | Claude | GPT | DSV4 |
+|------|:---:|:---:|:---:|
+| Architect | A2+A3（严重）✅ | A3（High）✅ | D1（MAJOR）✅ |
+| Security | — | — | — |
+| Designer | — | — | — |
+
+**问题**: 三个架构评审官独立发现同一缺口。
+- Claude Architect: 单世界扩展上限未声明，FDB 事务 10MB 硬限，10000 玩家只能靠多世界水平扩展
+- GPT Architect: room 尺寸、坐标系、出口、邻接关系、shard 边界、Arena 地图模板对称性未定义
+- DSV4 Architect: Multi-Shard MMO model is undefined, cross-shard determinism 不可行
+
+**裁决**: **必须修改。** Phase 1-3 采用 Option B（单引擎垂直扩展），文档化水平分片为 Phase 7+ 关注。
+
+**修正要求**:
+1. DESIGN.md: 新增 §"World Topology & Territory" — room graph、坐标模型、出口规则、Controller 生命周期
+2. DESIGN.md: 声明单世界扩展策略（垂直扩展 → 先到先上限 → 多世界水平扩展），设定 MVP 实体上限
+3. DESIGN.md §7.2: 明确多引擎图为 HA（active-passive），非水平分片
+4. P0-1: FDB 事务大小预算（10MB）+ 分片提交策略（若未来需要）
+
+---
+
+### B8 — Bevy World 快照回滚完整性 + FDB 事务原子性边界
+
+**方向 × 模型矩阵**:
+| 方向 | Claude | GPT | DSV4 |
+|------|:---:|:---:|:---:|
+| Architect | — | — | D1（CRITICAL）✅ |
+| Security | — | — | CRITICAL-4 ✅ |
+| Designer | — | — | — |
+
+**问题**: P0-1 §3.5 规定 FDB commit 失败时显式 `world.restore(snapshot)` 恢复 Bevy World。但 Bevy ECS World 非简单 Clone 友好结构——archetype storage、类型擦除 Resources、Change detection ticks 均需完整捕获。快照遗漏任何 component/resource → 回滚后状态分叉 → 确定性合同被打破。DSV4-Security 进一步指出 COLLECT 结果是否跨重试缓存复用、RNG 状态恢复均未定义。DSV4-Architect 提出更优替代方案：「先提交后应用」——FDB commit 成功后才将变更写入 Bevy World，避免回滚需求。
+
+**裁决**: **必须修改。** 显式定义快照范围（Component + Resource 清单），增加 FDB 故障注入 CI 测试。评估「先提交后应用」替代方案。
+
+**修正要求**:
+1. P0-1 §3.5: 显式列出快照范围（所有 Component 类型 + TickCounter/RNG state/PlayerOrder/ResourceRegistry 等核心 Resource）
+2. P0-1 §6.1: COLLECT 结果跨重试缓存复用策略
+3. CI: FDB 故障注入测试（随机 tick 触发 commit 失败 → `state_checksum == snapshot_checksum`）
+4. 评估并文档化「先提交后应用」vs「快照回滚」的取舍
+
+---
+
+### B9 — Phase 2a/2b 边界原则缺失 + Spawn 文档矛盾
+
+**方向 × 模型矩阵**:
+| 方向 | Claude | GPT | DSV4 |
+|------|:---:|:---:|:---:|
+| Architect | A5（中）✅ | — | D4+D6（CRITICAL）✅ |
+| Security | — | — | — |
+| Designer | — | — | — |
+
+**问题**:
+1. **2a/2b 无分类原则**: Attack 在 2a 直接减 HP，2b combat_system 再次处理战斗 → 双重伤害风险。Move→Attack→Harvest 的顺序效应在跨阶段时语义变化。
+2. **Spawn 文档矛盾**: DESIGN §3.2 ECS chain 中 `spawn_system` 在第 2 位（死亡清理前），P0-2 §3.10 声称「death_cleanup 之后创建」——直接矛盾。新 spawn drone 在同 tick 参与 combat/decay 需显式声明。
+3. **Recycle despawn 三处不一致**: P0-2 §10.3「立即 despawn」、DESIGN §3.2「Phase 2a」、实际 death_cleanup 在 2b 末尾。
+
+Claude Architect A5 与 DSV4-Architect D4+D6 独立收敛。
+
+**裁决**: **必须修改。** 定义 2a vs 2b 分类原则，修正 Spawn/Recycle 文档矛盾。
+
+**修正要求**:
+1. DESIGN §3.2: 新增分类原则——2a (Inline): 玩家命令，FCFS 竞争；2b (Deferred): 被动系统 + 跨实体协调
+2. DESIGN §3.2: 明确 Attack 在 2a 直接应用 damage（含抗性），2b combat_system 仅处理非玩家战斗（Tower/DoT）
+3. P0-2 §3.10: 修正为「spawn_system 在 death_mark 后、combat 前——新 drone 同 tick 参与战斗」
+4. P0-2 §10.3: Recycle 统一走 death_mark → death_cleanup
+
+---
+
+## 4. 方向专属 High 优先级
+
+### Architect 方向
+
+| ID | 问题 | Severity | 处置 |
+|----|------|----------|------|
+| A-H1 | 动态 CommandAction / IDL / SDK 边界存在架构级张力（GPT A1） | Critical | 明确三层扩展模型（Core/Declarative/Experimental），`core_abi_version` + `world_api_hash` |
+| A-H2 | 新玩家保护 / Safe Mode 仍是字段级设计（GPT A4） | High | 新增 Colony Bootstrap & Safe Mode State Machine |
+| A-H3 | Phase 2a/2b 边界未定义原则（DSV4 D2） | MAJOR | 添加分类原则（inline: FCFS 竞争 / deferred: 被动系统 + 跨实体协调） |
+| A-H4 | Spawn Room Cap 竞态（DSV4 D3） | MAJOR | 文档化竞态为 intentional，补充 `RoomCapExceeded` + 退款行为 |
+| A-H5 | FDB 事务上限 / Bevy World 回滚一致性（DSV4 CRITICAL-4） | Critical | 定义快照粒度 + COLLECT 结果跨重试缓存复用 |
+
+### Security 方向
+
+| ID | 问题 | Severity | 处置 |
+|----|------|----------|------|
+| S-H1 | 快照序列化未计入 fuel 配额（Claude H1） | High | 对快照大小/序列化成本设上限并计费 |
+| S-H2 | MCP 查询工具无频率限制（Claude H2） | High | 配额化所有查询工具 |
+| S-H3 | Fuel Refund Timing Attack — 双倍申领（DSV4 CRITICAL-3） | Critical | 跨重试 fuel 消耗上限为 1× MAX_FUEL |
+| S-H4 | Pathfinding Algorithm Unbounded — 恶意地图 DoS（DSV4 HIGH-2） | High | A* 预算上界 + 局部目标回退 |
+
+### Designer 方向
+
+| ID | 问题 | Severity | 处置 |
+|----|------|----------|------|
+| D-H1 | 战斗系统组合爆炸不可平衡（Claude G3） | High | 提供 1 套官方 reference ruleset 作为锚点 |
+| D-H2 | Hack/Neutral 5-tick 战术定位模糊（Claude G4 / Security H3） | High | 明确 Hack 策略定位（控场/资源/拖延），否则建议砍掉 |
+| D-H3 | Overload 定向压制 AI 的人类/AI 不对称（Claude R2） | High | 与 B4 一起修正 — 添加可见性约束消除不对称 |
+| D-H4 | 失败/死亡恢复循环未定义（Claude + GPT Designer） | High | 新增 respawn 重入机制描述 |
+| D-H5 | Arena 匹配/段位机制未定义（Claude + GPT Designer） | High | 新增 Arena 匹配设计 |
+
+---
+
+## 5. Medium/Low 处置
+
+| ID | 问题 | 来源 | 负责 Phase | 处置 |
+|----|------|------|-----------|------|
+| M1 | 转换损耗整数舍入 → 微额拆分规避 | Claude Security M1 | Phase 2 | 向上取整或设最小损耗 |
+| M2 | `spectate_delay=0` 默认值构成共谋通道 | Claude Security M2 | Phase 3 | 竞技模式默认 >0 |
+| M3 | 自定义动作组合缺乏白名单 | Claude Security M3 | Phase 3 | world.toml 校验加组合白名单 |
+| M4 | wasmtime 版本即确定性依赖，回放元数据需记录 | Claude Security M4 | Phase 1 | 回放元数据锁定运行时版本 |
+| M5 | COLLECT JSON 序列化在数千玩家下成本爆炸 | Claude Architect A4 | Phase 4 | 评估二进制快照格式（冻结前决策） |
+| M6 | 多 mod 执行顺序未规定 | Claude Architect A7 | Phase 3 | mod id 字典序 + 版本/依赖解析器 |
+| M7 | in-flight 资源的 ECS 实体模型缺失 | Claude Architect Missing | Phase 3 | 定义 Transport 实体 |
+| M8 | 累进税率阈值无模拟支撑 | Claude Designer G6 | Phase 4 | 经济模拟验证后冻结 |
+| M9 | Controller 降级计时器 / Claim 机制未定义 | DSV4 Architect D4 | Phase 2 | 新增 Controller Lifecycle 子章节 |
+| M10 | MIT 首日开源需明确 wasmtime/Rhai CVE 跟踪 | Claude Security I1 | Phase 5 | 新增 CVE-SLA 策略 |
+| M11 | TickTrace 审计日志防篡改 + PII 隐私分级 | Claude Security I2 | Phase 5 | 新增日志签名字段 |
+| M12 | `set_entity_flag` 标志命名空间防冲突 | Claude Security I3 | Phase 2 | 标志名前缀注册机制 |
+
+---
+
+## 6. 文档维护项
+
+1. **DESIGN.md**: 合并 Claude Architect findings（A1-A7）与 Claude Security findings（C1-C3/H1-H4）为设计文档内联修正
+2. **P0-7 vs P0-9**: 对齐 RuleMod 能力范围描述（当前互相矛盾）
+3. **README.md**: 更新评审状态为 "设计评审完成，9 Blocker 待收口"
+4. **reviews/README.md**: 新增本轮 Speaker Verdict 索引
+5. **Claude reviews 标题残留 4.8**: 三份 Claude 评审文件标题仍写 `Claude Opus 4.8`（模型实际使用 4.7，文本为模型自述），建议修正为 4.7
+6. **P0-2 §3.10 vs DESIGN §3.2**: Spawn 文档矛盾（B9）——修正 P0-2 描述
+7. **P0-2 §10.3 vs DESIGN §3.2**: Recycle despawn 三处不一致——统一路径
+
+---
+
+## 7. 下一轮入场条件
+
+以下 9 项共识 Blocker 闭合后方可进入下一轮评审（或直接进入实现）：
+
+- [ ] B1: Rhai 墙钟 → 确定性 AST 节点预算
+- [ ] B2: Rhai 隔离方案 + 模组签名机制
+- [ ] B3: Command Validation 字段级穷举表 + Admin 路径统一
+- [ ] B4: Overload 可见性/范围约束 + 全局冷却
+- [ ] B5: Official Vanilla Swarm Ruleset 章节
+- [ ] B6: RCL 曲线重定调 + Controller 续期硬上限
+- [ ] B7: World Topology & Territory 章节 + 扩展策略声明
+- [ ] B8: Bevy World 快照范围清单 + FDB 故障注入 CI
+- [ ] B9: Phase 2a/2b 分类原则 + Spawn/Recycle 文档修正
+
+---
+
+## 8. 评审统计
+
+### 3×3 Verdict 矩阵
+
+| | Architect | Security | Designer |
+|---|:---:|:---:|:---:|
+| **Claude Opus 4.7** | APPROVE_WITH_RESERVATIONS | Conditional Approve | APPROVE_WITH_RESERVATIONS |
+| **GPT-5.5** | CONDITIONAL_APPROVE | CONDITIONAL_APPROVE | CONDITIONAL_APPROVE |
+| **DeepSeek V4 Pro** | CONDITIONAL_APPROVE | CONDITIONAL_APPROVE | CONDITIONAL_APPROVE |
+
+### 共识强度
+
+| 指标 | 数值 |
+|------|------|
+| 总评审官 | 9/9 完成 |
+| CONDITIONAL_APPROVE | 7/9 |
+| APPROVE_WITH_RESERVATIONS | 2/9 |
+| REQUEST_MAJOR_CHANGES | 0/9 |
+| 跨方向共识 Blocker | 9 个（≥2 方向 + ≥2 模型） |
+| 方向专属 High | 14 个 |
+| Medium/Low | 17 个 |
+| 跨文档矛盾 | 3 个（P0-7 vs P0-9 RuleMod 能力范围、P0-2 §3.10 vs DESIGN §3.2 Spawn、P0-2 §10.3 vs DESIGN §3.2 Recycle） |
+
+### 评审质量评估
+
+- **Claude Opus 4.7 首次 profile-based 运行**: 3/3 完成，无截断。Architect 19 行浓缩版 + 独立 findings 文件；Security 68 行完整 Critical→Informational 分层；Designer 60 行终审。输出质量高，结构清晰。
+- **GPT-5.5**: 3/3 完成，评审最详细（Architect 340 行、Designer 380 行），模式匹配能力强。
+- **DeepSeek V4 Pro**: 3/3 完成，Security 379 行最详尽（CRITICAL 1-4 深度出色），Architect D1-D6 系统性强。
+
+**结论**: profile-based 统一管线首次运行成功。9/9 完成率，零截断。Claude Opus 4.7 表现优于 4.8（此前多轮需 Stage1→Stage2 管线且有截断）。建议后续评审继续使用此管线。

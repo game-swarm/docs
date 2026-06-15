@@ -28,7 +28,7 @@
 |--------|------|-------------|----------|-------|------------|------------|--------|
 | `Deploy` | 代码部署管线（非 MCP 入口） | player_id | ❌ 否 | 完整 | 1/tick | 玩家快照 | compile budget |
 | `Rollback` | 管理回滚操作 | admin_id + rollback_token | ❌ 否 | **双人审计** — 需两个不同 admin 的 Ed25519 签名，服务端在 Source Gate 前强制执行 | 手动触发 | 历史状态 | N/A |
-| `RuleMod` | Rhai 规则模组 actions | mod_id + world_owner_id | ⚠️ 仅经济 + 事件 | 完整 | 100 actions/tick | 规则作用域 | Rhai op budget |
+| `RuleMod` | Rhai 规则模组 actions | mod_id + world_owner_id | ⚠️ damage/effect/attribute/event/resource/custom handler（经能力白名单） | 完整 | 100 actions/tick | 规则作用域 | Rhai op budget |
 | `Simulate` | `swarm_simulate` 试运行 | player_id + snapshot_id | ❌ 否（snapshot-bound dry-run） | 完整 | 5/tick | 快照副本 | 0.5× MAX_FUEL |
 | `DryRun` | 部署前语法/校验试运行 | player_id | ❌ 否 | 完整 | 20/h | 无（仅编译） | compile budget |
 | `Tutorial` | 教程引导（扩展） | tutorial_session + world_id | ⚠️ 仅教程世界 | 完整 | 10/tick | 教程房间 | tutorial budget |
@@ -44,11 +44,13 @@
 | `Replay` | ❌（只读） | ❌（只读） | ❌ | ✅（回放范围） | ❌（只读） |
 | `TestHarness` | ✅ | ✅ | ✅ | ✅ | ✅ |
 | `Tutorial` | ⚠️ 教程世界隔离 | ❌（独立 namespace） | ❌ | ⚠️ 教程房间 | ❌（无敌方） |
-| `RuleMod` | ⚠️ deduct/award/emit_event | ❌ | ❌ | ❌ | ❌ |
+| `RuleMod` | ⚠️ damage_entity/set_entity_flag/deduct_resource/award_resource/emit_event/custom handler（经能力白名单校验） | ❌ | ❌ | ❌ | ❌ |
 | `Simulate` | ❌（snapshot copy） | ❌（snapshot copy） | ❌ | ✅（副本） | ⚠️ dry-run |
 | `DryRun` | ❌ | ❌ | ❌（仅编译） | ❌ | ❌ |
 | `Rollback` | ✅（回滚写入） | ✅ | ✅ | ✅ | N/A（回滚状态） |
 | `Deploy` | ❌ | ❌ | ✅ | ❌ | ❌ |
+
+> **Admin 路径统一**：Admin 命令走标准 `validate_and_apply()` 管线，仅 RejectionReason 阈值放宽（Admin 可操作任意玩家的实体，所有权检查放宽）。编译期通过 Rust trait 设计确保任何修改世界状态的代码无法绕过此路径——`WorldMutate` trait 的唯一实现者是 `validate_and_apply()`，任何试图直接持有 `&mut World` 的代码会产生编译错误。不存在 Admin 专用的独立代码路径。
 
 ### 2.4 Tutorial 来源的隔离约束
 

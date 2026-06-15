@@ -216,6 +216,102 @@ txn.commit()  // 全提交 或 全回滚
 连续放弃 3 次 → 引擎进入降级模式（暂停新玩家加入），告警触发。
 **关键**: EXECUTE 开始时对 `Bevy World` 做内存快照——FDB rollback 不自动恢复 Bevy 状态，需显式 `world.restore(snapshot)`。
 
+#### Bevy World 快照范围清单
+
+快照在 Phase 2a 开始前完成，捕获完整的 World 状态。以下为必须捕获的 Resource 类型和所有 ECS Component 类型：
+
+**必须捕获的 Resource 类型**：
+
+| Resource | 说明 |
+|----------|------|
+| `TickCounter` | 当前 tick 编号 |
+| `WorldSeed` | 世界随机种子 |
+| `PlayerOrder` | 本 tick 洗牌后的玩家顺序 |
+| `ResourceRegistry` | 全局资源注册表 |
+| `WorldConfig` | 世界配置（房间尺寸、限制参数等） |
+| `RNGState` | 随机数生成器状态（Blake3 XOF 内部状态） |
+| `TimeResource` | tick 间隔、超时配置等 |
+
+**必须捕获的 ECS Component 类型**：所有实体上挂载的 Component 均在快照范围内，包括但不限于：
+
+| Component 类别 | 示例 |
+|---------------|------|
+| `Transform` (位置) | `RoomPosition`, `HexCoord` |
+| `Owner` (所有权) | `PlayerId` |
+| `Body` (身体部件) | `BodyPart` 及各个 part 组件 (`MovePart`, `WorkPart`, `CarryPart`, `AttackPart`, `RangedAttackPart`, `HealPart`, `ClaimPart`, `ToughPart`) |
+| `Resource` (资源) | `Carry`, `Energy`, `ResourceStore` |
+| `Health` (生命) | `HitPoints`, `MaxHitPoints` |
+| `Combat` (战斗) | `Damage`, `HealAmount`, `DamageType` |
+| `Status` (状态) | `Fatigue`, `Cooldown`, `HackControlLock`, `Debilitated`, `Fortified`, `Spawning` |
+| `Room` (房间) | `RoomId`, `RoomController` |
+| `Structure` (建筑) | `Spawn`, `Extension`, `Controller`, `Tower`, `Storage` |
+| `Terrain` (地形) | `TerrainType`, `Walkable` |
+| `Visibility` (可见性) | `VisibleTo`, `FogOfWarState` |
+| `Metadata` (元数据) | `EntityId`, `SpawnTick`, `Lifespan` |
+
+**快照生命周期**：
+```
+Phase 2a 开始前: snapshot = world.snapshot()  // 深拷贝 Bevy World
+Phase 2a-2b:      在 world 上原地修改
+FDB commit 成功:  丢弃 snapshot
+FDB commit 失败:  world.restore(snapshot)      // 恢复所有 Component + Resource
+```
+`world.restore(snapshot)` 将 Bevy World 完全回滚至 Phase 2a 前的状态，包括所有实体的 Component 数据、所有 Resource 数据。
+
+#### COLLECT 结果跨重试缓存
+
+FDB commit 失败触发重试时，**复用同一 COLLECT 结果**（相同的命令序列 + fuel 扣费），不重新执行 WASM：
+
+- COLLECT 阶段的结果（`Map<PlayerId, Vec<ValidatedCommand>>` + 各玩家的 fuel 扣费明细）在首次 COLLECT 后缓存
+- 重试跳过 COLLECT 阶段，直接进入 EXECUTE 阶段，使用缓存的命令列表
+- 跨重试 fuel 消耗上限 = `1 × MAX_FUEL`（首次 COLLECT 时的扣费即为最终扣费，重试不追加）
+- 若连续 3 次 FDB commit 失败后 tick 放弃，已扣除的 fuel 退还玩家
+
+#### FDB 故障注入 CI 测试
+
+CI 管线中增加确定性故障注入测试，验证快照恢复的一致性：
+
+```rust
+#[test]
+fn fdb_commit_failure_restores_snapshot_consistency() {
+    // 1. 构建初始 World 状态
+    let mut world = World::new(test_world_config());
+    let snapshot_checksum_before = world.state_checksum();
+
+    // 2. 注入 FDB commit 失败（随机 tick 触发）
+    fault_injection::set_mode(FaultMode::RandomCommitFailure {
+        probability: 0.1,  // 10% 的 tick 触发 commit 失败
+        seed: 42,           // 确定性种子
+    });
+
+    // 3. 执行 N 个 tick
+    for tick in 0..1000 {
+        let snapshot = world.snapshot();  // Phase 2a 前快照
+        let collected = collect_commands(&world, tick);
+        let commit_result = execute_and_commit(&mut world, collected, tick);
+
+        if commit_result.is_err() {
+            world.restore(snapshot);
+            // 验证恢复后状态与快照一致
+            assert_eq!(world.state_checksum(), snapshot_checksum_before,
+                "tick {}: state_checksum mismatch after snapshot restore", tick);
+        }
+
+        // 若 commit 成功，更新基准 checksum
+        if commit_result.is_ok() {
+            snapshot_checksum_before = world.state_checksum();
+        }
+    }
+}
+```
+
+**CI 中的随机故障注入策略**：
+- 每个 CI run 随机选取 5% 的 tick 触发 FDB commit 失败
+- 验证断言：`state_checksum == snapshot_checksum`（恢复后状态与快照完全一致）
+- 额外验证：`entity_count == snapshot_entity_count`（实体数量一致）
+- 额外验证：所有 Resource 值与快照值逐项匹配
+- 失败时输出完整 diff（哪个 Component/Resource 不一致）
+
 ## 4. 阶段三：广播
 
 ### 4.1 增量计算

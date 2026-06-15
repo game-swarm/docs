@@ -1,318 +1,340 @@
-# Design Review — Architect Perspective (rev-gpt-architect)
+# Swarm Design Review — rev-gpt-architect
 
-VERDICT: CONDITIONAL_APPROVE
+Reviewer: GPT-5.5 / Architect
+Scope: `/data/swarm/docs/design/DESIGN.md`, `/data/swarm/docs/design/tech-choices.md`, `/data/swarm/docs/ROADMAP.md`, and all spec files currently present under `/data/swarm/docs/specs/`.
+Note: requested path `/data/swarm/docs/specs/p0/` does not exist in this checkout; the P0 specs are present directly as `/data/swarm/docs/specs/01-...` through `09-...` and were reviewed.
 
-Scope: game design review only, not spec-compliance review. Focused on structural coherence of mechanics, completeness/edge cases, internal consistency, and scalability for multi-player MMO.
+Verdict: CONDITIONAL_APPROVE
 
-## Strengths
+结论：方向批准，但不建议把当前文档视为“可长期冻结的完整架构合同”。核心架构模式是成立的：WASM-only player agency、deferred command、统一 Source Gate、确定性 replay、MCP 非 gameplay 通道，这些都匹配成功的 Screeps-like / deterministic simulation / secure sandbox 系统经验。主要风险不是“路线错了”，而是当前设计同时追求“可玩的官方 MMO RTS”和“高度可配置的游戏引擎平台”，导致若干接口边界、抽象层次和动态扩展机制仍不够收敛。建议在进入大规模实现/公开持久世界前，补齐下列 High/Critical 级问题。
 
-1. Strong core premise and fairness model
-   - “World only recognizes WASM” is the right architectural/game-design anchor. Human and AI players share the same deployment and execution path, avoiding the common failure mode where bot interfaces become privileged gameplay APIs.
-   - Deferred Command Model plus fuel metering gives the design a clean separation between player planning and world mutation.
+## Strengths / 亮点
 
-2. Deterministic simulation is treated as a first-class game mechanic
-   - Fixed PRNG/hash, ordered ECS systems, IndexMap, no f64, replay checksum, and explicit command ordering are coherent with a persistent programmable MMO.
-   - This is especially important because players will write adversarial automation; replay/debuggability is not optional.
+1. 人类与 AI 的公平路径非常清晰
+   - “世界只认 WASM”是正确的架构锚点。
+   - MCP 被定位为 AI 的屏幕/鼠标/部署与调试界面，而不是 `swarm_move` / `swarm_attack` 这类 gameplay 操作入口，避免了 AI 特权通道这一常见失败模式。
+   - Source Model 明确区分 `WASM`、`MCP_Deploy`、`MCP_Query`、`Admin`、`RuleMod`、`Simulate` 等来源，且身份由服务端注入，不允许客户端自报。
 
-3. World vs Arena separation is healthy
-   - The design correctly distinguishes “organic unfair persistent world” from “symmetric competitive match.” This prevents impossible requirements like making persistent worlds globally fair while still supporting ranked competition in Arena.
+2. Deferred Command Model 是适合此类游戏的正确抽象
+   - WASM `tick(snapshot) -> CommandIntent[]` 只表达意图；引擎在统一校验管线内按当前 world state 应用，避免 mutating host function 造成 TOCTOU、旁路校验、权限泄露。
+   - CommandIntent / RawCommand / ValidatedCommand 三层模型直觉性强，新人能够理解“玩家只能提出请求，世界规则决定结果”。
 
-4. Configurable World Rules Engine is compelling
-   - Resource types, body parts, damage types, visibility, storage logistics, and Rhai rule modules form a strong platform story.
-   - Making rules visible to players and AI agents is an excellent design choice; programmable games need machine-readable rules.
+3. 确定性被当成系统基础，而不是事后补丁
+   - Blake3、IndexMap、禁 f64、固定 ECS system order、TickTrace、replay checksum、FDB 原子提交、rollback restore 都是正确方向。
+   - 对 programmable MMO 来说，replay/debug/anti-cheat 是核心产品能力；文档已经把它提升到架构级 invariant。
 
-5. Anti-dominant-strategy thinking is present
-   - Global storage taxes, local storage privacy, delayed global/local conversion, no manual control, code update cooldowns, and drone lifespan all show awareness of long-term MMO economy failure modes.
+4. 技术选型整体匹配问题域
+   - Rust + Bevy ECS：适合 headless deterministic simulation，但需接受 Bevy API 变动风险。
+   - Wasmtime + fuel metering + process isolation：比 V8 wall-clock CPU 更适合公平计量。
+   - FoundationDB：与“每 tick 原子提交、完整回放”的事务需求匹配。
+   - NATS / Dragonfly / ClickHouse 分别用于广播、热缓存、分析，职责清晰。
 
-6. Good separation of game action and management/control surfaces
-   - MCP is explicitly not gameplay action control. This preserves fairness and prevents AI-specific fast paths.
+5. 可见性与安全意识明显强于常见游戏设计文档
+   - 统一 `is_visible_to` 函数、输出面矩阵、spectator delay、玩家原创字符串 untrusted 标注、prompt injection delimiter 合同，是跨领域（游戏安全 + AI 安全 + Web 安全）的良好模式迁移。
 
-## Issues by Severity
+6. World vs Arena 分离是正确产品架构
+   - 持久世界天然不公平，Arena 追求对称公平。文档没有试图用一个模式解决所有诉求，这是成熟判断。
 
-### Critical
+7. ROADMAP 显示实现追踪粒度较好
+   - 模块、测试数、差距表、B6-B11/H1-H2 等补齐项有记录，有利于审计设计-实现一致性。
 
-None that require rejecting the design outright. The core structure is viable.
+## Concerns / 发现的问题
 
-### High
+### A1. Critical — 动态 CommandAction / IDL / SDK 边界存在架构级张力
 
-A1. Expansion and map/room topology are underspecified for MMO scale
+问题：
+- P0-8 把 `game_api.idl` 定义为 host functions / Command / Validator / SDK / MCP schema 的单一真相来源。
+- DESIGN 和 P0-7 又说 `[[custom_actions]]` 可由 `world.toml` 动态注册，SDK 和 MCP schema 自动包含所有已注册 action。
+- 这两种模式分别对应“编译期稳定 API”和“运行期世界特定 API”。二者可以共存，但当前边界没有足够清楚。
 
-The design talks about rooms, controllers, ownership, drone caps, random spawn, fixed spawn, observers, terminals, and multi-room empires, but does not define the world topology clearly enough.
+为什么会炸：
+- 如果 CommandAction 真运行期动态生成，TypeScript/Rust SDK 的类型、autocomplete、validator、replay schema、client UI、MCP tool schema 都会变成 world-specific artifact。
+- 玩家 bot 的可移植性会下降：同一 WASM/SDK 在不同世界可能类型不兼容。
+- Replay 记录如果依赖动态 action handler，旧 replay 需要绑定当时的 world.toml、mod version、handler registry、IDL ABI；否则可回放性被破坏。
+- 这类似很多“插件化平台”失败模式：核心 API 尚未稳定时开放过强扩展，导致生态学习成本和兼容性爆炸。
 
-Missing/unclear:
-- Room size and coordinate system boundaries.
-- Room adjacency and movement between rooms.
-- Whether rooms are dynamically generated, pre-generated, sharded, instanced, or infinite-grid.
-- How new players are placed near/away from established players.
-- How contested neutral rooms work.
-- Whether one player can own multiple controllers/rooms, and if so what hard/soft limits exist.
-- How room cap interacts with cross-room drones.
-- How Arena maps are declared and validated for symmetry.
+建议：
+- 明确三层扩展：
+  1. Core CommandAction：编译期 IDL 冻结，官方 SDK 长期稳定。
+  2. Declarative Effect：复用 Core action/effect handler，仅参数可配置，不改变 SDK 类型。
+  3. Experimental World-specific Action：允许世界特定 schema/codegen，但必须要求 world-specific SDK artifact、ABI hash、replay bundle、compatibility manifest。
+- 官方 World/Arena 只允许第 1 层和审过的第 2 层。
+- `game_api.idl` 应记录 `core_abi_version`；world-specific registry 应记录 `world_api_hash`，并写入 TickTrace。
 
-Why this matters:
-- In Screeps-like games, topology is not a minor detail; it determines expansion pressure, logistics difficulty, PvP boundaries, player density, newbie survival, and server sharding.
-- Without a topology model, the economy, controller rules, visibility, pathfinding, spawn policy, and MMO scalability cannot be validated as one coherent game.
+Severity: Critical
 
-Recommendation:
-- Add a “World Topology and Territory Model” section before or inside World Rules.
-- Define rooms, exits, coordinates, controller ownership, expansion rules, neutral room behavior, spawn placement constraints, room capacity, cross-shard travel, and Arena map templates.
+### A2. High — “游戏”与“游戏引擎平台”的抽象层次仍未收敛
 
-A2. New-player protection and late-join survivability are not complete enough for persistent MMO
+问题：
+- 文档同时强调 Swarm 是 Screeps 精神续作的 MMO RTS，又强调几乎所有内容（资源、身体、建筑、伤害、特殊效果、custom action）都可配置。
+- 如果默认规则不够强，玩家看到的是“引擎”而不是“游戏”。如果扩展太自由，教程、策略分享、比赛、SDK 示例都会碎片化。
 
-The design has spawn policies and tutorial recycling, but persistent World mode still appears vulnerable to the classic MMO/Screeps problem: established players can dominate territory and resources around new spawns.
+已知模式匹配：
+- 成功模式：Minecraft/Factorio 先有强 canonical game，再有 modding；StarCraft 自定义地图也建立在稳定核心规则之上。
+- 失败模式：过早平台化、过度抽象，导致没有一个足够好玩的默认体验，社区没有共同语言。
 
-Missing/unclear:
-- Protected spawn zones or newbie rooms.
-- Initial safe mode semantics for new colonies.
-- Conditions under which safe mode can/cannot be activated.
-- Whether safe mode blocks attack, drain, hack, build, transfer, spawn camping, or only direct damage.
-- Grace period for code deployment and initial bootstrapping.
-- How respawn avoids repeated placement into hostile/strip-mined areas.
-- Whether abandoned/dead colonies leave ruins/resources that create predatory farming loops.
+建议：
+- 文档新增 “Official Core Ruleset Contract”。明确默认资源、body parts、建筑、市场、战斗、visibility、safe mode、Arena 规则在官方世界内稳定。
+- Modded worlds 标注为非官方、不参与官方排名，除非通过 ruleset certification。
+- 技术文档可继续支持 extensibility，但产品/架构冻结应冻结 canonical game 的最小闭环。
 
-Why this matters:
-- Persistent programmable games are harsh: players can automate griefing 24/7.
-- If onboarding protection is weak or vague, the long-term population will collapse into incumbent empires plus churned new players.
+Severity: High
 
-Recommendation:
-- Define a “Colony Bootstrap / New Player Protection” lifecycle: initial spawn resources, invulnerability/safe-mode boundaries, what actions are allowed during protection, when protection ends, and anti-abuse restrictions.
+### A3. High — 世界拓扑、领土、sharding 与跨房间移动仍不足以支撑 MMO 规模判断
 
-A3. Combat/special effects are too powerful and not yet integrated with economy, visibility, and determinism
+问题：
+文档大量依赖 room/controller/observer/terminal/room cap/cross-world/sharding，但没有完整定义：
+- room 尺寸、坐标系、出口、邻接关系；
+- 房间生成、初始 spawn placement、防出生点包围；
+- neutral / reserved / owned / contested room 状态机；
+- 多房间控制限制、扩张成本、跨房间路径；
+- shard 边界、跨 shard 资源/市场/排名一致性；
+- Arena 地图模板的对称性验证。
 
-The basic combat model is plausible, but special attacks introduce several MMO-scale instability risks.
+为什么重要：
+- Screeps-like 游戏的拓扑就是经济与战争。拓扑未定义时，资源、视野、path_find、spawn policy、新手保护、sharding 都无法被真实验证。
 
-Specific risks:
-- Hack can remove ownership/control and create Neutral idle behavior, but ownership restoration, queued commands, visibility, logistics, and target immunity are only partly defined.
-- Overload reduces another player’s fuel budget. This is a meta-resource attack on compute, not just in-world state. It can become a denial-of-play mechanic if stacked by many attackers or alt accounts.
-- Drain, Fabricate, Scramble, Fortify, Debilitate introduce status effects, ongoing actions, and cross-tick state, but the status stacking and priority rules are not fully specified.
-- “命中判定取决于 body part 数量与目标防御的差值” is too vague for a deterministic programmable game.
-- “damage_multiplier affects success rate/effect amount” is ambiguous and can break replay expectations unless fully formalized.
+建议：
+- 新增 “World Topology & Territory Contract”：room graph、coordinate model、exit rules、controller lifecycle、claim/reserve/abandon、spawn placement、room cap、cross-shard boundaries。
+- MVP 可限制为固定小 room graph，但必须把后续扩展边界写清楚。
 
-Why this matters:
-- These mechanics can be exciting, but they are high-complexity late-game mechanics. If introduced too early or left vague, they will dominate design and implementation complexity.
+Severity: High
 
-Recommendation:
-- Move advanced special attacks to a later phase or optional ruleset.
-- For each status/effect define: target validity, range, stacking, refresh, immunity, interrupt, cleanup on death/ownership change, conflict priority, replay encoding, and cap per target/player/tick.
-- Treat Overload especially carefully; consider making it affect in-game unit efficiency rather than player CPU budget, or apply strict per-target diminishing returns.
+### A4. High — 新玩家保护 / Safe Mode 仍是字段级设计，不是生命周期设计
 
-A4. Rule extensibility is structurally ambitious but may undermine game identity and balance
+问题：
+- Controller 有 `safe_mode`、`safe_mode_available`、`safe_mode_cooldown` 字段，但规则不足。
+- Persistent MMO 中自动化玩家可 24/7 spawn camp、drain、hack、strip mine。仅有 tutorial 和 respawn policy 不足以保护留存。
 
-The design positions Swarm as both a specific MMO RTS and a configurable game engine platform. That is powerful, but there is tension:
-- Default game rules need strong identity and balance.
-- World-level custom resources/body parts/actions/effects can create wildly incompatible games.
-- Modded worlds may fragment SDK expectations, tutorials, strategy examples, and matchmaking.
-- “custom_actions dynamically register CommandAction variants” conflicts with the cost of stable SDKs, replay tools, validators, and player code portability.
+缺失：
+- 首次 colony bootstrap 资源、初始 safe mode 时长、结束条件；
+- safe mode 阻止哪些行为：damage、drain、hack、overload、build blocking、market attack、visibility scouting？
+- safe mode 下玩家能否主动攻击或扩张；
+- respawn 如何避开敌对密度/废墟农场；
+- 保护如何防 alt 滥用。
 
-Why this matters:
-- If every world can redefine too much, Swarm becomes an engine with no canonical game. That can weaken player learning, community strategy sharing, and competitive comparability.
+建议：
+- 新增 “Colony Bootstrap & Safe Mode State Machine”。
+- 把 safe mode 作为 P0/P1 gameplay invariant，而不是 Controller 字段。
 
-Recommendation:
-- Define a “Core Ruleset” that is stable, canonical, and used for official World/Arena.
-- Classify extensibility into tiers:
-  1. Safe config values, no SDK changes.
-  2. Declarative extensions using existing CommandActions/effects.
-  3. Experimental custom actions requiring world-specific SDK/schema generation.
-- Make official ranked Arena allow only Tier 1/approved Tier 2 changes.
+Severity: High
 
-### Medium
+### A5. High — 特殊攻击体系复杂度超前，且部分效果跨越 gameplay/resource/security 边界
 
-A5. Resource storage model has internal ambiguity
+问题：
+Hack/Drain/Overload/Debilitate/Disrupt/Fortify/Leech/Fabricate/Scramble 等机制很有表现力，但当前抽象密度过高。
 
-The document says drone harvesting enters local storage near Storage/Extension/Spawn, but it does not define what happens when no valid storage exists, storage is full, or multiple nearby stores are valid.
+风险：
+- Overload 攻击玩家 fuel budget，是对“参与游戏能力”的攻击，不只是单位状态变化。若可堆叠，会成为 denial-of-play。
+- Hack 造成 ownership/Neutral/idle/fuel/lifespan/visibility/command queue 的跨系统状态，需要严格 cleanup。
+- Fabricate / convert_to_structure 改变 entity kind，涉及 inventory、ownership、body parts、construction rules、replay encoding。
+- “命中判定取决于 body part 数量与目标防御差值”“damage_multiplier 影响成功率/效果量”还不够形式化。
 
-Undefined cases:
-- Does Harvest require Carry capacity, like Screeps, or can resources teleport to nearest storage?
-- If resources go to “nearest local storage,” how is nearest chosen deterministically on ties?
-- Can drones carry resources as an entity inventory? Carry part implies yes, but harvesting text implies direct deposit.
-- What happens when local storage is destroyed during global transfer?
-- Can in-transit global/local resources be intercepted anywhere, on a path, or as abstract events?
-- How are market orders reserved against resources in transfer?
+建议：
+- MVP/Core 只保留基础 combat + repair/heal + maybe claim。
+- 特殊攻击作为 optional ruleset 晚期引入，每个 effect 必须定义：target validity、range、cost、cooldown scope、stacking、refresh、immunity、interrupt、death cleanup、ownership change cleanup、serialization、replay event、per-target cap、per-player cap。
+- Overload 建议单独设计评审；优先考虑影响 in-world unit efficiency，而不是直接削玩家 CPU。
 
-Recommendation:
-- Define a single resource custody state machine: source → drone cargo → structure inventory → local account → in-transit → global account → market escrow, with deterministic failure/rollback rules.
+Severity: High
 
-A6. Drone lifecycle and Controller-based age rollback is mechanically interesting but potentially confusing
+### A6. High — 资源 custody / inventory / local-global-storage 状态机仍有歧义
 
-The design says every owned Controller rolls back global drone age by 0.5 tick, stacking up to fully offset natural aging. This creates an empire-wide lifespan upkeep model, but several behaviors are unclear.
+问题：
+- DESIGN 中有时说 drone 采集先进入本地存储，有时 P0-2 Harvest 又要求 Carry capacity。
+- Local storage / global storage / in-transit / terminal / market escrow / interception 之间缺少统一状态机。
 
-Undefined cases:
-- Does Neutral/Hacked time pause before or after global rollback?
-- Does controller loss immediately accelerate all drones?
-- Is age fractional or fixed-point?
-- Which controllers count: owned, reserved, contested, safe-mode, downgrading?
-- Can players keep drones immortal with two controllers forever? The text says capped at full offset, but this means lifespan stops being a meaningful sink for mature empires.
+会出错的地方：
+- 无 storage 或 storage full 时 Harvest 怎么处理？
+- 多个 nearby storage tie 如何确定？
+- 本地→全局运输期间 storage 被毁怎么办？
+- in-transit 资源可在什么路径/实体上被拦截？
+- 市场挂单如何 escrow，partial fill 如何 deterministic settle？
+- global storage tax 对 in-transit / escrow 是否计入？
 
-Recommendation:
-- Reframe as explicit “lifecycle maintenance” or “global decay reduction” with fixed-point math and clear caps. Consider keeping some minimum aging rate so replacement/logistics remain relevant.
+建议：
+- 新增 Resource Custody State Machine：`Source -> DroneCargo -> StructureInventory -> LocalAccount -> Transit -> GlobalAccount -> MarketEscrow`。
+- 明确每个转移的 authority、duration、failure rollback、visibility、audit event。
 
-A7. Tick execution model has fairness and scalability pressure points
+Severity: High
 
-The design executes commands inline in shuffled player order with first-come-first-served resource conflict resolution. This is deterministic and simple, but at MMO scale it creates important gameplay consequences.
+### A7. High — 数值确定性合同与文档中的 float 示例冲突
 
-Risks:
-- Whole-player order can dominate contested resource/combat outcomes for a tick.
-- A player with many commands may get many sequential advantages within their turn before another player acts, depending on interleaving details.
-- Sorting by shuffled player order + player-local sequence may be deterministic but not necessarily fair across large battles.
-- 2.5s collect / 0.5s execute may not hold with thousands of players, many host_path_find calls, large snapshots, and Rhai mods.
+问题：
+- Determinism Contract 明确禁 f64 / 使用 fixed-point。
+- 但 DESIGN/P0-7 多处配置仍使用 `0.01`、`0.05`、`0.001`、`special_param = 0.5`、`default_resistance = 1.0`、`damage_multiplier = 1.0`、`float` 字段。
 
-Recommendation:
-- Define command interleaving at action/entity granularity, not only player granularity, or explicitly justify player-order resolution as intended gameplay.
-- Add command budgets per player/entity/tick.
-- Define overload behavior when COLLECT exceeds budget: skip player, use previous code, partial commands, or tick abandon?
+为什么重要：
+- 这是典型“文档看起来没问题但实现会分叉”的模式。TOML parser 读入 float 后，即使内部转换为 fixed，也需要定义 rounding、scale、serialization 和 invalid value 规则。
 
-A8. Visibility model needs stronger separation between drone perception, player UI, replay, and server authority
+建议：
+- 所有文档统一使用 `fixed<u32,N>` 或 integer basis points，例如 `transfer_to_global_cost_bps = 100`。
+- `special_param` 改为 `fixed<i64,4>` 或按 effect 定义强类型参数。
+- 配置 schema 禁止浮点 token；CI lint 文档和 world.toml 示例。
 
-The design has a good two-layer visibility model, but several edge cases are undefined.
+Severity: High
 
-Missing/unclear:
-- What exact entity fields are visible at each visibility level? Position only? Body? Hits? Owner? Cargo? Intent? Status effects?
-- Does MCP `inspect_entity` reveal full state only for visible entities or also hidden internals?
-- Can players infer hidden local storage from market/leaderboard/resource tax signals?
-- How delayed public spectate interacts with live players also watching streams or using alt accounts.
-- Whether observer buildings reveal full state or only extend sight range.
+### A8. Medium — Tick 执行公平性简单但可能在大规模 PvP 中产生非直觉优势
 
-Recommendation:
-- Add a visibility matrix by entity type and field, for drone snapshot, player UI, MCP, replay, spectator, and audit/admin.
+问题：
+- 当前执行按 shuffled player order + player-local sequence。简单、可回放，但 whole-player order 在大规模战斗中可能让一个玩家本 tick 连续吃完多个资源/攻击窗口。
 
-A9. Safe mode exists in Controller but is not designed
+风险：
+- 玩家可以通过 command 数量和排序让一个 tick 内的先手收益放大。
+- “长期期望公平”不等于单次大型战斗体验公平。
 
-Controller contains `safe_mode`, `safe_mode_available`, and `safe_mode_cooldown`, but the gameplay rules for safe mode are absent.
+建议：
+- 明确这是有意设计，或改为 action/entity phase interleaving：move phase、harvest phase、combat phase 等。
+- 至少添加 per-player/per-entity/per-action budget，并记录“一个玩家单 tick 最多可改变多少 contested state”。
 
-Recommendation:
-- Define trigger conditions, duration, cooldown, effects, exclusions, and anti-abuse rules. In persistent MMO, safe mode is a foundational survival mechanic, not a field in a struct.
+Severity: Medium
 
-A10. Market/economy is referenced but not designed
+### A9. Medium — Rhai 模组权限模型需要 capability 分层
 
-Terminal, market trading, global resources, market_requires_terminal, and price manipulation prevention are referenced, but market mechanics are not specified.
+问题：
+- 文档有时说 Rhai 可信、服主安装；有时又说 state query 经可见性过滤、不能看到隐藏实体。
+- RuleMod source 允许 deduct/award/emit_event，但不允许读世界；P0-7 示例又遍历 `state.players()` 和 player drones/rooms。
 
-Missing/unclear:
-- Order types and settlement timing.
-- Fees, taxes, escrow, cancellation, partial fill.
-- Regional vs global market.
-- Transport requirements and interception rules.
-- Anti-alt/anti-manipulation assumptions.
+建议：
+- 定义 mod capability classes：
+  - `global_authority`: 可读全局 aggregate / 全局 rule enforcement；
+  - `player_perspective`: 按某 player 视角运行；
+  - `spectator_safe`: 只能读公开物理状态；
+  - `economy_only`: 只能 deduct/award/market fee。
+- 每个 mod 在 manifest 中声明 capability，世界加载时审计。
 
-Recommendation:
-- Either mark market as out of scope for MVP or add a minimal deterministic market model.
+Severity: Medium
 
-### Low
+### A10. Medium — 可见性矩阵很好，但 field-level contract 仍需落到实体类型
 
-A11. Some numeric defaults are placeholders but presented as frozen design
+问题：
+P0-5 已有数据分级和输出面规则，但对每种 entity/component 的字段级可见性仍不足。例如：
+- enemy drone 是否可见 fatigue/cooldown/status effects/cargo/env vars/current action？
+- enemy structure 是否可见 stored resources、cooldown、repair queue？
+- Hack/Drain/Overload 状态对双方、旁观者、回放如何显示？
 
-Examples: RCL progress, body costs, tower damage, special attack cooldowns, fuel budget effects, storage tax rates, upkeep examples. These are likely not balance-tested.
+建议：
+- 添加 `VisibilityFieldMatrix`，按 EntityType × Field × Surface(snapshot/MCP/UI/replay/spectator/admin) 定义。
+- 用测试生成器保证新增字段必须声明可见性。
 
-Recommendation:
-- Label numeric values as “initial tuning constants” unless backed by simulation. Reserve “frozen” for interfaces and invariants, not balance numbers.
+Severity: Medium
 
-A12. “Engine does not hardcode Energy” conflicts with examples and some mechanics
+### A11. Medium — Market 仍像占位功能，但 ROADMAP 显示已实现完成
 
-The document correctly says core engine should not hardcode Energy, but examples and special attacks often use Energy-specific costs and semantics. That is fine for the default ruleset, but the boundary between engine invariant and default ruleset should be clearer.
+问题：
+- DESIGN 提到 Terminal、market trading、market_requires_terminal、价格操纵反制。
+- P0 规范未给出完整 deterministic market model。
+- ROADMAP 说“市场交易 + Arena 1v1 + 排行榜”已完成，但设计文档仍不足以审计 market 正确性。
 
-Recommendation:
-- Explicitly distinguish Engine Core, Default Ruleset, and Example Mod values.
+缺失：
+- order book 类型、price units、escrow、partial fill、fees、cancel、expiration、regional/global market、terminal requirement、物流/拦截、anti-alt。
 
-A13. Rhai module visibility statement is odd for trusted server-side rules
+建议：
+- 若市场已实现，应补 P0-10 Market Spec。
+- 若不是 MVP 核心，应从 P0 完成清单降级为 P1/P2。
 
-The Rhai API says state queries are visibility-filtered and mods cannot see hidden entities. Since mods are server-installed trusted rules, this may limit legitimate global mechanics and create confusing behavior.
+Severity: Medium
 
-Recommendation:
-- Define mod capability classes: global-authority mods, player-perspective mods, spectator-safe mods. Do not force all mods through player visibility unless that is an intentional design constraint.
+### A12. Medium — ROADMAP 的“100% 完成”与当前审计性质有错位
 
-A14. Tutorial is mentioned as exception but not designed
+问题：
+- ROADMAP 声称 main 上 engine/sandbox/frontend/gateway/docs 全部 100%。
+- 本次是设计评审而非代码审计；文档内仍存在多个设计缺口。
 
-Tutorial worlds are said to allow limited guided operations and 100% recycle refund, but the tutorial progression, sandbox boundaries, and relation to real worlds are undefined.
+风险：
+- “实现完成”会掩盖“架构合同未收敛”，导致后续修复成本上升。
 
-Recommendation:
-- Add tutorial as a separate non-authoritative world type with explicit allowed shortcuts and migration path to real code deployment.
+建议：
+- ROADMAP 增加状态分类：Implementation Complete / Design Contract Complete / Reviewed / Production-ready。
+- 对市场、special effects、world topology、safe mode 等标注“implemented but needs spec hardening”或“spec missing”。
 
-## Missing Design Sections
+Severity: Medium
 
-1. World topology and territory model
-2. New-player bootstrap and protection lifecycle
-3. Complete command/action schema from a game-design perspective
-4. Resource custody/inventory state machine
-5. Status effect and special attack resolution model
-6. Safe mode rules
-7. Market mechanics or explicit deferral
-8. Visibility field matrix
-9. Sharding/cross-shard gameplay model
-10. Official Core Ruleset vs modded world compatibility policy
-11. Balance/simulation plan for numeric constants
-12. Failure-mode gameplay behavior: tick overrun, player timeout, stale code, disconnected player, module deployment failure
+### A13. Low — 技术选型文档整体合理，但部分理由过度绝对化
 
-## Internal Consistency Notes
+问题：
+- “FoundationDB 是唯一提供这个保证的分布式 KV”“ClickHouse 没有任何对手”“Bevy `.chain()` 完美匹配”等表述偏营销化。
 
-1. MCP fairness is internally consistent
-   - The document repeatedly states MCP is management/visibility/deployment, not direct gameplay action. This is coherent and should be preserved.
+建议：
+- 技术选型文档应保留 trade-off：FDB 运维复杂、Bevy 版本 churn、Wasmtime JIT warmup/cache、Dragonfly 新生态风险。
+- 对 architecture review 来说，承认风险比写成绝对正确更有价值。
 
-2. Deferred command model is mostly consistent
-   - Mutating host functions are banned, and all state change goes through command validation. Good.
-   - However, Rhai mods bypass the command pipeline via actions. That can be fine because they are world rules, but the distinction should be made more explicit in game-design terms: player agency vs world-rule authority.
+Severity: Low
 
-3. Configurable actions vs stable SDK tension
-   - The design says new CommandAction requires engine registration and IDL exposure, but later says new CommandAction can be dynamically registered from TOML and automatically exposed. This needs reconciliation.
+### A14. Low — 部分文档编号/章节状态有维护痕迹
 
-4. Global storage mode examples conflict with anti-teleport rule
-   - Mode A says no logistics / instant global storage is possible, while later transfer times are “不可为 0” to prevent teleport supply. This is not necessarily wrong if Mode A is an explicit arcade exception, but it should be labelled as an exception and disallowed in persistent/ranked worlds if desired.
+问题：
+- 多个 spec 重复 `状态: 当前`。
+- P0-2 后段 “## 8 新增” 内部小节编号跳到 `10.1`。
+- P0-7 有 “## 5.1” 后接 “## 8”，再接 “## 7”。
+- 用户请求路径是 `specs/p0/`，实际文件在 `specs/`。
 
-5. Drone harvesting/storage flow conflicts with Carry part semantics
-   - Carry part implies drones physically carry resources, but default harvesting text says resources go directly to nearest local storage. Pick one canonical default.
+建议：
+- 增加 docs lint：heading order、duplicate status、broken path、spec index。
 
-## Scalability Assessment for Multi-player MMO
+Severity: Low
 
-The macro architecture can scale conceptually via shards, gateway statelessness, NATS, FoundationDB, and deterministic tick execution. The game design itself still needs stronger constraints before it is MMO-ready.
+## Missing / 仍缺失的设计章节
 
-Main scalability risks:
-- Pathfinding host function load across thousands of drones.
-- Snapshot serialization size for large empires and many visible entities.
-- Player-order command execution in large battles.
-- Rhai mod execution across thousands of players.
-- Global market/storage operations becoming cross-shard coordination bottlenecks.
-- Replay/storage volume for full world snapshots every N ticks.
-- New-player placement in saturated maps.
+1. World Topology & Territory Contract
+   - room graph、coordinate、exits、claim/reserve、neutral/contested、spawn placement、room cap、cross-shard。
 
-Recommended scalability design additions:
-- Per-room or per-shard simulation boundaries with explicit cross-boundary interactions.
-- Per-player, per-drone, and per-command budgets.
-- Snapshot delta and visibility-index model.
-- Pathfinding cache and deterministic path budget limits.
-- Cross-shard market/storage consistency model.
-- Load-shedding behavior that is deterministic and fair.
+2. Colony Bootstrap & Safe Mode State Machine
+   - 新手保护、safe mode 触发/持续/限制/反滥用。
 
-## Phase Ordering Recommendations
+3. Resource Custody / Inventory / Market Escrow State Machine
+   - source、drone cargo、structure inventory、local/global、transit、terminal、market。
 
-1. Before implementation freeze
-   - Define world topology, territory, new-player protection, safe mode, resource custody, and visibility matrix.
-   - Reconcile custom CommandAction dynamic registration vs stable SDK/IDL.
+4. API Stability & World-specific Extension Policy
+   - core IDL vs dynamic action registry、SDK compatibility、world_api_hash、replay bundle。
 
-2. Phase 1 MVP
-   - Keep one room or small fixed room graph.
-   - Implement only core loop: spawn, move, harvest, carry, transfer, build, repair, attack, death, controller upgrade.
-   - Do not implement advanced special attacks, market, custom actions, or Rhai mods yet.
+5. Special Effects Formal Semantics
+   - 状态叠加、优先级、cleanup、caps、replay encoding，尤其 Overload。
 
-3. Phase 2 multiplayer
-   - Add contested resources, PvP basics, safe mode, fog of war, room transitions, and deterministic replay.
-   - Add new-player protection before public persistent world testing.
+6. Field-level Visibility Matrix
+   - 按 entity/component/surface 定义字段可见性。
 
-4. Phase 3 economy/persistence
-   - Add local/global storage only after resource custody is formalized.
-   - Add market only after storage, escrow, and transport semantics are stable.
+7. Market Spec
+   - order book、settlement、escrow、fees、terminal/logistics、anti-manipulation。
 
-5. Phase 4 extensibility
-   - Add Rhai mods and custom rule registries after the default Core Ruleset is fun and stable.
-   - Keep custom CommandAction as experimental until SDK/schema generation is proven.
+8. Mod Capability Model
+   - Rhai 权限、可见性、可写 action、审计等级。
 
-6. Phase 5 advanced combat
-   - Add Hack/Drain/Overload/Debilitate/Fortify/Fabricate only after basic combat has telemetry and balance data.
-   - Overload should receive separate design review because attacking player compute budget is unusually dangerous.
+9. Deterministic Config Schema
+   - 禁 float 的 TOML 表达、fixed-point scale、rounding、serialization。
+
+10. Production Readiness Criteria
+   - tick overrun load shedding、pathfinding load、snapshot size、shard limits、replay storage cost。
+
+## Phase Ordering / 建议阶段顺序
+
+Phase 0 — Spec hardening before further freeze
+- 先修 A1/A3/A4/A6/A7：API 扩展边界、世界拓扑、新手保护、资源状态机、禁浮点配置。
+- 建立 spec index：`docs/specs/README.md` 或恢复 `docs/specs/p0/` 路径。
+
+Phase 1 — Canonical Core Ruleset MVP
+- 只实现/冻结最小可玩闭环：spawn、move、harvest、carry、transfer、build、repair、attack、heal、claim/controller upgrade、death/decay、basic visibility、replay。
+- 不把 advanced special attacks、market、Rhai custom action 作为 MVP 必需。
+
+Phase 2 — Persistent World Safety
+- 加入 room topology、safe mode、新手区/respawn、fog of war field matrix、basic PvP、room transition。
+- 开启小规模 public test 前必须完成新玩家保护。
+
+Phase 3 — Economy and Market
+- 资源 custody 稳定后再引入 global/local storage、terminal、market escrow、运输/拦截。
+- Market 必须有独立 spec 和 replay tests。
+
+Phase 4 — Extensibility
+- 在 canonical game 稳定后启用 Rhai mods、world-specific custom actions、mod marketplace。
+- 官方 ranked Arena 默认禁用实验性 world-specific API。
+
+Phase 5 — Advanced Combat / Meta Mechanics
+- Hack/Drain/Overload/Debilitate/Fortify/Fabricate 逐个上线，每个单独平衡与安全评审。
+- Overload 需要独立 architecture/security/gameplay review，因为它攻击 compute budget，风险高于普通战斗效果。
 
 ## Final Recommendation
 
-CONDITIONAL_APPROVE.
+CONDITIONAL_APPROVE。
 
-The design has a strong and coherent foundation: WASM-only player agency, deterministic deferred commands, clear human/AI fairness, and a promising configurable rules platform. It is architecturally recognizable as a modernized Screeps-like MMO with better determinism and extensibility.
+这份设计的核心方向是强的，且多处体现了对已知失败模式的规避：AI 不走特权 gameplay API、WASM 沙箱统一、公平 fuel metering、deferred command、统一 Source Gate、确定性 replay、可见性统一函数。这些是可以继续投资的架构基础。
 
-The main concern is not the core concept; it is that several MMO-critical game systems are referenced but not yet fully designed. World topology, newbie survival, safe mode, resource custody, market logistics, visibility fields, and special-effect resolution must be specified before broad implementation. Without those, the design risks producing a technically elegant engine whose persistent-world gameplay fails under real adversarial multiplayer pressure.
-
-Approve the direction, but require the missing high-severity sections to be resolved before treating the game design as implementation-ready for persistent MMO scale.
+但当前还不能视为完全架构冻结。最需要立刻收敛的是：动态扩展与稳定 IDL 的边界、world topology、新手保护/safe mode、资源 custody、禁浮点配置，以及 advanced special effects 的形式化语义。若这些补齐，Swarm 有机会成为一个技术上干净、玩法上可持续的现代 Screeps-like MMO；若跳过这些，风险是实现出一个功能很多但规则边界含糊、生态难以稳定、公开世界容易被自动化玩家压垮的平台。

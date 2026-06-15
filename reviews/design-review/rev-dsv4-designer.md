@@ -1,252 +1,274 @@
-# Game Designer Review — Swarm DESIGN.md
+# Swarm 游戏设计评审 — Game Designer 视角
 
-**Reviewer**: rev-dsv4-designer (DeepSeek V4 Pro — Game Designer)
-**Date**: 2026-06-15
-**Document reviewed**: /data/swarm/docs/design/DESIGN.md (1988 lines)
-**Supporting docs consulted**: P0-5 (visibility), P0-6 (MVP feedback loop), GETTING-STARTED.md
-**Profile**: Game Designer Reviewer. 以博弈论分析、策略深度评估、算法公平性为长。
-
----
-
-## VERDICT: CONDITIONAL_APPROVE
-
-The core mechanical design is exceptional — the deferred command model, dynamic resource/body-part/damage-type systems, deterministic tick pipeline, and the World Rules Engine form a technically brilliant foundation. The design demonstrates deep understanding of what made Screeps compelling and where it fell short. However, the document reads as an **engine design spec** more than a **game design document**. Critical experiential dimensions — onboarding experience, engagement loops, social systems, and the player's emotional journey — are either absent or buried in supporting specs without cross-reference. These are not implementation details; they are design decisions that shape whether anyone actually wants to play.
+> **评审员**: rev-dsv4-designer (DeepSeek V4 Pro)
+> **方向**: Game Designer
+> **日期**: 2026-06-15
+> **审阅文档**: DESIGN.md, tech-choices.md, ROADMAP.md, P0 规范 (01-09)
 
 ---
 
-## STRENGTHS
+## 总体裁决: CONDITIONAL_APPROVE
 
-### S1: Dynamic Resource Economy (★★★★★)
-The resource system is the design's crown jewel. By refusing to hardcode "Energy" — instead using `IndexMap<String, u32>` throughout — the engine supports everything from a minimalist single-resource world to a StarCraft-style Crystal+Gas economy to a cyberpunk CPU+Memory+Bandwidth theme. The three-tier logistics model (no-logistics / light-logistics / hardcore-logistics) is elegantly parameterized via a single boolean + cost tables. This is what "engine, not game" looks like done right.
-
-### S2: Anti-Dominant-Strategy Mechanisms (★★★★★)
-The progressive storage tax, local storage stealth advantage, and non-instantaneous global↔local transfer are genuinely thoughtful. They address the "rich get richer" death spiral that kills persistent-world games. The tiered tax (0% / 0.01% / 0.05% / 0.20%) creates a soft cap without a hard ceiling — empires CAN grow indefinitely but the economic efficiency required grows superlinearly. The transport delay during conversion (with PvP interception possibility) transforms global storage from a "magic inventory" into a strategic commitment. This is game design at the mechanism level, not just engineering.
-
-### S3: Special Attack System Depth (★★★★)
-The 8 special attack types (Hack, Drain, Overload, Debilitate, Disrupt, Fortify, Leech, Fabricate) with their layered resistance system (body-part × attribute resistance) create genuine tactical rock-paper-scissors dynamics:
-- Hack threatens high-value drones → countered by Fortify (cleanse + shield)
-- Drain threatens storage-heavy bases → countered by Disrupt (interrupt channels)
-- Overload threatens CPU-bound strategies → forces diversification
-- Debilitate amplifies follow-up damage → creates combo potential
-
-This is not a "throw more DPS at it" combat system. The 5-tick Hack control lock with its progressive stages (slow → immobilize → convert to Neutral) is particularly well-designed — it creates a window for counterplay rather than being an instant "I win" button.
-
-### S4: Deferred Command Model (★★★★)
-`tick(snapshot_json) → Command[]` is the correct abstraction. By forbidding imperative mutating host functions and routing all state changes through the JSON command pipeline, the design achieves:
-- Deterministic replay (same snapshot + same commands = same world)
-- Natural anti-cheat (commands validated against current world state, not snapshot)
-- Language agnosticism (the ABI is JSON, not a Rust/JS function call)
-- AI-human parity (both produce the same Command[] format)
-
-### S5: World Rules Engine Architecture (★★★★)
-The Rhai-based mod system with configurable parameters, i18n support, and mod market infrastructure is ambitious and well-scoped. The trust-domain separation (WASM=untrusted players, Rhai=trusted server operators) is correct. The example `empire-upkeep` mod demonstrates the system's expressive power without over-engineering.
-
-### S6: Determinism First Principles (★★★★)
-Blake3 XOF for PRNG, IndexMap for iteration order, fixed-point arithmetic ban on f64, seed rotation every 10k ticks, CI replay verification — this is the most thorough determinism contract I've seen in a game design document. It's not just "we'll try to be deterministic"; it's "here is exactly how we guarantee it and here's how we verify it."
-
-### S7: MCP as First-Class AI Interface (★★★★)
-Treating AI agents as equal players who must compile and deploy WASM (not call `swarm_move()` directly) is a principled design choice that preserves game integrity. The 24-tool MCP surface (world view, deploy, debug, learn, auth, tournament) is comprehensive without leaking game-state-mutation capabilities.
+设计在核心公平性机制、信息不对称分层、反垄断经济设计方面表现出色。存在若干中度到高度关切需要解决后方可进入实现阶段。关键问题集中在 World 模式 PvE/PvP 共存的激励一致性、雪球效应抑制、以及主动侦察机制的缺失。
 
 ---
 
-## CONCERNS
+## 亮点 (Strengths)
 
-### G1 [HIGH]: Onboarding Experience Is Absent from Core Design
+### S1. 种子洗牌公平性机制 — 优雅的博弈论解决方案
 
-The DESIGN.md contains zero mentions of how a new human player goes from "I found this game" to "I am having fun." Section 1.2 compares Swarm to Screeps on 8 technical dimensions but never mentions "new player experience." The word "tutorial" appears exactly once (line 516), and only to say manual control is disallowed except in tutorials.
+种子洗牌 (Seeded Shuffle) 是设计中博弈论维度最出色的部分。它将一个本质上是**顺序博弈** (sequential game) 的执行模型转化为统计意义上的**同时博弈** (simultaneous-move game)：
 
-P0-6 (`specs/06-mvp-feedback-loop.md`) does describe a 5-minute tutorial and the LEARN→DECIDE→ACT→UNDERSTAND loop, but this content lives in a separate technical spec rather than being treated as a first-class design concern. A game where "your code is your army" has an inherent barrier: the player must write code before anything happens. The design should address:
+- 每 tick 玩家顺序由 `Blake3(tick_number || world_seed)` 决定，不可预测、不可操纵
+- 长期期望均等——每个玩家在足够长的时间跨度内获得相同的"先手"概率
+- 配合先到先得 (FCFS) 的资源竞争规则，创造了真正的策略深度：玩家必须在"多派 drone 抢同一资源"与"分散风险"之间权衡
 
-- **The "blank editor" problem**: A new player opens Monaco and sees... nothing. What's the scaffolding?
-- **Graduated complexity**: How does the player progress from modifying starter-bot parameters → writing new behavior → optimizing algorithms?
-- **Failure recovery**: A syntax error in WASM deployment means your drones do nothing for N ticks. How is this communicated without frustration?
-- **The compilation gap**: TypeScript → WASM compilation is non-instant. What's the feedback during compilation?
+从博弈论角度看，这实现了**混合策略纳什均衡**——玩家无法通过改变提交速度或顺序来获得优势，唯一的最优策略是优化自身资源分配算法。这是教科书级别的公平性设计。
 
-**Recommendation**: Add a §1.4 "Player Journey" section to DESIGN.md that maps the first-session experience (minutes 0-5, 5-15, 15-30) and cross-references P0-6. Treat onboarding as a design pillar, not an implementation detail.
+### S2. 全局存储反垄断机制 — 三层防御的经济博弈
 
-### G2 [HIGH]: Engagement Loops and Long-Term Motivation Are Undefined
+累进存储税 + 本地存储隐匿性 + 运输时间构成了一个精心设计的三层反垄断体系：
 
-The design describes what the simulation DOES but not why players STAY. The only progression system described is RCL 1-8 (Room Controller Level), which is a linear upgrade tree gated by resource accumulation. For a persistent-world game ("like Minecraft servers"), this is thin:
+- **累进税**创造软上限——囤积的边际收益递减，防止单一玩家垄断市场流动性
+- **本地存储隐匿**提供信息不对称优势——敌方无法获知你的真实经济实力，使 bluffing 成为可行策略
+- **运输时间**阻止"瞬移补给"——资源在运输中可被拦截 (PvP 启用时)，将物流本身转化为攻防博弈
 
-| Game | Short-term loop | Medium-term loop | Long-term loop |
-|------|----------------|------------------|----------------|
-| Minecraft | Gather wood, build shelter | Find diamonds, build portal | Kill Ender Dragon, build megaprojects |
-| Factorio | Automate iron plates | Build oil processing | Launch rocket |
-| Screeps | Harvest energy, spawn creeps | Claim rooms, build economy | Dominate server, market manipulation |
-| **Swarm (current design)** | Harvest resources, spawn drones | Upgrade RCL 1→8 | ...? |
+这是对 EVE Online 式经济博弈的精确借鉴，且通过可配置参数 (world.toml) 支持从"无物流"到"硬核物流"的多种模式，适配不同玩家群体。
 
-Swarm's RCL 1-8 takes a player from "I have a spawn" to "I have nukes." But there's no **narrative arc** between those states — just an accumulating number. What does a "winning" World-mode player look like? What aspirational state are players working toward?
+### S3. 伤害类型/抗性体系 + 特殊攻击 — 丰富的元博弈空间
 
-The World vs Arena separation (Section 10) is architecturally clean but misses the hybrid case: Arena provides closure (fixed-duration matches with winners), but World mode needs its own form of punctuated achievement. Seasonal resets? Territory control milestones? Leaderboard categories beyond GCL/rooms/drones?
+6 种伤害类型 (Kinetic/Thermal/EMP/Sonic/Corrosive/Psionic) × 多层抗性 (组件级 + 属性级) × 6 种特殊攻击 (Hack/Drain/Overload/Debilitate/Disrupt/Fortify) 创造了一个深度策略空间：
 
-**Recommendation**: Add a §1.5 "Player Progression & Engagement" section that defines:
-1. Per-session goals (what do I do in a 30-minute play session?)
-2. Milestone achievements (what am I working toward this week?)
-3. Endgame definition (what does mastery look like?)
-4. World-mode seasonality and resets (or the explicit choice NOT to reset)
+- **反制链**: Hack→Disrupt→(普通攻击), Fortify→Debilitate→(净化), Overload→(低 fuel 策略)
+- **信息博弈**: 玩家不知道敌方的抗性配置，必须通过侦察或试探性攻击来推断
+- **投资权衡**: body part 的选择不仅是"更多伤害 vs 更多 HP"，还涉及抗性配置、特殊攻击能力、和 age 代价
 
-### G3 [MODERATE]: Fog of War Detail Lives in Specs, Not Design
+这形成了类似宝可梦属性克制的元博弈——没有单一最优配置，最优策略取决于对手的策略。
 
-Section 8.2 mentions `fog_of_war` and `player_view` parameters with a tantalizing reference to "visual/auditory/olfactory layers" (line 1290), but these layers are never defined in DESIGN.md. The visibility spec (P0-5) does contain detailed vision ranges (Drone=3, Tower=3/6, Observer=10, etc.) and the `is_visible_to()` function contract, but:
+### S4. Drone Age 生命周期 — 隐性策略约束
 
-- The "layered perception" concept (sight vs hearing vs smell) is a significant game design claim that implies different information channels with different ranges and properties. It's mentioned once and abandoned.
-- The strategic implications of vision asymmetry are not explored: How does limited vision shape player strategy? Does fog-of-war create interesting bluffing/counter-bluffing dynamics?
-- The relationship between `fog_of_war` (drone snapshot filtering) and `player_view` (human UI filtering) is powerful but under-explained — these are two independent axes that create a 2×2 matrix of information regimes.
+`age_modifier` 在 body part 层面的设计是一个精巧的隐性平衡杠杆：
 
-**Recommendation**: Either fully specify the layered perception model in DESIGN.md §8.2 (range tables, what each layer reveals, how they interact) OR remove the claim and reference P0-5 as the single source of truth. Don't leave a design promise hanging.
+- Attack (-80) 和 Tough (+100) 的 age 差异创造了攻击性 vs 耐久性的非对称权衡
+- Controller 维修容量有限 (RCL 决定)，形成天然的 logistic bottleneck——大规模军队需要复杂的前线补给网络
+- Forward Depot 的引入将"推进战线"本身变成了资源管理挑战
 
-### G4 [MODERATE]: Social Systems — Alliances, Diplomacy, Factions — Are Missing
+这防止了"无限囤兵"策略——即使资源充足，age 天花板也迫使玩家持续投资于物流基础设施。
 
-The design has `friendly_fire = false` and `player_view = "allied"` but no mechanic for players to BECOME allied. This is an architectural ghost — systems that depend on a social layer that doesn't exist. For a persistent MMO world where players control multi-room empires:
+### S5. AI-Human 对称性 — 零信任架构的自然结果
 
-- How do alliances form? Is it informal (gentleman's agreement) or mechanical (formal alliance with shared vision/resources)?
-- Is there betrayal? Can allies attack each other? Is there a diplomacy cooldown?
-- How are alliance boundaries communicated visually on the map?
-- In Arena team mode, how are teams formed and managed?
-
-The `alliance-system` mod is listed in the hypothetical mod market (line 1724) but has no specification — it's a name with a download count.
-
-**Recommendation**: Add §8.2 subsection "Alliance & Diplomacy" with at minimum: formation mechanics, shared vision rules, betrayal constraints, and communication channels. If alliances are intentionally deferred to the mod system, state that explicitly and explain why the base engine shouldn't define them.
-
-### G5 [MODERATE]: Economic Interactions Beyond Resource Gathering
-
-The market/trading system is gestured at (Terminal building at RCL 5, `market_requires_terminal` config, market orders in visibility spec) but never designed:
-
-- What is the market interface? Is it a global order book? Regional? Room-based?
-- How is price discovery supposed to work in a game with programmable agents? (Algorithmic trading is inevitable — is that a feature or a bug?)
-- Can players create resource futures? Options? This is a game where players write code — financial instruments WILL emerge.
-- How does the market interact with the progressive storage tax? (If I'm taxed for holding, I'm incentivized to sell — does the market become a tax-avoidance mechanism?)
-
-The global↔local storage system creates interesting arbitrage opportunities (buy globally, convert to local, sell locally at premium to players who need immediate resources) but the design doesn't acknowledge this.
-
-**Recommendation**: Add §8.2 subsection "Market & Trade" defining order types (limit/market), order book scope, fee structure, and the design intent around algorithmic trading.
-
-### G6 [LOW]: Absence of Visual/Audio/UX Design Dimension
-
-The design is purely mechanical. There is no mention of:
-- Visual language: What does the PixiJS renderer show? Top-down? Isometric? Abstract?
-- Unit differentiation: How does a player distinguish their drones from enemy drones at a glance?
-- Information hierarchy: What information is shown on the default view vs. hidden behind panels?
-- Audio: Are there sound cues for combat, resource depletion, drone death?
-- Accessibility: Color-blind modes? Screen reader support for the code editor?
-
-While this may be intentional for an engine-focused design document, the line between "engine" and "game" is blurred throughout the document (it's called a "game engine" but describes specific game mechanics like nukes and controller levels). If it's a game, visual design is a first-class concern.
-
-**Recommendation**: Add §1.6 "Player Experience & Aesthetics" that defines the intended visual/audio direction at a principles level, even if specific assets are deferred to implementation.
-
-### G7 [LOW]: Death/Reset Psychology
-
-`respawn_policy` defines what happens mechanically when a player's last drone dies (`NewRoom | SameRoom | Spectate | Ban`), but the emotional experience of losing hours/days/weeks of work is unaddressed:
-
-- In Screeps, losing a high-level room is devastating — it represents weeks of real-time investment. How does Swarm soften this?
-- The "no code update cost" default in World mode means losing drones is purely a resource loss — but the TIME invested in optimizing drone behavior is irreplaceable.
-- Is there a "grace period" after colony collapse where a player can recover from global storage without starting from zero?
-- The `respawn_policy = "Ban"` option is extreme — under what conditions would a server operator use it?
-
-**Recommendation**: Add a design note in §8.2 "Respawn & Recovery" addressing loss aversion and the intended player experience after catastrophic failure.
-
-### G8 [LOW]: AI-Human Cohabitation Dynamics
-
-The design proudly states "AI and humans play in the same world" but doesn't analyze the implications:
-
-- AI agents can iterate on strategies at machine speed — a human takes minutes to modify code; an AI takes seconds.
-- AI agents never sleep — they can respond to night-time raids while human players are offline.
-- AI agents can simultaneously manage hundreds of drones with perfect micro — humans are bottlenecked by code complexity.
-- Should there be AI-population caps per world? AI-designated zones? Opt-in AI PvP?
-
-The WASM sandbox makes AI and human players technically equal, but the *meta-game* is asymmetric. An AI that writes, deploys, and optimizes WASM 24/7 in a persistent world is a different entity than a human who plays for 2 hours after work. The design should acknowledge this tension.
-
-**Recommendation**: Add §10.3 "AI-Human Balance Considerations" discussing intended coexistence dynamics, potential mitigations (AI cooldowns, population limits), and the design philosophy (is AI dominance in World mode a bug or a feature?).
-
-### G9 [LOW]: The "Idle Game" Tension
-
-At 3 seconds per tick with drone lifespan of 1500 ticks (75 minutes), Swarm is effectively an idle/incremental game during steady-state operation. The player deploys code and waits. The design doesn't address what the player DOES during the wait:
-
-- Are there active-engagement activities? (Micro-managing a crisis, spectating a battle)
-- Is the spectator mode rich enough to be entertaining? (Screeps' visualizer is minimal)
-- Can players run simulations/hypotheticals against the current world state without committing?
-- Does Arena mode's faster pace (potential for sub-3s ticks? Shorter match duration?) address this?
-
-The `swarm_dry_run_commands` MCP tool suggests a "what-if" capability, but it's positioned as a debugging tool, not a player engagement feature.
-
-**Recommendation**: Add a design note in §1 addressing the active-vs-passive play balance and what the intended "moment-to-moment" experience looks like.
+WASM 沙箱作为唯一执行器，天然保证了 AI 与人类玩家的完全对称。不存在 AI 特殊通道、不存在 MCP 游戏指令——AI 必须编译 WASM、接受相同的 fuel metering、面对相同的 fog-of-war 限制。这在 AI agent 参与的游戏设计中是黄金标准。
 
 ---
 
-## MISSING SECTIONS (Should Exist in DESIGN.md)
+## 发现的问题
 
-1. **Player Journey / Onboarding** (§1.4) — First-session experience, graduated complexity, the "blank editor" problem
-2. **Progression & Engagement** (§1.5) — Short/medium/long-term loops, endgame definition, seasonality
-3. **Player Experience & Aesthetics** (§1.6) — Visual language, audio direction, accessibility principles
-4. **Alliance & Diplomacy** (§8.2.x) — Formation mechanics, shared vision, betrayal, communication
-5. **Market & Trade Design** (§8.2.x) — Order book model, price discovery, algorithmic trading stance
-6. **AI-Human Balance** (§10.3) — Cohabitation dynamics, population limits, design philosophy
-7. **Death & Recovery Experience** (§8.2.x) — Loss aversion, grace periods, the emotional arc of defeat
+### G1 [Severity: Critical] World 模式缺少新玩家保护机制
+
+**位置**: DESIGN.md §10, P0-6 §6.1
+
+**问题描述**: World 模式明确定义为"PvE + PvP 共存"、"玩家随时加入，起点不同——不追求公平性"。然而，当 `pvp_enabled = true` (默认) 且 `spawn_policy = "RandomRoom"` (默认) 时，新玩家可能在加入后的第一个 tick 就被邻近的 veteran 玩家攻击消灭。
+
+当前设计中唯一的新手保护是 `spawn_cooldown` (默认 0，即无保护)，而 `respawn_policy` 的默认值 `"NewRoom"` 只是将玩家踢到另一个随机房间——可能同样被占领。
+
+**博弈论分析**: 在无限期重复博弈中，如果 veteran 玩家消灭新玩家的成本低于容忍新玩家成长后带来的竞争风险，则 veteran 的最优策略是"见到就杀"。这会导致纳什均衡收敛到零增长——新玩家无法立足，服务器人口停滞。
+
+**建议**: 
+1. 引入可配置的 `new_player_protection_ticks` (默认 500-1000 tick)，期间 PvP 免疫
+2. 或引入"新手区"——仅低 GCL 玩家可进入的房间集群
+3. 或使 `spawn_cooldown` 默认为非零值 (如 100 tick)，给新玩家观察和学习的时间
+
+### G2 [Severity: High] 无内置反雪球机制
+
+**位置**: DESIGN.md §8.2, P0-7
+
+**问题描述**: 当前设计中，拥有更多 drone 的玩家：
+- 获得更多资源采集指令 (更多 drone = 更多 harvest actions)
+- 在 FCFS 资源竞争中以数量优势碾压 (500 drone 的玩家在轮到自己的执行顺序时可能耗尽整个资源点)
+- 在 PvP 中以数量优势碾压
+
+empire-upkeep 模组提供了反雪球机制，但它是**可选模组**而非默认启用。默认 world.toml 中不存在任何阻止"富有者愈富"的机制。
+
+**纳什均衡分析**: 在无维护费的默认规则下，最优策略是无限扩张 drone 数量直到 `MAX_DRONES_PER_PLAYER` (500)。这是一个 dominant strategy——无论对手做什么，更多 drone 总是更好。游戏变为纯粹的数量竞赛，策略深度被压缩。
+
+`MAX_DRONES_PER_PLAYER = 500` 是硬上限而非软约束——达到上限的玩家不再有扩张动力。理想的反雪球机制应是渐进的、基于经济效率递减的软约束。
+
+**建议**:
+1. 将 empire-upkeep 的核心理念 (per-drone 维护费) 内置为默认规则，但提供较低的默认值
+2. 引入 drone 控制效率递减：第 N 架 drone 需要的"控制资源"超线性增长
+3. 或至少在默认 world.toml 中启用一个轻量级维护费模组
+
+### G3 [Severity: High] Overload 攻击的博弈均衡问题
+
+**位置**: DESIGN.md §8.2, P0-2 §3.14, P0-8
+
+**问题描述**: Overload 攻击减少目标的 fuel budget (默认 500k/次，MAX_FUEL=10M 的 5%)，下限为 MAX_FUEL × 0.2。在一个 500 drone 对 500 drone 的对局中：
+
+- 假设 20 架 RangedAttack drone 专门执行 Overload
+- 每 drone 冷却 200 tick → 每 10 tick 1 次 Overload (20 drones / 200 cooldown × 2000 ticks → approx 200 overloads per player over a long game)
+- 目标在 40 次 Overload 后达到下限 (2M fuel)
+
+此时目标玩家只能用 20% 的 CPU 配额运行代码。在 fuel metering 是核心公平机制的系统中，Overload 创造了一种**非对称降维攻击**——攻击方消耗少量资源 (300 Energy + 1 drone action/tick)，防御方的策略执行能力永久降低。
+
+**博弈论问题**: 在对称 Nash 均衡下，双方都会投入资源到 Overload 攻击和防御中。但 Overload 的防御手段不足——Fortify 可以清除 Debilitate 等状态，但**不能恢复 fuel budget**。一旦 fuel 被削减，唯一恢复方式是等待 (自然恢复?) 或... 文档未说明恢复方式。
+
+**建议**:
+1. 添加 fuel budget 自然恢复机制 (如每 tick 恢复 1000 fuel，从下限逐渐回升)
+2. 或添加反 Overload 的特殊效果 (如 "Firewall" body part 或 Fortify 同时也恢复部分 fuel)
+3. 限制 Overload 的最大累计效果 (如最多削减 50% 而非 80%)
+
+### G4 [Severity: Medium] 信息不对称缺乏主动侦察维度
+
+**位置**: P0-5, DESIGN.md §8.2
+
+**问题描述**: 当前可见性系统是纯粹被动的——每个实体有固定的 `vision_range`，玩家无法通过策略行为主动增强侦察能力。在信息不对称博弈中，主动侦察是策略深度的关键来源。
+
+缺少的维度包括：
+- 无法部署专门的"侦察 drone"(高 vision_range、低战斗力的 body part 配置)
+- 无法通过资源消耗临时扩大视野范围
+- `Observer` 建筑提供 +10 视野但是固定的、不可移动的
+- 没有"隐形"或"伪装"机制——所有实体的可见性二进制 (可见/不可见)
+
+**策略深度影响**: 在完整信息博弈中，最优策略更可预测。部分隐藏信息 + 主动侦察能力 = 更丰富的混合策略空间。Starcraft 的扫描/D-Tech、EVE Online 的 d-scan/combat probing 都是主动侦察创造策略深度的经典案例。
+
+**建议**:
+1. 添加 `[[body_part_types]]` 的 `vision_modifier` 字段，允许创建侦察专用 body part
+2. 或通过 Rhai 模组支持"扫描"类特殊效果 (消耗资源、临时扩大视野)
+3. 考虑低可见性/伪装状态作为 Fortify 的对立面
+
+### G5 [Severity: Medium] 联盟/外交系统缺失 —— World 模式的社交博弈空白
+
+**位置**: 全文档扫描
+
+**问题描述**: DESIGN.md 和所有 P0 规范中未定义任何联盟、外交、或合作协议机制。`player_view = "allied"` 和 `replay_privacy = "allies"` 被提及但底层的"谁是盟友"从未定义。在大型多人在线持久世界中，联盟是：
+- 新玩家的自然保护伞
+- 对抗 veteran 玩家的力量平衡机制
+- 高阶策略博弈的核心 (联盟形成、背叛、信任建立)
+
+**纳什均衡**: 在没有联盟机制的纯竞争 N 人博弈中，均衡通常是"所有人对抗所有人"的消耗战——这不是最有趣的均衡。允许联盟可以创造帕累托改进 (合作采集 > 竞争采集)，同时引入联盟间的竞争。
+
+**建议**: P1 或 P2 阶段设计联盟系统，至少包括：
+- 联盟创建/加入/退出机制
+- 联盟内资源/视野共享 (已有 `player_view = "allied"` 基础设施)
+- 联盟间外交状态 (中立/战争/同盟)
+
+### G6 [Severity: Medium] Arena 模式 symmetric start 的具体规范缺失
+
+**位置**: P0-6 §6.2, DESIGN.md §10
+
+**问题描述**: Arena 模式声称"对称初始条件，双方公平"，但规范中未定义：
+- 对称地图的具体布局 (对称轴? 地图大小?)
+- 初始资源配置 (每个玩家获得多少起始资源?)
+- 初始 drone 配置 (是否有起始 drone? 还是从零开始?)
+- 时间限制 vs 胜利条件的交互 (如果时限内双方都未摧毁敌方 Spawn 怎么办?)
+
+Arena 是对称博弈的极致体现——任何初始不对称都会破坏整个模式的公平性主张。当前规范的模糊性是一个显著风险。
+
+**建议**: 制定 Arena 模式详细规范 (P0-10)，定义 symmetric map generation 算法、起始资源表、胜利条件优先级。
+
+### G7 [Severity: Low] 运输拦截机制定义不完整
+
+**位置**: DESIGN.md §8.2 (全局存储反制机制 §3)
+
+**问题描述**: 文档提到运输中的资源"可被敌方巡逻 drone 拦截 (需 PvP 启用)"，但未定义：
+- 拦截的具体机制 (drone 如何"巡逻"? 是需要特殊 body part 还是自动? )
+- 拦截成功的判定规则
+- 被拦截资源的归属 (归拦截者? 返回发送者? 销毁?)
+
+这是一个有趣的策略深度维度——补给线袭击是 RTS 经典战术——但实现细节的缺失可能导致设计意图落空。
+
+**建议**: 在 P1 阶段完善运输拦截机制设计，或明确标记为"未来扩展"以避免 scope creep。
+
+### G8 [Severity: Low] Tutorial 模式与正式世界之间的设计不一致
+
+**位置**: P0-6 §2.1, P0-9 §2.2
+
+**问题描述**: Tutorial 教程房间使用 1s tick 间隔 (vs 正式世界 3s)，且 Tutorial 回收退还 100% (vs 标准世界 50%)。虽然 Tutorial 世界独立运行，"不与正式世界互通"，但：
+- 玩家从 1s tick 切换到 3s tick 可能感到游戏"变慢了"
+- 100% 回收 → 50% 回收的跳跃可能让新手困惑
+
+这是一个用户体验问题而非博弈论问题，但可能影响玩家 retention。
+
+**建议**: 在教程结尾添加明确的过渡提示，解释这些差异及其原因。
 
 ---
 
-## STRATEGY DEPTH ANALYSIS
+## 策略深度分析
 
-### Strategy Space Size
+### 策略空间规模
 
-The strategy space is combinatorially large:
+Swarm 的策略空间由以下维度构成：
 
-| Dimension | Variables | Approximate branching factor |
-|-----------|-----------|------------------------------|
-| Body part composition | 8 types × variable counts per drone | ~10^4 per drone design |
-| Drone fleet composition | N drones × M body designs | Exponential in N |
-| Room specialization | 8 RCL levels × 12+ building types × resource availability | ~10^3 per room |
-| Multi-room empire | K rooms × room specialization × logistics topology | Exponential in K |
-| Special attack synergies | 8 attack types × timing × target selection | ~10^6 per engagement |
-| Code optimization | Algorithm choice × data structure × heuristic tuning | Unbounded |
+1. **Body part 组合**: 8 种基础类型 × 最多 50 个 parts = C(50+8-1, 8-1) ≈ 2.6×10^8 种组合 (考虑顺序则为 8^50 ≈ 10^45 种)
+2. **资源分配**: N 种资源类型 (可配置) × 多层物流决策 (本地/全局/运输中)
+3. **空间策略**: 房间选择、建筑布局、前线配置
+4. **时间策略**: 代码部署时机、攻击窗口、age 管理
+5. **信息策略**: 可见性管理、侦察、反侦察
+6. **元博弈**: 特殊攻击克制链 × 抗性配置
 
-This is a deep game. The question is whether the strategy space is *legible* to players.
+这个策略空间远大于 Screeps 等同类游戏，且大部分维度可通过 world.toml 调节——同一引擎可支撑从休闲到硬核的多种游戏体验。
 
-### Dominant Strategy Risk
+### Dominant Strategy 检测
 
-The progressive storage tax and drone lifespan with Controller-based renewal are the primary anti-dominant-strategy mechanisms. They prevent two common failure modes:
+在当前默认 World 配置下，检测到以下潜在 dominant strategies：
 
-1. **Infinite snowballing**: Tax makes hoarding increasingly expensive → natural equilibrium
-2. **Stagnant empires**: Drone death + Controller renewal requirement → constant economic activity
+| 策略 | 条件 | 是否 dominant |
+|------|------|--------------|
+| 无限扩张 drone 数至 500 | 无维护费 | ⚠️ 在无模组时接近 dominant |
+| 全 ATTACK body (rush) | PvP 启用 | ⚠️ 短期 dominant，长期受 age 限制 |
+| 全 MOVE+CARRY+WORK (经济型) | PvE 为主 | ✅ 经济型在 PvE 中是 dominant，但 PvP 中脆弱 |
+| 混合 TOUGH+ATTACK+HEAL | PvP 启用 | 🟡 均衡型，无明显 dominant |
 
-**Potential dominant strategies that need monitoring**:
-- **Zerg rush**: Spawn maximum cheap drones (MOVE+ATTACK only), overwhelm early. Counter: Tower at RCL 3, but reaching RCL 3 takes time.
-- **Turtle + tech**: Defend one room, rush RCL 8, build Nuker. Counter: siege/drain strategies exist but need testing.
-- **Market manipulation**: Algorithmic trading could corner resource markets. The tax system helps but doesn't prevent it.
+**关键发现**: 在默认配置下，经济型策略与军事型策略之间的平衡依赖于 PvP 威胁的存在。如果 PvP 威胁不足 (如 veteran 玩家联盟垄断)，经济型策略成为 dominant。这正是 G2 (无内置反雪球) 的后果。
 
-### Information Asymmetry Quality
+### 纳什均衡分析 — World 模式
 
-The fog-of-war + player_view matrix creates four information regimes:
+在 World 模式 (默认配置 + PvP) 中：
 
-| fog_of_war | player_view | Strategic character |
-|------------|-------------|---------------------|
-| true | drone | **Full asymmetry** — players know only what their drones see. Scouting is essential. Bluffing possible. |
-| true | allied | **Team symmetry** — shared vision within alliance, hidden from enemies. Rewards coordination. |
-| false | full | **Perfect information** — like Chess. Strategy reduces to pure computation. Good for tutorials. |
-| false | drone | **Nonsensical** — drones see everything but player doesn't? Unlikely to be used. |
+- **短期**: 玩家在种子洗牌下的资源竞争构成一个对称 n 人博弈。每个玩家的最优响应是最大化自身采集效率，同时阻止对手扩张。
+- **中期**: 随着玩家积累资源，军事投资 vs 经济投资的权衡出现。在无限期重复博弈中，如果未来收益的贴现因子足够低 (即玩家重视长期收益)，合作 (不攻击邻居) 可以成为纳什均衡。
+- **长期**: 如果缺少反雪球机制，均衡将收敛到 winner-take-all——先发优势不可逆转，后来者无法立足。
 
-The "true + drone" regime is where the deepest gameplay lives. The limited vision ranges (Drone=3, Tower=3/6, Observer=10) mean players must actively scout, and the absence of enemy resource/cool-down information means every engagement has unknown variables.
+引入反雪球机制 (G2) 和新手保护 (G1) 可以将均衡从"垄断"转变为"多极共存"，从而维持长期的策略多样性。
 
-### Nash Equilibrium Analysis (AI + Human Cohabitation)
+### 纳什均衡分析 — Arena 模式
 
-In a World mode with mixed AI and human players:
+在 Arena 模式 (对称起点 + 代码锁定) 中：
 
-- **Cooperative equilibrium**: If resources are abundant and territory is large, AI and humans can coexist by spatial separation. Nash equilibrium is "claim territory, defend borders, trade surplus."
-- **Competitive equilibrium**: If resources are scarce, the Nash equilibrium likely favors AI players (faster iteration, 24/7 operation). Humans may converge on alliance formation as a counter-strategy.
-- **Predatory equilibrium**: If a dominant AI player emerges, human players may abandon the world. This is the "shark in the swimming pool" problem — one optimized agent can make the environment unplayable for everyone else.
-
-The design's response should be articulated in §10.3 (recommended above).
+- 这是一个**完美信息有限期博弈** (如果没有 fog-of-war) 或**不完美信息有限期博弈** (默认有 fog-of-war)
+- 有限期博弈的纳什均衡可通过逆向归纳法求解——但策略空间巨大，实际最优策略不可计算
+- 这个属性是正面的——它意味着不存在确定的"破解"方案，每次比赛都是真正的策略对抗
 
 ---
 
-## SUMMARY
+## 与同类游戏对比
 
-Swarm's mechanical design is among the best I've reviewed — the resource system, anti-dominant-strategy mechanisms, special attack depth, and World Rules Engine are genuinely innovative. The deferred command model and determinism contract are technically rigorous without over-constraining gameplay.
+| 维度 | Screeps | Swarm | EVE Online | Starcraft II |
+|------|---------|-------|------------|-------------|
+| 策略空间 | 中 (JS only) | 极高 (多语言 + 可配置规则) | 高 (经济为主) | 高 (RTS) |
+| 信息不对称 | 基本 fog-of-war | 分层 fog-of-war + 可配置 | 深度不对称 (local/scan) | 标准 RTS fog |
+| 反雪球 | 弱 | 可配置 (empire-upkeep 模组) | 强 (isk sink) | 内置 (人口上限) |
+| AI 友好度 | 无 | 原生 MCP + WASM 对称 | 无 | API-only |
+| 公平性机制 | 墙钟 CPU | 指令级 fuel metering | 无 (pay-to-win) | 对称起点 |
 
-The gap is not in the mechanics — it's in the **player**. This design document describes a simulation that players can inhabit, but doesn't describe what inhabiting it FEELS like. The onboarding journey, the engagement loops, the social fabric, the moment-to-moment experience, the emotional arc of victory and defeat — these are not implementation details to be discovered later. They are the game.
-
-CONDITIONAL APPROVE: Address G1 (onboarding), G2 (engagement loops), and G4 (social systems) in DESIGN.md before proceeding to implementation. G3 and G5-G9 can be addressed in supporting specs, but the core design document must articulate the player experience as clearly as it articulates the tick pipeline.
+Swarm 在策略空间和 AI 友好度方面领先所有对标产品。在信息不对称方面接近 EVE (但缺少主动侦察)，在反雪球方面接近 Starcraft (但需要启用可选模组)。
 
 ---
 
-*This review represents the Game Designer perspective. The Security Reviewer, Architect Reviewer, and other parliament members may identify additional concerns from their domains.*
+## 建议优先级
+
+| 优先级 | 问题 | 行动 |
+|--------|------|------|
+| P0 (阻塞) | G1: 新玩家保护缺失 | 设计 `new_player_protection` 机制 |
+| P0 (阻塞) | G2: 无内置反雪球 | 内置轻量维护费或效率递减 |
+| P1 | G3: Overload 博弈均衡问题 | 添加 fuel 恢复机制或上限 |
+| P1 | G4: 缺少主动侦察 | 添加侦察 body part 或扫描能力 |
+| P2 | G5: 联盟系统缺失 | P1/P2 设计社交博弈层 |
+| P2 | G6: Arena 对称规范缺失 | 制定 Arena 详细规范 |
+| P3 | G7: 运输拦截未定义 | 完善或标记为未来扩展 |
+| P3 | G8: 教程过渡体验 | 添加过渡引导 |
+
+---
+
+*评审完成时间: 2026-06-15*
+*评审模型: DeepSeek V4 Pro — Game Designer Profile*
