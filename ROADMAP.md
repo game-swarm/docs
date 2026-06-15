@@ -86,3 +86,5 @@
 | G2 | 无伤害类型体系 | 6 种伤害类型 (Kinetic/Thermal/EMP/Sonic/Corrosive/Psionic) + 抗性 | 固定数值 damage = parts × 30 | DESIGN §8.2 伤害与武器类型 |
 | G3 | 身体部件单资源成本 | 多资源消耗 (如 `Attack = {Crystal=80, Gas=20}`) | 仅 Energy | DESIGN §8.2 资源定义 |
 | G4 | 无属性级抗性 | Rhai 模组可赋予动态属性 (Shielded→0.7×) | 无 | DESIGN §8.2 属性级抗性 |
+| G5 | StructureType 不可配置 | world.toml `[[structure_types]]` 12 字段 schema (category/rcl_required/attack/capacity/...) | 硬编码 enum, 12 种 | DESIGN §8.2 自定义建筑类型 |
+| G6 | CommandAction 不可扩展 | world.toml `[[custom_actions]]` 注册新 action (damage_type/special_effect/cooldown) | 固定 12 种 CommandAction | DESIGN §8.2 自定义 CommandAction |
