@@ -82,7 +82,7 @@
 
 | ID | 差距 | DESIGN 目标 | 当前实现 | 锚定点 |
 |----|------|-----------|---------|--------|
-| G1 | BodyPart 不可配置 | world.toml 定义 body part 成本、伤害类型绑定 | 硬编码 enum, ActionCosts 常量 | DESIGN §8 body_part.* |
+| G1 | BodyPart 不可配置 | world.toml `[[body_part_types]]` 8 字段 schema (action/damage_type/base_damage/passive/range/cost) | 硬编码 enum, ActionCosts 常量 | DESIGN §8.2 身体部件类型定义 |
 | G2 | 无伤害类型体系 | 6 种伤害类型 (Kinetic/Thermal/EMP/Sonic/Corrosive/Psionic) + 抗性 | 固定数值 damage = parts × 30 | DESIGN §8.2 伤害与武器类型 |
 | G3 | 身体部件单资源成本 | 多资源消耗 (如 `Attack = {Crystal=80, Gas=20}`) | 仅 Energy | DESIGN §8.2 资源定义 |
 | G4 | 无属性级抗性 | Rhai 模组可赋予动态属性 (Shielded→0.7×) | 无 | DESIGN §8.2 属性级抗性 |
