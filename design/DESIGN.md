@@ -1075,10 +1075,198 @@ cost = { Energy = 2000, Matter = 500 }
 | `damage_type` | string | 否 | 伤害类型，引用 `[[damage_types]]` |
 | `base_damage` | u32 | 否 | 基础伤害值 |
 | `range` | u32 | ✅ | 生效距离 |
-| `special_effect` | string | 否 | 特殊效果标识符。内置：`heal_self`, `scramble_commands`, `convert_to_structure`, `disrupt`, `fortify` |
+| `special_effect` | string | 否 | 特殊效果标识符，引用 `[[special_effects]]` 中定义的 name。内置默认效果见下方 |
 | `special_param` | float | 否 | 特殊效果的参数 |
 | `cooldown` | u32 | 否 | 冷却时间（tick） |
 | `cost` | `{String: u32}` | 否 | 每次使用的资源消耗（body part spawn 成本在 `[[body_part_types]]` 中独立定义） |
+
+#### 特殊效果类型定义（`[[special_effects]]`）
+
+与 body_part_types 和 damage_types 一样，特殊效果可通过 world.toml 定义和扩展。每个 `[[special_effects]]` 条目定义一个可由 `[[custom_actions]]` 引用的效果类型：
+
+```toml
+# world.toml — 特殊效果类型定义（可扩展）
+
+[[special_effects]]
+name = "hack"
+description = "夺取目标 drone——施加控制锁逐步建立控制，5 tick 后目标转为 Neutral"
+handler = "hack"               # 引擎内置 handler 名
+target = "enemy_drone"         # enemy_drone | enemy_structure | self | ally | any
+duration = 5                   # 持续 tick 数（0 = 即时）
+resistance = "Psionic"          # 目标抗性检查（引用 [[damage_types]]）
+
+[[special_effects]]
+name = "drain"
+description = "从目标建筑/存储中窃取资源，每 tick 转移 carry_capacity 单位"
+handler = "drain"
+target = "enemy_structure"
+duration = 0                   # 持续型，手动中断
+resistance = "EMP"
+
+[[special_effects]]
+name = "overload"
+description = "消耗目标计算配额——fuel budget -500k，下限 MAX_FUEL×0.2"
+handler = "overload"
+target = "enemy_player"
+duration = 0                   # 即时
+resistance = "EMP"
+
+[[special_effects]]
+name = "debilitate"
+description = "给目标附加易伤状态——指定伤害类型抗性×2"
+handler = "debilitate"
+target = "enemy_any"
+duration = 50
+resistance = "Corrosive"
+
+[[special_effects]]
+name = "disrupt"
+description = "打断目标当前持续动作（Drain/Hack/Debilitate 等），不造成 HP 伤害"
+handler = "disrupt"
+target = "enemy_drone"
+duration = 0                   # 即时
+resistance = "Sonic"
+
+[[special_effects]]
+name = "fortify"
+description = "自身/友方获得护盾（所有抗性×0.5）+ 清除所有负面状态"
+handler = "fortify"
+target = "self_or_ally"
+duration = 100
+# 无 resistance — 增益效果不检查抗性
+
+[[special_effects]]
+name = "leech"
+description = "吸血——造成伤害的 50% 治疗自身"
+handler = "leech"
+target = "enemy_any"
+duration = 0
+resistance = "Corrosive"
+# special_param = 0.5 → 治疗比例，在 [[custom_actions]] 中指定
+
+[[special_effects]]
+name = "fabricate"
+description = "将敌方 drone 转化为己方建筑"
+handler = "fabricate"
+target = "enemy_drone"
+duration = 0
+resistance = "Psionic"
+
+[[special_effects]]
+name = "heal_self"
+description = "造成伤害的指定比例治疗自身"
+handler = "heal_self"
+target = "enemy_any"
+duration = 0
+
+[[special_effects]]
+name = "scramble_commands"
+description = "随机重排目标下 tick 的指令执行顺序"
+handler = "scramble_commands"
+target = "enemy_drone"
+duration = 0
+
+[[special_effects]]
+name = "convert_to_structure"
+description = "将目标 drone 转化为己方建筑"
+handler = "convert_to_structure"
+target = "enemy_drone"
+duration = 0
+resistance = "Psionic"
+```
+
+**字段说明**：
+
+| 字段 | 类型 | 必需 | 说明 |
+|------|------|------|------|
+| `name` | string | ✅ | 唯一标识符，被 `[[custom_actions]].special_effect` 引用 |
+| `description` | string | ✅ | 人类可读描述 |
+| `handler` | string | ✅ | 引擎内置处理器名。内置：`hack`, `drain`, `overload`, `debilitate`, `disrupt`, `fortify`, `leech`, `fabricate`, `heal_self`, `scramble_commands`, `convert_to_structure` |
+| `target` | enum | ✅ | 目标类型：`enemy_drone`, `enemy_structure`, `enemy_player`, `enemy_any`, `self`, `ally`, `self_or_ally`, `any` |
+| `duration` | u32 | ✅ | 持续 tick 数（0 = 即时生效） |
+| `resistance` | string | 否 | 目标抗性检查，引用 `[[damage_types]]` 中的 name。无此字段 = 不检查抗性 |
+
+**注册流程**：
+
+```
+1. world.toml 中声明 [[special_effects]]
+   → 引擎启动时解析，注册到 SpecialEffectRegistry
+2. [[custom_actions]] 中通过 special_effect = "name" 引用
+   → 引擎在 CommandAction 注册时自动绑定 handler
+3. 引擎内置所有 handler（hack/drain/overload/…）— 无需 Rhai 即可使用
+4. 服主只需在 world.toml 中声明 [[custom_actions]] + 引用已有 [[special_effects]]
+   → 新特殊攻击只需 TOML 配置，无需改 Rust 代码
+5. 如需全新 handler（TOML 配置无法表达的效果），通过 Rhai 模组注册
+```
+
+**默认 world.toml 中的特殊攻击注册**：
+
+```toml
+# 以下 8 个特殊攻击在默认 world.toml 中预注册
+# 服主可禁用（注释/删除）或修改参数
+
+[[custom_actions]]
+name = "Hack"
+description = "夺取 drone——5 tick 控制锁后转为 Neutral"
+special_effect = "hack"
+cooldown = 200
+cost = { Energy = 1000 }
+
+[[custom_actions]]
+name = "Drain"
+description = "从目标建筑窃取资源"
+special_effect = "drain"
+cooldown = 50
+cost = { Energy = 200 }
+
+[[custom_actions]]
+name = "Overload"
+description = "消耗目标 fuel budget 500k"
+special_effect = "overload"
+cooldown = 200
+cost = { Energy = 300 }
+
+[[custom_actions]]
+name = "Debilitate"
+description = "施加易伤——指定伤害类型抗性×2，持续 50 tick"
+special_effect = "debilitate"
+special_param = 2.0
+cooldown = 150
+cost = { Energy = 200 }
+
+[[custom_actions]]
+name = "Disrupt"
+description = "打断目标持续动作"
+special_effect = "disrupt"
+cooldown = 50
+cost = { Energy = 100 }
+
+[[custom_actions]]
+name = "Fortify"
+description = "护盾+净化——所有抗性×0.5，清除负面状态"
+special_effect = "fortify"
+special_param = 0.5
+cooldown = 300
+cost = { Energy = 400 }
+
+[[custom_actions]]
+name = "Leech"
+description = "吸血攻击——伤害 50% 治疗自身，Corrosive 15 dmg"
+damage_type = "Corrosive"
+base_damage = 15
+range = 1
+special_effect = "leech"
+special_param = 0.5
+cost = { Energy = 300 }
+
+[[custom_actions]]
+name = "Fabricate"
+description = "将敌方 drone 转化为己方建筑"
+range = 1
+special_effect = "fabricate"
+cooldown = 500
+cost = { Energy = 2000, Matter = 500 }
+```
 
 #### 可见性与观战
 

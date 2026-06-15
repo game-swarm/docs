@@ -275,27 +275,41 @@ git diff --exit-code        # 生成代码与提交代码一致 → 不一致则
 
 ## 4. v0.2 新增 CommandAction (2026-06-15)
 
-锚定 DESIGN.md §5, §8.2。以下在 v0.1 IDL 冻结后新增。
+锚定 DESIGN.md §5, §8.2。以下在 v0.1 IDL 冻结后新增。**所有特殊攻击通过 world.toml 的 `[[custom_actions]]` + `[[special_effects]]` 可配置注册**，非硬编码。
 
 ### 4.1 新增变体
 
-| CommandAction | body part | 说明 |
-|--------------|-----------|------|
-| `RangedAttack` | RangedAttack | 远程攻击，parts × 25，范围 3 |
-| `ClaimController` | Claim | 占领 Controller |
-| `Recycle` | — | 回收 drone，退还 50% body part 资源 |
-| `Disrupt` | Attack | 打断目标动作，50 tick CD |
-| `Fortify` | Tough | 护盾 + 净化，300 tick CD |
-| `Hack` | Claim | 夺取 drone 转 Neutral，200 tick CD |
-| `Drain` | Carry+Work | 窃取资源，50 tick CD |
-| `Overload` | RangedAttack | 消耗配额 -500k，200 tick CD |
-| `Debilitate` | Work | 易伤 ×2，150 tick CD |
-| `Leech` | custom | 吸血 50%，Corrosive 15 dmg |
-| `Fabricate` | custom | 转化建筑，500 tick CD |
+| CommandAction | body part | special_effect | 说明 |
+|--------------|-----------|---------------|------|
+| `RangedAttack` | RangedAttack | — | 远程攻击，parts × 25，范围 3 |
+| `ClaimController` | Claim | — | 占领 Controller |
+| `Recycle` | — | — | 回收 drone，退还 50% body part 资源 |
+| `Disrupt` | Attack | `disrupt` | 打断目标动作，50 tick CD |
+| `Fortify` | Tough | `fortify` | 护盾 + 净化，300 tick CD |
+| `Hack` | Claim | `hack` | 夺取 drone → Neutral，200 tick CD |
+| `Drain` | Carry+Work | `drain` | 窃取资源，50 tick CD |
+| `Overload` | RangedAttack | `overload` | 消耗配额 -500k，200 tick CD |
+| `Debilitate` | Work | `debilitate` | 易伤 ×2，150 tick CD |
+| `Leech` | custom | `leech` | 吸血 50%，Corrosive 15 dmg |
+| `Fabricate` | custom | `fabricate` | 转化建筑，500 tick CD |
 
 ### 4.2 注册规则
 
-- 以上变体在引擎启动时从 world.toml 的 `[[custom_actions]]` 动态注册
-- `[[body_part_types]]` 定义 body part → action 绑定
-- IDL 代码生成器自动扫描注册表 → 生成所有 target 语言的绑定
-- SDK 和 MCP schema 自动包含新 action
+- 以上变体在引擎启动时从 world.toml 动态注册，注册链路：
+  ```
+  [[special_effects]]  →  定义效果类型（handler / target / duration / resistance）
+         │
+         ▼
+  [[custom_actions]]   →  引用 special_effect = "name"，定义 CD / cost / damage
+         │
+         ▼
+  引擎 CommandAction 注册表  →  自动绑定 validate/apply handler
+         │
+         ▼
+  IDL 代码生成器  →  扫描注册表 → 生成所有 target 语言的绑定
+  ```
+- `[[body_part_types]]` 定义 body part → action 绑定（如 `Claim` part → `Hack` action）
+- `[[special_effects]]` 定义效果类型（8 个内置 handler：`hack`, `drain`, `overload`, `debilitate`, `disrupt`, `fortify`, `leech`, `fabricate`）
+- 服主可在 world.toml 中新增 `[[custom_actions]]` 条目引用已有 `[[special_effects]]` ——无需改 Rust 代码
+- 需全新 handler 时通过 Rhai 模组注册
+- SDK 和 MCP schema 自动包含所有已注册 action
