@@ -1,6 +1,6 @@
 # MCP 工具参考
 
-> Phase 0 冻结。MCP 是 AI agent 的操作界面——与人类玩家的 Web UI 完全同级。
+> 当前版本。MCP 是 AI agent 的操作界面——与人类玩家的 Web UI 完全同级。
 > MCP **不做游戏动作**。AI agent 必须编写 WASM 代码来操作世界。
 > 详见 `specs/latest/03-mcp-security-contract.md`。
 

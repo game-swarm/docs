@@ -1,6 +1,6 @@
 # WASM Host Functions 参考
 
-> Phase 0 冻结。WASM 模块仅可调用以下只读 host function。
+> 当前版本。WASM 模块仅可调用以下只读 host function。
 
 ## 允许的 Import
 

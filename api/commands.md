@@ -1,6 +1,6 @@
 # Command API 参考
 
-> Phase 0 冻结。WASM 模块通过 `tick(snapshot) → Command[]` JSON 返回指令。
+> 当前版本。WASM 模块通过 `tick(snapshot) → Command[]` JSON 返回指令。
 
 ## 通用字段
 
@@ -10,7 +10,7 @@
 - `seq`: 玩家内序列号（递增）
 - 各 action 特定参数
 
-## 指令列表（12 种）
+## 指令列表（24 种）
 
 ### Move
 移动 drone 到目标坐标。
@@ -114,6 +114,108 @@
 { "action": "BuyMarketOrder", "object_id": "d1", "order_id": 42, "seq": 13 }
 ```
 - 校验：订单存在且未过期，购买者有足够资源
+
+### Recycle
+回收 drone，退还 50% body part 资源。
+```json
+{ "action": "Recycle", "object_id": "d1", "spawn_id": "s1", "seq": 14 }
+```
+- 校验：drone 在 Spawn 1 格内
+- 退还：`body_cost(body) × 0.5`
+
+### ClaimController
+占领敌方 Controller。
+```json
+{ "action": "ClaimController", "object_id": "d1", "target_id": "c1", "seq": 15 }
+```
+- 校验：drone 有 CLAIM body part，target 是 Controller
+- 每 CLAIM part → 1 占领进度
+
+### Disrupt
+打断目标持续动作，不造成 HP 伤害。
+```json
+{ "action": "Disrupt", "object_id": "d1", "target_id": "e5", "seq": 16 }
+```
+- 校验：drone 有 ATTACK body part，敌方 drone，1 格内
+- 冷却：50 tick | 消耗：100 Energy | 抗性：Sonic
+- special_effect: `disrupt`
+
+### Fortify
+自身/友方护盾 + 净化负面状态。
+```json
+{ "action": "Fortify", "object_id": "d1", "target_id": "f2", "seq": 17 }
+```
+- 校验：drone 有 TOUGH body part，自身或友方，1 格内
+- 效果：所有抗性×0.5，清除负面状态，持续 100 tick
+- 冷却：300 tick | 消耗：400 Energy
+- special_effect: `fortify`
+
+### Hack
+夺取敌方 drone——5 tick 渐进控制后转为 Neutral。
+```json
+{ "action": "Hack", "object_id": "d1", "target_id": "e5", "seq": 18 }
+```
+- 校验：drone 有 CLAIM body part，敌方 drone，1 格内，未被 hack
+- 进度：tick 1-2 减速 50%，tick 3-4 无法移动，tick 5 夺取成功
+- 冷却：200 tick | 消耗：1000 Energy | 抗性：Psionic
+- special_effect: `hack`
+
+### Drain
+从目标建筑/存储窃取资源。
+```json
+{ "action": "Drain", "object_id": "d1", "target_id": "b1", "seq": 19 }
+```
+- 校验：drone 有 CARRY+WORK body part，敌方建筑，1 格内
+- 效果：每 tick 转移 `carry_capacity` 单位资源
+- 冷却：50 tick | 消耗：200 Energy/tick | 抗性：EMP
+- special_effect: `drain`
+
+### Overload
+消耗目标 fuel budget。
+```json
+{ "action": "Overload", "object_id": "d1", "target_id": "<player_id>", "seq": 20 }
+```
+- 校验：drone 有 RANGED_ATTACK body part，敌方玩家，fuel 高于 20%
+- 效果：target fuel -500k，下限 MAX_FUEL×0.2
+- 冷却：200 tick | 消耗：300 Energy | 抗性：EMP
+- special_effect: `overload`
+
+### Debilitate
+给目标附加易伤状态。
+```json
+{ "action": "Debilitate", "object_id": "d1", "target_id": "e5", "damage_type": "Thermal", "seq": 21 }
+```
+- 校验：drone 有 WORK body part，敌方，3 格内
+- 效果：指定伤害类型抗性×2，持续 50 tick
+- 冷却：150 tick | 消耗：200 Energy | 抗性：Corrosive
+- special_effect: `debilitate`
+
+### Leech
+吸血攻击——伤害的 50% 治疗自身。
+```json
+{ "action": "Leech", "object_id": "d1", "target_id": "e5", "seq": 22 }
+```
+- 校验：drone 有对应 body part，敌方，1 格内
+- 伤害：Corrosive 15 dmg，治疗自身 50%
+- 消耗：300 Energy | 抗性：Corrosive
+- special_effect: `leech`
+
+### Fabricate
+将敌方 drone 转化为己方建筑。
+```json
+{ "action": "Fabricate", "object_id": "d1", "target_id": "e5", "seq": 23 }
+```
+- 校验：drone 有对应 body part，敌方 drone，1 格内
+- 冷却：500 tick | 消耗：2000 Energy + 500 Matter
+- special_effect: `fabricate`
+
+### MoveTo
+路径移动——自动寻路到目标坐标。
+```json
+{ "action": "MoveTo", "object_id": "d1", "x": 10, "y": 5, "seq": 24 }
+```
+- 校验：drone 有 MOVE body part，目标在同房间，路径≤100 格
+- 消耗：pathfinding 计入 fuel budget
 
 ## 拒绝原因（24 种）
 
