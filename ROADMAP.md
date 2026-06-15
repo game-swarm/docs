@@ -1,7 +1,7 @@
 # Swarm — 模块化实施追踪
 
 > 锚定 Phase 0 Architecture Freeze（2026-06-14）。审计日期: 2026-06-15  
-> 只看合并到 main 且测试通过的代码。Engine 150 tests, SDK-Rust 8 tests, Gateway 7 tests.
+> 只看合并到 main 且测试通过的代码。Engine 151 tests, SDK-Rust 8 tests, Gateway 7 tests.
 
 ## 总览
 
@@ -23,10 +23,10 @@
 
 ---
 
-## engine/ — 核心引擎 — 150 tests ✅
-- ECS + 12 CommandAction + Validation Pipeline + 12 Source Gate
+## engine/ — 核心引擎 — 151 tests ✅
+- ECS + 16 CommandAction (+ 1 Custom for [[custom_actions]]) + Validation Pipeline + 12 Source Gate
 - 单/多玩家 Tick 调度器 + TickTrace 回放
-- MCP 10 工具 + OAuth2/Ed25519 证书 + rate limiter
+- MCP 24 工具 + OAuth2/Ed25519 证书 + rate limiter
 - WebSocket delta push + 统一可见性
 - FDB 持久化 (real) + ClickHouse (real) + Dragonfly (real)
 - Rhai 3 hooks + Module CLI + 执行预算
@@ -39,7 +39,7 @@
 - [x] Sharding ✅ (ShardId/ShardConfig/ShardDiscovery, 323行)
 - [x] AI 锦标赛执行引擎 ✅ (bracket + 自动match编排, 591行)
 
-## sandbox/ — WASM 沙箱 — 9 tests ✅ (100%)
+## sandbox/ — WASM 沙箱 — 10 tests ✅ (100%)
 
 ## sdk-ts/ — TypeScript SDK — 11 tests ✅ (100%)
 
