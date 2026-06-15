@@ -414,7 +414,7 @@ Drone 在 Phase 2b spawn_system 中创建——位于 death_mark（释放 room c
 
 **冷却**: 300 tick（每 drone）。**资源消耗**: 400 Energy。**抗性**: 无——这是增益+净化，不受抗性影响。
 
-**注意**: §3.10-3.15 特殊攻击实现完毕。IDL 定义见 specs/08-game-api-idl。
+> 特殊攻击（§3.10-3.15）的 IDL 定义见 specs/08-game-api-idl。
 
 ## 4. 查询指令（只读）
 

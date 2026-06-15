@@ -22,7 +22,7 @@
 | `TestHarness` | 自动化测试 | test_context | ❌ 否 | 完整 | N/A | 测试世界 | N/A |
 | `Tutorial` | 教程引导 | tutorial_session + world_id | ⚠️ 仅教程世界 | 完整 | 10/tick | 教程房间 | N/A |
 
-### 2.2 扩展来源（已实现）
+### 2.2 扩展来源
 
 | Source | 描述 | auth_context | gameplay | audit | rate_limit | visibility | budget |
 |--------|------|-------------|----------|-------|------------|------------|--------|
@@ -37,7 +37,7 @@
 
 | Source | 允许写入世界 | 允许读写全局存储 | 允许部署代码 | 允许查询世界 | 允许触发战斗 |
 |--------|------------|----------------|------------|------------|------------|
-| `WASM` | ✅ | ✅ | ❌ | ✅（快照） | ✅（含六种特殊攻击：Hack/Drain/Overload/Debilitate/Disrupt/Fortify） |
+| `WASM` | ✅ | ✅ | ❌ | ✅（快照） | ✅（含八种特殊攻击） |
 | `MCP_Deploy` | ❌ | ❌ | ✅ | ❌ | ❌ |
 | `MCP_Query` | ❌ | ❌ | ❌ | ✅ | ❌ |
 | `Admin` | ✅ | ✅ | ✅ | ✅ | ✅ |

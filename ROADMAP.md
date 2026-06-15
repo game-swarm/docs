@@ -24,9 +24,9 @@
 ---
 
 ## engine/ — 核心引擎 — 151 tests ✅
-- ECS + 20 CommandAction（IDL 定义） + Custom（[[custom_actions]]） + Validation Pipeline + 12 Source Gate
+- ECS + 23 CommandAction（IDL 定义） + Custom（[[custom_actions]]） + Validation Pipeline + 12 Source Gate
 - 单/多玩家 Tick 调度器 + TickTrace 回放
-- MCP 24 工具 + OAuth2/Ed25519 证书 + rate limiter
+- MCP 28 工具 + OAuth2/Ed25519 证书 + rate limiter
 - WebSocket delta push + 统一可见性
 - FDB 持久化 (real) + ClickHouse (real) + Dragonfly (real)
 - Rhai 3 hooks + Module CLI + 执行预算
@@ -80,17 +80,7 @@
 
 ---
 
-## 设计与实现差距（DESIGN.md 目标 vs 当前代码）
-
-| ID | 差距 | DESIGN 目标 | 当前实现 | 锚定点 |
-|----|------|-----------|---------|--------|
-| G1 | BodyPart 不可配置 | world.toml `[[body_part_types]]` 8 字段 schema | ✅ done (`0e2454e`) | DESIGN §8.2 |
-| G2 | 无伤害类型体系 | 6 种伤害类型 + 抗性 | ✅ done (`0e2454e`) | DESIGN §8.2 |
-| G3 | 身体部件单资源成本 | 多资源消耗 | ✅ done (`8d09471`) | DESIGN §8.2 |
-| G4 | 无属性级抗性 | Rhai 模组动态属性 | ✅ done (`0e2454e`) | DESIGN §8.2 |
-| G5 | StructureType 不可配置 | `[[structure_types]]` | ✅ done (`1381e7a`) | DESIGN §8.2 |
-| G6 | CommandAction 不可扩展 | `[[custom_actions]]` | ✅ done (`1381e7a`) | DESIGN §8.2 |
-| G7 | special_effect 硬编码 enum | `SpecialEffectRegistry` (字符串→handler 映射) | ✅ done (`bb28ac8`) | DESIGN §8.2 |
+## 设计与实现差距（7 项已全部闭合 ✅）
 
 ---
 
@@ -104,6 +94,6 @@
 
 **H1b 架构要求** (DESIGN §8.2 已更新):
 - 新增 `[[special_effects]]` world.toml 配置段 (8 字段: name/description/handler/target/duration/resistance)
-- 10 个内置 handler: hack/drain/overload/debilitate/disrupt/fortify/leech/fabricate/heal_self/scramble_commands/convert_to_structure
+- 11 个内置 handler: hack/drain/overload/debilitate/disrupt/fortify/leech/fabricate/heal_self/scramble_commands/convert_to_structure
 - `CustomActionSpecialEffect` enum → SpecialEffectRegistry (字符串→handler 映射，非硬编码)
 - 全部 8 个特殊攻击在默认 world.toml 中作为 `[[custom_actions]]` 条目预注册

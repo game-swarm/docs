@@ -22,6 +22,7 @@
 | `swarm_deploy` | 上传并部署 WASM 模块（需 Ed25519 签名） |
 | `swarm_validate_module` | 部署前预检 WASM 合法性 |
 | `swarm_rollback` | 回滚到之前的 WASM 版本 |
+| `swarm_list_modules` | 列出所有已部署的 WASM 模块及状态 |
 
 ### 调试
 
@@ -29,8 +30,10 @@
 |------|------|
 | `swarm_explain_last_tick` | 解释上 tick 执行结果（accepted/rejected commands） |
 | `swarm_inspect_entity` | 查看实体完整状态 |
+| `swarm_inspect_room` | 查看有视野的房间概况 |
 | `swarm_profile` | 查看策略性能指标 |
 | `swarm_dry_run_commands` | 干跑 Command JSON（不执行，仅校验） |
+| `swarm_get_replay` | 获取 tick 范围回放数据 |
 
 ### 学习
 
@@ -39,6 +42,7 @@
 | `swarm_get_docs` | 获取 API 文档和游戏规则 |
 | `swarm_get_schema` | 获取 Command JSON Schema |
 | `swarm_get_available_actions` | 获取当前可用的 CommandAction 列表 |
+| `swarm_simulate` | 离线模拟：给定世界快照，预测未来 N tick |
 
 ### 认证
 

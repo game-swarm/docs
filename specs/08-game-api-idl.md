@@ -43,7 +43,7 @@ enums:
   BodyPart:  [Move, Work, Carry, Attack, RangedAttack, Heal, Claim, Tough]
   DamageType: [Kinetic, Thermal, EMP, Sonic, Corrosive, Psionic]
   StructureType: [Spawn, Extension, Tower, Storage, Link, Extractor, Lab,
-                  Terminal, Nuker, Observer, PowerSpawn, Factory]
+                  Terminal, Nuker, Observer, PowerSpawn, Factory, Depot]
   RejectionReason:
     - ObjectNotFound
     - NotOwner
@@ -129,7 +129,7 @@ commands:
     refund: registry.body_cost(body) * 0.5
 
   # ═════════════════════════════════════
-  # 扩展指令（已实现）
+  # 扩展指令
   # ═════════════════════════════════════
 
   ClaimController:
@@ -262,15 +262,15 @@ refund_policy:
 ## 3. 代码生成规则
 
  目标 | 生成物 |
-------|--------|
- Rust | `src/generated/commands.rs` — Command enum + validate() |
- Rust | `src/generated/host_functions.rs` — host function stubs |
- TS SDK | `sdk-ts/src/generated/api.ts` — types + autocomplete |
- MCP | MCP tool schemas JSON |
- Replay | TickTrace schema — 已冻结；格式变更需递增 ABI 版本 |
- Docs | API reference markdown |
+|------|--------|
+| Rust | `src/generated/commands.rs` — Command enum + validate() |
+| Rust | `src/generated/host_functions.rs` — host function stubs |
+| TS SDK | `sdk-ts/src/generated/api.ts` — types + autocomplete |
+| MCP | MCP tool schemas JSON |
+| Replay | TickTrace schema |
+| Docs | API reference markdown |
 
-## 5. CI 检查
+## 4. CI 检查
 
 ```bash
 cargo run -- gen-api        # 从 IDL 生成代码
@@ -281,11 +281,11 @@ git diff --exit-code        # 生成代码与提交代码一致 → 不一致则
 
 ---
 
-## 4. 可配置命令
+## 5. 可配置命令
 
 **所有特殊攻击通过 world.toml 的 `[[custom_actions]]` + `[[special_effects]]` 可配置注册**，非硬编码。
 
-### 4.1 变体列表
+### 5.1 变体列表
 
  CommandAction | body part | special_effect | 说明 |
 --------------|-----------|---------------|------|
@@ -301,7 +301,7 @@ git diff --exit-code        # 生成代码与提交代码一致 → 不一致则
  `Leech` | custom | `leech` | 吸血 50%，Corrosive 15 dmg |
  `Fabricate` | custom | `fabricate` | 转化建筑，500 tick CD |
 
-### 4.2 注册规则
+### 5.2 注册规则
 
 - 以上变体在引擎启动时从 world.toml 动态注册，注册链路：
   ```
@@ -317,7 +317,7 @@ git diff --exit-code        # 生成代码与提交代码一致 → 不一致则
   IDL 代码生成器  →  扫描注册表 → 生成所有 target 语言的绑定
   ```
 - `[[body_part_types]]` 定义 body part → action 绑定（如 `Claim` part → `Hack` action）
-- `[[special_effects]]` 定义效果类型（8 个内置 handler：`hack`, `drain`, `overload`, `debilitate`, `disrupt`, `fortify`, `leech`, `fabricate`）
+- `[[special_effects]]` 定义效果类型（11 个内置 handler：`hack`, `drain`, `overload`, `debilitate`, `disrupt`, `fortify`, `leech`, `fabricate`, `heal_self`, `scramble_commands`, `convert_to_structure`）
 - 服主可在 world.toml 中新增 `[[custom_actions]]` 条目引用已有 `[[special_effects]]` ——无需改 Rust 代码
 - 需全新 handler 时通过 Rhai 模组注册
 - SDK 和 MCP schema 自动包含所有已注册 action

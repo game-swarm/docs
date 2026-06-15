@@ -235,21 +235,19 @@ Drone 1003 本 tick 未行动。原因:
 - 排行榜按 league 分区：Human/WASM、AI-assisted、AI tournament
 - 锦标赛分组、赛季
 
-## 7. MVP 达成清单
+## 7. MVP 功能清单
 
-| 功能 | 优先级 | 状态 |
-|------|--------|------|
-| 教程房间（人类） | P0 | ✅ |
-| MCP 教程资源（AI） | P0 | ✅ |
-| 3 个 starter bot（TS + Rust + MCP） | P0 | ✅ |
-| `swarm_get_available_actions` MCP 工具 | P0 | ✅ |
-| `swarm_dry_run_commands` MCP 工具 | P0 | ✅ |
-| `swarm_explain_last_tick` MCP 工具 | P0 | ✅ |
-| 每 tick 指令解释 | P0 | ✅ |
-| 本地模拟 (`swarm sim`) | P1 | ✅ |
-| 回放查看器（自身） | P1 | ✅ |
-| 回放查看器（公开） | P1 | ✅ |
-| 策略指标仪表盘 | P1 | ✅ |
-| Arena 模式（比赛制） | P2 | ✅ |
-| 锦标赛系统 | P2 | ✅ |
-| 观战解说 | P2 | ✅ |
+- 教程房间（人类）
+- MCP 教程资源（AI）
+- 3 个 starter bot（TS + Rust + MCP）
+- `swarm_get_available_actions` MCP 工具
+- `swarm_dry_run_commands` MCP 工具
+- `swarm_explain_last_tick` MCP 工具
+- 每 tick 指令解释
+- 本地模拟 (`swarm sim`)
+- 回放查看器（自身）
+- 回放查看器（公开）
+- 策略指标仪表盘
+- Arena 模式（比赛制）
+- 锦标赛系统
+- 观战解说
