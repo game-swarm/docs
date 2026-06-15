@@ -19,7 +19,7 @@
 | 审计缺口 (B6-B11) | engine+gateway+sandbox | 10 | 0 | 0 | 100% |
 | **总计** | | **93** | **0** | **0** | **100%** |
 
-待实现: H1b (6 special attacks configurable via [[special_effects]])
+待实现: 无（全部完成）
 
 ---
 
@@ -90,7 +90,7 @@
 | G4 | 无属性级抗性 | Rhai 模组动态属性 | ✅ done (`0e2454e`) | DESIGN §8.2 |
 | G5 | StructureType 不可配置 | `[[structure_types]]` | ✅ done (`1381e7a`) | DESIGN §8.2 |
 | G6 | CommandAction 不可扩展 | `[[custom_actions]]` | ✅ done (`1381e7a`) | DESIGN §8.2 |
-| G7 | special_effect 硬编码 enum | `SpecialEffectRegistry` (字符串→handler 映射) | 🔄 H1b 实现中 | DESIGN §8.2 |
+| G7 | special_effect 硬编码 enum | `SpecialEffectRegistry` (字符串→handler 映射) | ✅ done (`bb28ac8`) | DESIGN §8.2 |
 
 ---
 
@@ -100,7 +100,7 @@
 |------|------|------|
 | H1a | Disrupt + Fortify 特殊攻击实现 | ✅ done (`3559d8e`) |
 | H2 | Recycle 命令 (回收 drone 退还 50% 资源) | ✅ done (`83e613b`) |
-| H1b | Hack/Drain/Overload/Debilitate/Leech/Fabricate (通过 [[special_effects]] + [[custom_actions]] 可配置注册) | 🔄 kanban running (`t_1515f1f5`) |
+| H1b | Hack/Drain/Overload/Debilitate/Leech/Fabricate (通过 [[special_effects]] + [[custom_actions]] 可配置注册) | ✅ done (`bb28ac8`) |
 
 **H1b 架构要求** (DESIGN §8.2 已更新):
 - 新增 `[[special_effects]]` world.toml 配置段 (8 字段: name/description/handler/target/duration/resistance)
