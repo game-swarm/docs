@@ -1,6 +1,6 @@
 # Swarm — 设计文档
 
-可编程 MMO RTS 游戏引擎的设计文档仓库。**当前进度：Phase 3 完成，Phase 4 进行中**（2026-06-14）。
+可编程 MMO RTS 游戏引擎的设计文档仓库。**全部 7 阶段已完成**（2026-06-14）。
 
 ## 目录结构
 
@@ -47,12 +47,12 @@ docs/
 
 | 仓库 | 说明 | 状态 |
 |------|------|------|
-| [swarm/engine](https://git.kagurazakalan.com/swarm/engine) | Rust 游戏引擎 | ✅ 82 tests |
+| [swarm/engine](https://git.kagurazakalan.com/swarm/engine) | Rust 游戏引擎 | ✅ 115 tests |
 | [swarm/sandbox](https://git.kagurazakalan.com/swarm/sandbox) | WASM 沙箱运行时 | ✅ 9 tests |
 | [swarm/sdk-ts](https://git.kagurazakalan.com/swarm/sdk-ts) | TypeScript SDK | ✅ 11 tests |
 | [swarm/sdk-rust](https://git.kagurazakalan.com/swarm/sdk-rust) | Rust SDK | — |
 | [swarm/gateway](https://git.kagurazakalan.com/swarm/gateway) | Go API 网关 | — |
-| [swarm/frontend](https://git.kagurazakalan.com/swarm/frontend) | Web 客户端 | — |
+| [swarm/frontend](https://git.kagurazakalan.com/swarm/frontend) | Web 客户端 | ✅ 3 tests |
 
 ## 评审流程
 
