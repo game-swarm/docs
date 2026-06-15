@@ -13,9 +13,9 @@
 | sdk-rust | `sdk-rust/` | 1 | 0 | 3 | 25% |
 | gateway | `gateway/` | 0 | 0 | 4 | 0% |
 | frontend | `frontend/` | 4 | 4 | 0 | 50% |
-| infra | (根目录) | 2 | 1 | 1 | 50% |
+| infra | (根目录) | 3 | 0 | 1 | 75% |
 | docs | `docs/` | 6 | 0 | 0 | 100% |
-| **总计** | | **55** | **11** | **12** | **71%** |
+| **总计** | | **56** | **10** | **12** | **72%** |
 
 ---
 
@@ -158,7 +158,7 @@
 
 - [x] [P1] Docker Compose 开发环境 (fdb + nats + engine) — `docker-compose.yml`
 - [x] [P7] CI/CD Pipeline (lint → unit → integration → replay → sdk → load → deploy) — `.github/workflows/ci.yml`
-- [ ] [P7] 负载测试文件 ⚠️ — CI 已配置, `tests/load.rs` 缺失
+- [x] [P7] 负载测试文件 ✅ (2026-06-15) — `tests/load.rs`
 - [ ] [P7] Wasmtime CVE SLA 文档 (响应 < 7 天, 迁移脚本) ❌
 
 ---
