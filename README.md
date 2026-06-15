@@ -1,12 +1,12 @@
 # Swarm — 设计文档
 
-可编程 MMO RTS 游戏引擎的设计文档仓库。**全部 7 阶段已完成**（2026-06-14）。
+可编程 MMO RTS 游戏引擎的设计文档仓库。**模块化追踪中**（2026-06-15 审计）— 78/80 项完成 (97.5%)。
 
 ## 目录结构
 
 ```
 docs/
-├── ROADMAP.md                   # 实施计划 + 代码对齐审计 (7 阶段交付物 + 验收标准)
+├── ROADMAP.md                   # 模块化实施追踪 + 代码对齐审计
 ├── design/
 │   ├── DESIGN.md                # 架构全景 + 游戏设计 (1,486 行)
 │   └── tech-choices.md          # 技术选型（11 组件备选分析 + 决策理由）
@@ -47,12 +47,12 @@ docs/
 
 | 仓库 | 说明 | 状态 |
 |------|------|------|
-| [swarm/engine](https://git.kagurazakalan.com/swarm/engine) | Rust 游戏引擎 | ✅ 115 tests |
+| [swarm/engine](https://git.kagurazakalan.com/swarm/engine) | Rust 游戏引擎 | ✅ 137 tests |
 | [swarm/sandbox](https://git.kagurazakalan.com/swarm/sandbox) | WASM 沙箱运行时 | ✅ 9 tests |
 | [swarm/sdk-ts](https://git.kagurazakalan.com/swarm/sdk-ts) | TypeScript SDK | ✅ 11 tests |
-| [swarm/sdk-rust](https://git.kagurazakalan.com/swarm/sdk-rust) | Rust SDK | — |
-| [swarm/gateway](https://git.kagurazakalan.com/swarm/gateway) | Go API 网关 | — |
-| [swarm/frontend](https://git.kagurazakalan.com/swarm/frontend) | Web 客户端 | ✅ 3 tests |
+| [swarm/sdk-rust](https://git.kagurazakalan.com/swarm/sdk-rust) | Rust SDK | ✅ 8 tests |
+| [swarm/gateway](https://git.kagurazakalan.com/swarm/gateway) | Go API 网关 | ✅ 7 tests |
+| [swarm/frontend](https://git.kagurazakalan.com/swarm/frontend) | Web 客户端 | ✅ 7 tests |
 
 ## 评审流程
 
