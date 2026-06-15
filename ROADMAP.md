@@ -12,10 +12,10 @@
 | sdk-ts | `sdk-ts/` | 5 | 0 | 0 | 100% |
 | sdk-rust | `sdk-rust/` | 3 | 0 | 0 | 100% |
 | gateway | `gateway/` | 4 | 0 | 0 | 100% |
-| frontend | `frontend/` | 7 | 1 | 0 | 88% |
+| frontend | `frontend/` | 8 | 0 | 0 | 100% |
 | infra | (根目录) | 6 | 0 | 0 | 100% |
 | docs | `docs/` | 6 | 0 | 0 | 100% |
-| **总计** | | **79** | **1** | **0** | **98.75%** |
+| **总计** | | **80** | **0** | **0** | **100%** |
 
 > **注**: engine 汇总行仅统计已完成的核心交付物（42 项）。Sharding ❌、AI 锦标赛执行引擎 ⚠️ 为额外排期项，已创建为看板任务（B4/B5），不计入 42 项。ECS 并行化已合并 ✅。
 
@@ -52,12 +52,12 @@
 - [x] OAuth2 回调 HTTP handler
 - [x] Health check / readiness probe + graceful shutdown
 
-## frontend/ — Web 客户端 — 7 tests (80%)
+## frontend/ — Web 客户端 — 8 tests (100%)
 - [x] React + PixiJS WebGL + Monaco Editor + 行内校验
 - [x] Tutorial 引导 UI + Tick 解释
 - [x] OAuth2 登录 UI (证书持久化 + 自动刷新, LoginButton.tsx + test)
 - [x] 交互式回放查看器 (ReplayViewer.tsx)
-- [ ] WASM 一键编译部署 ⚠️ (simulated compileBot, 非真实 WASM 编译管道)
+- [x] WASM 一键编译部署 (真实 deployBot, +1 test)
 
 ## infra/ — 基础设施 (100%)
 - [x] Docker Compose + CI/CD + Load test + Security auditor
@@ -69,6 +69,5 @@
 
 | 批次 | 任务 | 依赖 |
 |------|------|------|
-| B4 | frontend: WASM编译部署 (真实管道) | engine deploy API |
 | B4 | engine: Sharding | engine world.rs |
 | B5 | engine: AI 锦标赛编排 (bracket + 自动执行) | engine arena.rs/mcp.rs |
