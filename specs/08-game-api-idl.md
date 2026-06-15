@@ -1,6 +1,6 @@
 # P0-8: Game API IDL Spec — 游戏 API 接口定义语言
 
-> **状态**: Phase 0 冻结 → v0.2 更新 | **日期**: 2026-06-15 | **版本**: 0.2
+> **状态**: 当前 | **日期**: 2026-06-15
 
 > **状态**: Phase 0 Architecture Freeze | **目标**: host functions / Command / Validator / SDK / MCP schema 单一真相来源
 
@@ -273,9 +273,9 @@ git diff --exit-code        # 生成代码与提交代码一致 → 不一致则
 
 ---
 
-## 4. v0.2 新增 CommandAction (2026-06-15)
+## 4. 新增
 
-锚定 DESIGN.md §5, §8.2。以下在 v0.1 IDL 冻结后新增。**所有特殊攻击通过 world.toml 的 `[[custom_actions]]` + `[[special_effects]]` 可配置注册**，非硬编码。
+锚定 DESIGN.md §5, §8.2。以下新增。**所有特殊攻击通过 world.toml 的 `[[custom_actions]]` + `[[special_effects]]` 可配置注册**，非硬编码。
 
 ### 4.1 新增变体
 

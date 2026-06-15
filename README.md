@@ -18,10 +18,7 @@ docs/
 ├── design/
 │   ├── DESIGN.md                # 架构全景 + 游戏设计
 │   └── tech-choices.md          # 技术选型
-├── specs/
-│   ├── latest → v0.2/           # 符号链接，始终指向最新版本
-│   ├── v0.1/                    # 冻结基线 — Phase 0 (9 份)
-│   └── v0.2/                    # 当前 — 对齐 DESIGN.md (9 份)
+├── specs/                       # 当前规范（git 管理历史版本）
 ├── security/CVE-SLA.md          # Wasmtime CVE 响应 SLA
 └── reviews/                     # 评审档案 (R1-R14)
 ```

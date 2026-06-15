@@ -322,7 +322,7 @@ AI：  MCP 看世界 → 生成 WASM → 部署 ───┘
 
 MCP 不做游戏动作。不存在 `swarm_move`、`swarm_attack`、`swarm_build` 等工具。AI agent 必须**编写 WASM 代码**来实现策略，和人类玩家完全一样。
 
-详见 `specs/latest/03-mcp-security-contract.md`。
+详见 `specs/03-mcp-security-contract.md`。
 
 ---
 
