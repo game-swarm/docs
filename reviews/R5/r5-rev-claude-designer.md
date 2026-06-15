@@ -1,1 +1,0 @@
-I have enough to write a focused game-design review. The R5 file is empty, prior rounds approved and froze Phase 0. I'll bring fresh designer eyes — concrete combat/economy numbers, Arena RNG fairness, and long-term meta convergence are the angles t
