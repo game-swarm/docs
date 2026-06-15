@@ -357,7 +357,7 @@ Rhai 脚本执行
 - Rhai 脚本**不能**访问其他玩家的私有数据
 - Buffer apply 阶段由引擎核心在 FDB 事务中执行，保证确定性
 
-## 7. World vs Arena 默认值
+## 8. World vs Arena 默认值
 
 | 规则 | World | Arena |
 |------|-------|-------|
@@ -369,7 +369,7 @@ Rhai 脚本执行
 | `combat.pvp_enabled` | true | true |
 | `visibility.fog_of_war` | true | false（全场可见） |
 
-## 8. 配置校验
+## 9. 配置校验
 
 ```rust
 fn validate_config(config: &WorldConfig) -> Result<(), Vec<String>> {
@@ -390,7 +390,7 @@ fn validate_config(config: &WorldConfig) -> Result<(), Vec<String>> {
 }
 ```
 
-## 9. 与核心引擎的边界
+## 10. 与核心引擎的边界
 
 核心引擎**不知道规则的存在**。规则 System 是外挂的：
 
@@ -416,7 +416,7 @@ fn validate_config(config: &WorldConfig) -> Result<(), Vec<String>> {
 
 ---
 
-## 6. 新增: 可配置类型系统 (2026-06-15)
+## 7. 可配置类型系统 (2026-06-15)
 
 锚定 DESIGN.md §8.2。类型系统从硬编码枚举改为 world.toml 驱动的注册表。
 
@@ -497,7 +497,7 @@ cost = { Energy = 10 }
 | `damage_type` | string | 条件 | 攻击类型的伤害类型，引用 `[[damage_types]]` 中的 name |
 | `base_damage` | u32 | 条件 | 每 part 的基础伤害值。`damage_type` 存在时必需 |
 | `base_heal` | u32 | 条件 | 每 part 的基础治疗量。action=Heal 时必需 |
-| `range` | u32 | ✅ | 生效距离（被动类型填 0） |
+| `range` | u32 | ✅ | 生效距离。注：CommandAction 的 `in_range()` 校验可覆盖此值（如 Heal body part range=1 但实际命令有效距离=3） |
 | `cost` | `{String: u32}` | ✅ | 生成该 body part 的资源消耗，key 为资源名 |
 
 **Body part → CommandAction 绑定**：

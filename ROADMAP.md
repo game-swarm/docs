@@ -24,7 +24,7 @@
 ---
 
 ## engine/ — 核心引擎 — 151 tests ✅
-- ECS + 16 CommandAction (+ 1 Custom for [[custom_actions]]) + Validation Pipeline + 12 Source Gate
+- ECS + 20 CommandAction（IDL 定义） + Custom（[[custom_actions]]） + Validation Pipeline + 12 Source Gate
 - 单/多玩家 Tick 调度器 + TickTrace 回放
 - MCP 24 工具 + OAuth2/Ed25519 证书 + rate limiter
 - WebSocket delta push + 统一可见性

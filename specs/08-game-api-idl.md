@@ -140,7 +140,26 @@ commands:
     refund: registry.body_cost(body) * 0.5
 
   # ═════════════════════════════════════
-  # 特殊攻击（Phase 6 实现，IDL 定义完整校验规则）
+  # 扩展指令（Phase 3-6 实现）
+  # ═════════════════════════════════════
+
+  ClaimController:
+    params: { object_id: ObjectId, controller_id: ObjectId }
+    validator: [exists, owner, drone, body_part(Claim), is_controller, in_range(1)]
+    cost: {}
+
+  CreateMarketOrder:
+    params: { object_id: ObjectId, resource: ResourceName, amount: ResourceAmount, price_resource: ResourceName, price_amount: ResourceAmount }
+    validator: [exists, owner, drone, market_enabled, valid_resource, valid_price]
+    cost: {}
+
+  BuyMarketOrder:
+    params: { object_id: ObjectId, order_id: u64 }
+    validator: [exists, owner, drone, market_enabled, order_exists, not_expired, has_resources]
+    cost: {}
+
+  # ═════════════════════════════════════
+  # 特殊攻击
   # ═════════════════════════════════════
 
   Hack:
@@ -262,7 +281,7 @@ refund_policy:
 | Replay | TickTrace schema — 冻结于 Phase 0；格式变更需递增 ABI 版本 |
 | Docs | API reference markdown |
 
-## 4. CI 检查
+## 5. CI 检查
 
 ```bash
 cargo run -- gen-api        # 从 IDL 生成代码

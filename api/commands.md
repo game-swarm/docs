@@ -10,7 +10,7 @@
 - `seq`: 玩家内序列号（递增）
 - 各 action 特定参数
 
-## 指令列表（23 种）
+## 指令列表（24 种）
 
 ### Move
 移动 drone 到目标坐标。
@@ -19,6 +19,14 @@
 ```
 - 校验：目标在 drone 1 格范围内
 - 消耗：1 MOVE body part → 消除 1 fatigue
+
+### MoveTo
+路径移动——自动寻路到目标坐标。
+```json
+{ "action": "MoveTo", "object_id": "d1", "x": 10, "y": 5, "seq": 2 }
+```
+- 校验：drone 有 MOVE body part，目标在同房间，路径≤100 格
+- 消耗：pathfinding 计入 fuel budget
 
 ### Harvest
 从 Source 采集资源。
@@ -67,10 +75,10 @@
 - 校验：drone 有 HEAL body part，target 为友方且在 1 格内
 - 治疗量：`HEAL parts × 12`
 
-### SpawnDrone
+### Spawn
 创建新 drone。
 ```json
-{ "action": "SpawnDrone", "object_id": "s1", "body": ["MOVE", "WORK", "CARRY"], "seq": 8 }
+{ "action": "Spawn", "object_id": "s1", "body": ["MOVE", "WORK", "CARRY"], "seq": 8 }
 ```
 - 校验：object 是 Spawn structure，有足够 energy，body 合法
 - 消耗：BODY_PART_COST 累加 → 从 Spawn energy 扣除

@@ -141,7 +141,9 @@ Swarm 支持两种玩家：
 swarm/
 ├── docs/           # 设计文档、P0 规范
 │   ├── design/     #   架构设计
-│   └── specs/      #   技术规范
+│   ├── specs/      #   技术规范
+│   ├── api/        #   API 参考
+│   └── security/   #   安全策略
 ├── engine/         # Rust 游戏引擎 — Bevy ECS, Tick 调度, 世界模拟
 ├── sandbox/        # WASM 沙箱运行时 — 编译服务, 模块管理, 安全审计
 ├── gateway/        # Go API 网关 — WebSocket, REST, gRPC, 认证
@@ -302,20 +304,30 @@ AI：  MCP 看世界 → 生成 WASM → 部署 ───┘
 
 ### 4.1 MCP 工具分类
 
+> 完整 24 工具列表见 `specs/03-mcp-security-contract.md` 和 `api/mcp-tools.md`。
+
 | 类别 | 工具 | 用途 |
 |------|------|------|
 | **世界查看** | `swarm_get_snapshot` | 获取可见世界状态 |
 | | `swarm_get_terrain` | 查看地形 |
 | | `swarm_get_objects_in_range` | 查看范围内的实体 |
+| | `swarm_get_world_rules` | 获取世界规则配置 |
 | **部署** | `swarm_deploy` | 上传 WASM 模块 |
 | | `swarm_validate_module` | 上传前预检 |
 | | `swarm_rollback` | 回滚到之前版本 |
 | **调试** | `swarm_explain_last_tick` | 解释上 tick 发生了什么 |
 | | `swarm_inspect_entity` | 检查实体完整状态 |
 | | `swarm_profile` | 策略性能指标 |
+| | `swarm_dry_run_commands` | 干跑 Command JSON |
 | **学习** | `swarm_get_docs` | API 参考和游戏规则 |
 | | `swarm_get_schema` | 游戏 API JSON Schema |
 | | `swarm_get_available_actions` | 当前可用的 API 函数 |
+| **认证** | `swarm_oauth2_login` | OAuth2 登录 |
+| | `swarm_oauth2_callback` | OAuth2 回调 |
+| | `swarm_token_refresh` | 刷新 token |
+| **锦标赛** | `swarm_tournament_precommit` | 锁定 WASM 模块 |
+| | `swarm_tournament_create` | 创建 bracket |
+| | `swarm_tournament_status` | 查询状态 |
 
 ### 4.2 明确不在 MCP 中
 
@@ -1330,9 +1342,9 @@ public_spectate = false          # World 模式默认不公开旁观
 spectate_delay = 0               # 回放无延迟
 
 [resources]
-source_regeneration = 1.0
-build_cost = 1.0
-drone_decay = 1.0
+source_regeneration_rate = 10000     # ×10000 精度，默认 1.0
+build_cost_multiplier = 10000
+drone_decay_rate = 10000
 
 # 物流配置
 global_storage_enabled = true
@@ -1379,9 +1391,9 @@ capacity = 2000
 regeneration = 10
 
 [combat]
-pvp = true
+pvp_enabled = true
 friendly_fire = false
-damage = 1.0
+damage_multiplier = 10000
 ```
 
 ### 8.4 ECS 集成方式
@@ -1891,7 +1903,7 @@ if (rules.get("empire-upkeep").config.onshortfall.value === "damage") {
 - [x] World Rules Engine capability model 收敛为 Rhai 模组 → P0-7
 - [x] Deferred Command Model 统一（tick() → JSON, 禁 imperative host functions）→ P0-4 §3
 - [x] Fuel Refund 安全模型（时序/上限/滥用检测）→ P0-2 §7
-- [x] 全局存储反制机制（累进税/隐匿性/运输时间）→ DESIGN §8.4
+- [x] 全局存储反制机制（累进税/隐匿性/运输时间）→ DESIGN §8.2
 - [x] P0-9 Source Gate 完整矩阵（12 sources × capability/budget/visibility）→ P0-9
 - [x] Tick 输出 JSON Schema 校验 → P0-2 §1.1
 

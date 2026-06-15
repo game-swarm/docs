@@ -18,7 +18,7 @@
 ```c
 i32 host_get_terrain(x: i32, y: i32) -> i32
 ```
-返回指定坐标的地形类型：0=Plain, 1=Swamp, 2=Wall。
+返回指定坐标的地形类型：0=Plain, 1=Wall, 2=Swamp, 3=Lava。
 
 ### host_get_objects_in_range
 ```c

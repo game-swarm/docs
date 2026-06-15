@@ -2,7 +2,7 @@
 
 > **状态**: 当前 | **日期**: 2026-06-14
 
-> **状态**: Frozen for Phase 0 | **实现阶段**: Phase 2
+> **状态**: 当前
 
 ## 1. 架构
 
@@ -212,6 +212,7 @@ fn host_path_find(from_x: i32, from_y: i32, to_x: i32, to_y: i32, out_ptr: i32, 
 
 // 世界配置查询
 fn host_get_world_config(key_ptr: i32, key_len: i32, out_ptr: i32, out_len: i32) -> i32;
+fn host_get_world_rules(out_ptr: i32, out_len: i32) -> i32;               // 查询世界规则（只读）
 ```
 
 全部返回 `i32`：0 = 成功，负数 = 错误码。

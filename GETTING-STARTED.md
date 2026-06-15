@@ -83,7 +83,7 @@ swarm_deploy(module_bytes, wasm_signature)
 
 ## 下一步
 
-- [Command API 参考](api/commands.md) — 全部 23 种指令
+- [Command API 参考](api/commands.md) — 全部 24 种指令
 - [Host Functions](api/host-functions.md) — WASM 可调用的只读函数
 - [MCP 工具](api/mcp-tools.md) — AI agent 操作界面
 - [架构设计](design/DESIGN.md) — 完整系统设计
