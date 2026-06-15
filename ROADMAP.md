@@ -7,15 +7,15 @@
 
 | 模块 | 目录 | ✅ | ⚠️ | ❌ | 进度 |
 |------|------|----|----|-----|------|
-| engine | `engine/` | 31 | 6 | 4 | 76% |
+| engine | `engine/` | 32 | 6 | 3 | 78% |
 | sandbox | `sandbox/` | 6 | 0 | 0 | 100% |
 | sdk-ts | `sdk-ts/` | 5 | 0 | 0 | 100% |
 | sdk-rust | `sdk-rust/` | 1 | 0 | 3 | 25% |
-| gateway | `gateway/` | 0 | 0 | 4 | 0% |
+| gateway | `gateway/` | 4 | 0 | 0 | 100% |
 | frontend | `frontend/` | 4 | 4 | 0 | 50% |
 | infra | (根目录) | 3 | 0 | 1 | 75% |
 | docs | `docs/` | 6 | 0 | 0 | 100% |
-| **总计** | | **56** | **10** | **12** | **72%** |
+| **总计** | | **61** | **10** | **7** | **78%** |
 
 ---
 
@@ -65,7 +65,7 @@
 - [x] [P3] Pending transfers 在 snapshot 中暴露 — `global_storage_system.rs`
 
 ### 教程
-- [ ] [P4] WorldMode::Tutorial (独立 namespace, tick=1000ms, 资源加速) ❌
+- [x] [P4] WorldMode::Tutorial (独立 namespace, tick=1000ms, 资源加速) ✅ (2026-06-15) — `--mode tutorial`
 - [ ] [P4] 5 分钟引导成就流程 (6 成就: 首次采集/spawn/建造/瓶颈/回放/Arena) ⚠️ 成就定义存在
 - [ ] [P4] 新玩家进入 Tutorial 自动部署 starter bot ⚠️ bot 代码存在
 
@@ -132,10 +132,10 @@
 
 > 仓库已创建，零代码。
 
-- [ ] [P2] WebSocket 连接管理 (goroutine per connection) ❌
-- [ ] [P2] NATS → 客户端消息中继 (delta broadcast) ❌
-- [ ] [P5] OAuth2 回调 HTTP handler ❌
-- [ ] [P7] Health check / readiness probe ❌
+- [x] [P2] WebSocket 连接管理 (goroutine per connection) ✅ (2026-06-15) — 连接池 + upgrade
+- [x] [P2] NATS → 客户端消息中继 (delta broadcast) ✅ (2026-06-15)
+- [x] [P5] OAuth2 回调 HTTP handler ✅ (2026-06-15)
+- [x] [P7] Health check / readiness probe ✅ (2026-06-15)
 
 ---
 
