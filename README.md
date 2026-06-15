@@ -9,7 +9,12 @@
 ```
 docs/
 ├── ROADMAP.md                   # 模块化实施追踪
+├── GETTING-STARTED.md           # 5 分钟入门指南
 ├── RUNBOOK.md                   # 运维手册
+├── api/                         # API 参考
+│   ├── commands.md              #   12 种 CommandAction
+│   ├── host-functions.md        #   WASM host functions
+│   └── mcp-tools.md             #   MCP 工具完整列表
 ├── design/
 │   ├── DESIGN.md                # 架构全景 + 游戏设计
 │   └── tech-choices.md          # 技术选型
@@ -28,6 +33,12 @@ docs/
 | [swarm/sdk-rust](https://git.kagurazakalan.com/swarm/sdk-rust) | Rust SDK |
 | [swarm/gateway](https://git.kagurazakalan.com/swarm/gateway) | Go API 网关 |
 | [swarm/frontend](https://git.kagurazakalan.com/swarm/frontend) | Web 客户端 |
+
+## 评审流程
+
+9 位评审者（3 模型 × 3 方向）× 14 轮迭代。Phase 0 经 R14 终审冻结。
+
+详见 [reviews/README.md](reviews/README.md)。
 
 ## 许可证
 

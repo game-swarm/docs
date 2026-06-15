@@ -1,0 +1,156 @@
+# Command API 参考
+
+> Phase 0 冻结。WASM 模块通过 `tick(snapshot) → Command[]` JSON 返回指令。
+
+## 通用字段
+
+每条 Command 包含：
+- `action`: 指令类型
+- `object_id`: 执行的 drone ID
+- `seq`: 玩家内序列号（递增）
+- 各 action 特定参数
+
+## 指令列表（12 种）
+
+### Move
+移动 drone 到目标坐标。
+```json
+{ "action": "Move", "object_id": "d1", "target": {"x": 10, "y": 5}, "seq": 1 }
+```
+- 校验：目标在 drone 1 格范围内
+- 消耗：1 MOVE body part → 消除 1 fatigue
+
+### Harvest
+从 Source 采集资源。
+```json
+{ "action": "Harvest", "object_id": "d1", "target_id": "s1", "seq": 2 }
+```
+- 校验：drone 有 WORK body part，target 是 Source，相邻
+- 产出：每 WORK part 采集 2 单位资源，Source.ticks_to_regeneration 重置
+
+### Transfer
+向目标转移资源。
+```json
+{ "action": "Transfer", "object_id": "d1", "target_id": "s2", "resource": "Energy", "amount": 100, "seq": 3 }
+```
+- 校验：drone 有 CARRY part 且有足够资源，target 有容量
+- 支持目标：Structure、Controller（升级）、其他 drone
+
+### Withdraw
+从目标提取资源。
+```json
+{ "action": "Withdraw", "object_id": "d1", "target_id": "s1", "resource": "Energy", "amount": 50, "seq": 4 }
+```
+- 校验：drone 有 CARRY part，target 有足够资源
+
+### Attack
+近战攻击。
+```json
+{ "action": "Attack", "object_id": "d1", "target_id": "e5", "seq": 5 }
+```
+- 校验：drone 有 ATTACK body part，target 为敌方且在 1 格内
+- 伤害：`ATTACK parts × 30` （受 damage_multiplier 影响）
+
+### RangedAttack
+远程攻击。
+```json
+{ "action": "RangedAttack", "object_id": "d1", "target_id": "e5", "range": 3, "seq": 6 }
+```
+- 校验：drone 有 RANGED_ATTACK body part，target 在射程内
+- 伤害：`RANGED_ATTACK parts × 25`
+
+### Heal
+治疗友方。
+```json
+{ "action": "Heal", "object_id": "d1", "target_id": "f2", "seq": 7 }
+```
+- 校验：drone 有 HEAL body part，target 为友方且在 1 格内
+- 治疗量：`HEAL parts × 12`
+
+### SpawnDrone
+创建新 drone。
+```json
+{ "action": "SpawnDrone", "object_id": "s1", "body": ["MOVE", "WORK", "CARRY"], "seq": 8 }
+```
+- 校验：object 是 Spawn structure，有足够 energy，body 合法
+- 消耗：BODY_PART_COST 累加 → 从 Spawn energy 扣除
+- 延迟：spawn 需求 tick 数 = body 长度
+
+### Build
+建造建筑。
+```json
+{ "action": "Build", "object_id": "d1", "target": {"x": 5, "y": 3}, "structure_type": "Extension", "seq": 9 }
+```
+- 校验：drone 有 WORK part，位置合法，满足 RCL 解锁条件
+- 消耗：BUILD_COST_MULTIPLIER × 基础造价
+
+### TransferToGlobal
+存入全局存储。
+```json
+{ "action": "TransferToGlobal", "object_id": "d1", "resource": "Energy", "amount": 500, "seq": 10 }
+```
+- 校验：全局存储 enabled，未达容量上限
+- 延迟：10 tick 到账，1% 手续费
+- 可被运输拦截
+
+### TransferFromGlobal
+从全局存储提取。
+```json
+{ "action": "TransferFromGlobal", "object_id": "d1", "resource": "Energy", "amount": 200, "seq": 11 }
+```
+- 校验：全局存储有足够余额
+- 延迟：5 tick 到账，5% 手续费
+
+### CreateMarketOrder
+创建市场订单。
+```json
+{ "action": "CreateMarketOrder", "object_id": "d1", "resource": "Energy", "amount": 1000, "price_resource": "Matter", "price_amount": 500, "seq": 12 }
+```
+- 校验：market_requires_terminal 为 true 时需 Terminal 建筑
+
+### BuyMarketOrder
+购买市场订单。
+```json
+{ "action": "BuyMarketOrder", "object_id": "d1", "order_id": 42, "seq": 13 }
+```
+- 校验：订单存在且未过期，购买者有足够资源
+
+## 拒绝原因（24 种）
+
+| 拒绝原因 | 说明 |
+|----------|------|
+| `InvalidJson` | JSON 格式错误 |
+| `SchemaMismatch` | 缺少必需字段 |
+| `UnknownAction` | action 不在允许列表中 |
+| `SourceNotAllowed` | 命令来源无权执行该操作 |
+| `NoSuchEntity` | object 或 target 不存在 |
+| `NotOwner` | 不是实体的拥有者 |
+| `EntityDead` | 实体已死亡 |
+| `CooldownActive` | 实体在冷却中 |
+| `InsufficientResources` | 资源不足 |
+| `InvalidTarget` | 目标类型不匹配 |
+| `OutOfRange` | 目标超出范围 |
+| `PathBlocked` | 移动路径被阻挡 |
+| `CapacityExceeded` | 超出容量限制 |
+| `RclRequirement` | RCL 等级不足 |
+| `BodyPartMissing` | 缺少必需身体部件 |
+| `NoSpawnAvailable` | 无可用的 Spawn |
+| `InvalidBodyPlan` | 身体规划非法 |
+| `SpawnCooldown` | Spawn 在冷却中 |
+| `GlobalStorageDisabled` | 全局存储未启用 |
+| `GlobalStorageFull` | 全局存储已满 |
+| `MarketOrderNotFound` | 订单不存在 |
+| `MarketOrderExpired` | 订单已过期 |
+| `RateLimited` | 超出频率限制 |
+| `InvalidSchema` | Schema 不匹配 |
+
+## 校验流程
+
+```
+tick() 返回 JSON
+  → parse_tick_output (大小/深度/Schema 校验)
+    → source_gate (权限矩阵检查)
+      → validate_command (认证 + 逐条 valid)
+        → apply_command (通过 → 写入 ECS)
+        → refund_for_rejection (拒绝 → 退燃料)
+```

@@ -1,5 +1,7 @@
 # P0-9: Command Source Model — 指令来源模型
 
+> **状态**: Phase 0 冻结 | **日期**: 2026-06-14 | **版本**: 1.0
+
 > **状态**: Phase 0 Architecture Freeze | **目标**: 所有指令来源显式建模，不可伪造 auth context
 
 ## 1. 原则

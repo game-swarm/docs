@@ -1,5 +1,7 @@
 # P0-8: Game API IDL Spec — 游戏 API 接口定义语言
 
+> **状态**: Phase 0 冻结 | **日期**: 2026-06-14 | **版本**: 1.0
+
 > **状态**: Phase 0 Architecture Freeze | **目标**: host functions / Command / Validator / SDK / MCP schema 单一真相来源
 
 ## 1. 原则
