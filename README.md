@@ -1,6 +1,6 @@
 # Swarm — 设计文档
 
-可编程 MMO RTS 游戏引擎的设计文档仓库。**全部完成**（2026-06-15）— 83/83 项 (100%)。
+可编程 MMO RTS 游戏引擎的设计文档仓库。**模块化追踪中**（2026-06-15 审计）— B6-B11 缺口补齐进行中。
 
 ## 代码仓库
 
@@ -17,14 +17,20 @@
 
 ```
 docs/
-├── ROADMAP.md                   # 模块化实施追踪 (83/83 ✅)
+├── ROADMAP.md                   # 模块化实施追踪
+├── RUNBOOK.md                   # 运维手册（密钥轮换/备份恢复）
 ├── design/
 │   ├── DESIGN.md                # 架构全景 + 游戏设计
 │   └── tech-choices.md          # 技术选型（11 组件备选分析）
 ├── specs/p0/                    # P0 冻结规范 (9 份)
-├── security/CVE-SLA.md          # Wasmtime CVE 响应 SLA
+├── security/
+│   └── CVE-SLA.md               # Wasmtime CVE 响应 SLA
 └── reviews/                     # 评审档案 (R1-R14)
 ```
+
+## 评审流程
+
+9 位评审者（3 模型 × 3 方向）× 14 轮迭代 → Speaker 合成共识。Phase 0 经 R14 终审确认冻结。
 
 详见 [reviews/README.md](reviews/README.md)。
 

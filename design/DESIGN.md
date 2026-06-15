@@ -4,6 +4,20 @@
 >
 > — *「你的代码就是你的军队。Write once, fight forever.」*
 
+## 目录
+
+1. [愿景](#1-愿景)
+2. [系统架构](#2-系统架构)
+3. [Engine（Rust）](#3-enginerust)
+4. [MCP 接口](#4-mcp-接口ai-玩家的操作界面)
+5. [游戏 API](#5-游戏-apideferred-command-model)
+6. [数据模型](#6-数据模型)
+7. [部署架构](#7-部署架构)
+8. [World Rules Engine](#8-world-rules-engine--可配置的游戏规则)
+9. [路线图](#9-路线图)
+10. [World vs Arena 模式](#10-world-模式-vs-arena-模式)
+11. [贡献指南](#11-贡献指南)
+
 ---
 
 ## 1. 愿景
@@ -405,8 +419,6 @@ services:
 ```
 
 ### 7.2 生产环境
-
-> **Sharding 延期声明**: Phase 1-6 采用单进程部署（一个 Engine 实例处理所有房间）。DESIGN §3.2 的全局原子 tick 提交在单进程下自洽。Phase 7 引入多房间 sharding 时将重新设计提交粒度与跨 shard 可见性同步机制。当前文档中 `每 shard 一个实例` 的声明为 Phase 7 预留方向，非当前实现合同。
 
 ```
 ┌──────────────────────────────────────────────┐
@@ -1451,7 +1463,7 @@ git clone git@git.kagurazakalan.com:swarm/engine.git
 cd engine && docker-compose up
 ```
 
-### 10.2 代码规范
+### 11.2 代码规范
 
 - Rust: `cargo fmt` + `cargo clippy`（严格）
 - Go: `gofmt` + `golangci-lint`

@@ -60,3 +60,16 @@
 ## infra/ — 基础设施 (100%)
 - [x] Docker Compose + CI/CD + Load test + Security auditor
 - [x] Wasmtime CVE SLA
+
+---
+
+## B6-B11: 审计缺口补齐 (2026-06-15 审计发现)
+
+| 任务 | 缺口 | 仓库 | 状态 |
+|------|------|------|------|
+| B6 | MCP 工具补齐 (6 tools + explain_last_tick) | engine/mcp.rs | 🔄 running |
+| B7 | 战斗系统 (RangedAttack/Claim/Controller/RCL) | engine/command+systems | 🔄 running |
+| B8 | World Rules 可配置化 (15项规则 + world.toml) | engine/world+resources | 🔄 running |
+| B9 | 可见性高级特性 (fog_of_war/player_view/spectate) | engine/visibility.rs | 🔄 running |
+| B10 | Gateway OAuth2 真实 provider 集成 | gateway/ | ✅ done (`dfa3f80`) |
+| B11 | WASM 沙箱 OS 进程隔离 (seccomp/cgroup) | sandbox/ | ✅ done (`05d8c5f`) |
