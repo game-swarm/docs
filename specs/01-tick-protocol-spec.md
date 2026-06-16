@@ -354,7 +354,7 @@ txn.commit()  // 全提交 或 全回滚
 
 | Component 类别 | 示例 |
 |---------------|------|
-| `Transform` (位置) | `RoomPosition`, `HexCoord` |
+| `Transform` (位置) | `RoomPosition`, `GridCoord` |
 | `Owner` (所有权) | `PlayerId` |
 | `Body` (身体部件) | `BodyPart` 及各个 part 组件 (`MovePart`, `WorkPart`, `CarryPart`, `AttackPart`, `RangedAttackPart`, `HealPart`, `ClaimPart`, `ToughPart`) |
 | `Resource` (资源) | `Carry`, `Energy`, `ResourceStore` |

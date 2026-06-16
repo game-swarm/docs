@@ -287,5 +287,5 @@ fn test_vision_range_boundary() { ... }
 fog_of_war = true
 player_view = "drone"
 public_spectate = false
-spectate_delay = 0
+spectate_delay = 50
 ```

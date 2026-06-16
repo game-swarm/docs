@@ -2,6 +2,7 @@
 
 > 审计日期: 2026-06-16。全量 DESIGN + 9 specs vs 代码审计。
 > 测试总数: engine:166, sandbox:14, sdk-rust:8, sdk-ts:11, gateway:9, frontend:13
+> **R2 评审**: 2026-06-16。9 评审员 + Speaker 裁决。6 共识 Blocker + 5 用户裁决。Convergence patch 已应用 (B1-B6 全部闭合)。
 
 ## 总览
 
@@ -11,7 +12,30 @@
 | sandbox | `sandbox/` | ✅ 完成 |
 | gateway | `gateway/` | ✅ 完成 |
 | frontend | `frontend/` | ✅ 完成 |
+| docs | `docs/` | ✅ R2 Convergence Patch 已应用 |
 | **总计** | | **✅ 全部完成** |
+
+---
+
+## 📋 R2 Convergence Patch (2026-06-16)
+
+基于 9 评审员 + Speaker 裁决的 B1-B6 修正：
+
+| Blocker | 内容 | 涉及文件 |
+|---------|------|---------|
+| B1 | Overload: 可见性约束、全局冷却、静默结果、短期压制恢复 | specs/02, specs/08 |
+| B2 | Spec Convergence: Direction 正方形、命令上限 500、spectate_delay≥50、IDL/Manifest 拆层 | specs/02, specs/08, specs/05 |
+| B3 | Tick semantics: Phase 2a TOCTOU 合同、并行 RW 矩阵 | specs/01 |
+| B4 | 部署签名: 客户端 Ed25519 + nonce/CRL/epoch | specs/09 |
+| B5 | 输出面: Browser/Agent transport 拆分、DNS rebinding | specs/03 |
+| B6 | 资源边界: snapshot 256KB、simulate caps、audit 截断 | specs/01, specs/04 |
+| B7 | 用户裁决: Vanilla 分层(特殊攻击默认禁用)、Arena 房间制 | DESIGN.md |
+
+### Arena 设计
+
+- **模型**: 房间制（非匹配/天梯）。对抗主体是算法而非玩家。
+- **特性**: 同一玩家可占多槽位部署不同算法自我对抗；可见性 public/unlisted/private；map_seed 可复现；赛后回放。
+- **配置**: world.toml `[arena]` 段。
 
 ---
 
@@ -65,7 +89,10 @@ spec 要求但代码未实现:
 - `InvalidDamageType` — Debilitate 的 damage_type 不在 DamageType 枚举中
 - `AlreadyDebilitated(damage_type)` — 目标已有同类型 Debilitate
 - `PlayerNotFound` — Overload 的 target_id 不是有效玩家
-- `TargetFuelTooLow` — Overload 目标 fuel 低于下限
+- `TargetNotVisible` — Overload 目标不可见
+- `TargetOverloadCooldown` — 目标在全局冷却中
+
+> **R2 更新**: `TargetFuelTooLow` 已从 IDL 中删除（Overload 静默 no-op 取代拒绝码）。新增 `TargetNotVisible` + `TargetOverloadCooldown`。
 
 - [x] 在 `RejectionReason` enum 新增 5 个变体
 - [x] 在对应的特殊攻击校验路径中返回这些 RejectionReason
