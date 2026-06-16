@@ -30,7 +30,6 @@
 |------|------|
 | `swarm_explain_last_tick` | 解释上 tick 执行结果（accepted/rejected commands） |
 | `swarm_inspect_entity` | 查看实体完整状态 |
-| `swarm_inspect_room` | 查看有视野的房间概况 |
 | `swarm_profile` | 查看策略性能指标 |
 | `swarm_dry_run_commands` | 干跑 Command JSON（不执行，仅校验） |
 | `swarm_get_replay` | 获取 tick 范围回放数据 |

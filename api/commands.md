@@ -205,7 +205,7 @@ WASM 模块通过 `tick(snapshot) → CommandIntent[]` JSON 返回指令。
 - 校验：drone 有对应 body part，敌方 drone，1 格内
 - 冷却：500 tick | 消耗：2000 Energy + 500 Matter | special_effect: `fabricate`
 
-## 拒绝原因（31 种）
+## 拒绝原因（36 种）
 
 > IDL 定义见 `specs/08-game-api-idl` §RejectionReason。
 
@@ -242,11 +242,16 @@ WASM 模块通过 `tick(snapshot) → CommandIntent[]` JSON 返回指令。
 | `ExceedsRoomCapacity` | 超出房间能量/槽位上限 |
 | `RoomDroneCapReached` | 房间 drone 数量已达上限 |
 | `NotFriendly` | 目标不是友方（不允许治疗/buff） |
+| `AlreadyHacked` | 目标已被其他玩家 Hack 中 |
+| `InvalidDamageType` | damage_type 不在注册的 DamageType 枚举中 |
+| `AlreadyDebilitated` | 目标已有同类型 Debilitate 效果（含 damage_type） |
+| `PlayerNotFound` | Overload 的 target_id 不是有效玩家 |
+| `TargetFuelTooLow` | Overload 目标 fuel budget 低于下限 |
 
 > **管线级拒绝**（在 Command 校验之前触发，不计入 IDL 的 RejectionReason enum）：
-> `InvalidJson`、`SchemaMismatch`、`UnknownAction`、`SourceNotAllowed`。
+> `InvalidJson`、`SchemaViolation`、`UnknownAction`、`SourceNotAllowed`。
 
-> **子系统拒绝**（由各自模块独立校验，非 Command 校验管线）：`GlobalStorageDisabled`、`GlobalStorageFull`、`MarketOrderNotFound`、`MarketOrderExpired`、`RateLimited`（MCP 层）。
+> **子系统拒绝**（由各自模块独立校验，非 Command 校验管线）：`GlobalStorageDisabled`、`TransferInProgress`、`OrderNotFound`、`TerminalRequired`。MCP 层另有 `RateLimited`。
 
 ## 校验流程
 
