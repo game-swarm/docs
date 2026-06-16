@@ -165,11 +165,11 @@ RawCommand (携带 auth context)
 | Source | World | Arena |
 |--------|-------|-------|
 | WASM | ✅ | ✅（赛前锁定版本） |
-| MCP_Deploy | ✅ 随时 | ❌ 赛后不可 |
+| MCP_Deploy | ✅ 随时 | ✅ 随时 |
 | MCP_Query | ✅ | ✅ |
-| Deploy | ✅ 随时 | ❌ 赛后不可 |
+| Deploy | ✅ 随时 | ✅ 随时 |
 | RuleMod | ✅（服主配置） | 赛前锁定 |
-| Simulate | ✅（最多 5/tick） | ✅（最多 3/tick） |
+| Simulate | ✅（最多 5/tick） | ✅（最多 10/tick — Arena 对模拟需求更高） |
 | DryRun | ✅ | ✅ |
 | Tutorial | ✅ 独立世界 | ❌ |
 | Admin | ✅ | ✅（裁判权限） |

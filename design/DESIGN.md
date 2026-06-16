@@ -2244,20 +2244,89 @@ if (rules.get("empire-upkeep").config.onshortfall.value === "damage") {
 
 ## 9. World 模式 vs Arena 模式
 
-| **Arena（比赛）** ⚠️ Experimental |
+Swarm 提供两种**并行核心玩法**——World 和 Arena 同等重要，面向不同玩家群体。引擎统一，规则可配置。
+
+| 维度 | World（持久世界） | Arena（竞技场） |
 |------|-----------------|-----------------------|
 | **本质** | 有机世界，类似 Minecraft 服务器 | 竞技比赛，类似围棋对局 |
-| **状态** | ✅ MVP 主入口 | ⚠️ Experimental — MVP 阶段非主入口。需 quick match + basic rating + replay product 后方可正式发布 |
+| **状态** | ✅ MVP 核心 | ✅ MVP 核心 |
 | **地图** | 随机生成，不同玩家不同起点 | 对称初始条件，双方公平 |
 | **加入时机** | 随时，先来后到不同 | 同时开始，代码在比赛前锁定 |
 | **公平性** | 不追求——天然不对称 | 核心追求——对称起点 + 相同规则 |
-| **运行方式** | 7×24 tick 循环 | 固定时长（例：5000 tick ≈ 4h） |
+| **运行方式** | 7x24 tick 循环 | 固定时长（例：5000 tick ~ 4h） |
 | **代码** | 随时更新（热重载） | 比赛开始时锁定 |
 | **排行榜** | 无意义——起点不同无法比较 | 有意义——赛季排名、锦标赛 |
-| **回放** | 自身可见，隐私分级控制 | 赛后自动公开（`replay_privacy = "public"`） |
-| **旁观** | `public_spectate` 控制，默认关闭 | 默认公开（`public_spectate=true`） |
+| **回放** | 自身可见，隐私分级控制 | 赛后自动公开（replay_privacy = public） |
+| **旁观** | public_spectate 控制，默认关闭 | 默认公开（public_spectate=true） |
 | **玩家** | 人类和 AI agent 在同一世界共存 | 1v1 或团队对决 |
 | **关注点** | 持久性、创造力、涌现玩法 | 策略深度、公平性、观赏性 |
+
+### 9.1 Arena 匹配与排名系统
+
+Arena 模式提供完整的竞技闭环：匹配 -> 对战 -> 结算 -> 回放。
+
+#### 9.1.1 匹配队列
+
+玩家发起匹配 -> 按 rating 区间 + 等待时间匹配配对 -> 准备阶段（30s 确认）-> 代码锁定 -> 比赛开始。
+
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| match_type | 1v1 | 1v1 / 2v2 / FFA(4人) |
+| match_duration | 5000 tick | 比赛固定时长（约4h） |
+| rating_window | +/-200 Elo | 初始匹配窗口 |
+| window_expand_rate | +50/min | 每分钟扩大窗口 |
+| max_wait_time | 300s | 超时后跨任意区间匹配 |
+
+#### 9.1.2 排名系统 (Elo)
+
+初始 Elo: 1200，K-factor: 32。胜：Elo += K x (1 - expected)；负：Elo -= K x expected；平：Elo += K x (0.5 - expected)。
+
+赛季长度 1 个月，段位：Bronze/Silver/Gold/Platinum/Diamond。软重置：new_elo = 1200 + (old_elo - 1200) x 0.5。定级赛前 5 场 K=64。
+
+**联赛分层**：
+
+| 联赛 | 参与者 | 排名 |
+|------|--------|------|
+| Human | 人类编写 WASM | 计入主力排名 |
+| AI-Assisted | 人类 + AI 协作 | 独立榜单 |
+| AI Tournament | 纯 AI agent | 独立榜单 |
+
+联赛之间不混合匹配。
+
+#### 9.1.3 比赛流程
+
+Lobby（匹配配对）-> Lock（代码锁定，30s 确认）-> Play（比赛中，引擎运行专用 Arena 实例，对称地图）-> Result（计算 Elo，更新排名）-> Replay（赛后自动公开回放，含完整 TickTrace + 双方视角）。
+
+比赛终止条件（按优先级）：一方 drone=0 提前获胜 > 一方认输 > tick 到上限按剩余资产判定 > 平局。
+
+#### 9.1.4 Arena 配置
+
+```toml
+[arena]
+enabled = true
+match_type = "1v1"
+match_duration = 5000
+tick_interval_ms = 300
+initial_resources = { Energy = 10000, Crystal = 5000 }
+map_symmetry = "rotational"
+
+[arena.rating]
+initial_elo = 1200
+k_factor = 32
+placement_matches = 5
+placement_k_factor = 64
+season_duration_days = 30
+soft_reset_ratio = 0.5
+
+[arena.spectator]
+public_spectate = true
+spectate_delay = 100
+allow_chat = false
+```
+
+#### 9.1.5 回放与社区分享
+
+赛后生成 Full Replay（TickTrace JSONL）+ Highlights（关键时刻摘要）。回放播放器支持速度控制、双视角切换、tick 定位、指令展开、性能叠加。社区分享：每场生成 share card（头像/段位/Elo变化 + 关键统计 + 二维码），支持一键分享。
 
 ---
 
