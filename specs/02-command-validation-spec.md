@@ -345,9 +345,19 @@ Drone 在 Phase 2b spawn_system 中创建——位于 death_mark（释放 room c
 | `drone.fatigue == 0` | `Fatigued` |
 | 冷却未到（200 tick，每 drone） | `OnCooldown` |
 
-**效果**: 消耗目标计算配额（短期压制，可恢复）。目标 `fuel budget` 减少 500k（默认 MAX_FUEL=10M 的 5%）。**下限**: `MAX_FUEL × 0.2`——已触及下限时 Overload 静默 no-op，无任何可观测效果（攻击者无法从返回值/副作用推断目标 fuel 状态）。**可见性约束**: 必须 `is_visible_to(target, attacker)`，不可攻击不可见玩家。**全局冷却**: 同一 `(world_id, target_player_id)` 每 50 tick 最多被 Overload 一次（不限攻击者数量）。
+**效果**: 消耗目标计算配额（短期压制，可恢复）。目标 `fuel budget` 减少 500k（默认 MAX_FUEL=10M 的 5%）。**下限**: `MAX_FUEL × 0.2`。**可见性约束**: 必须 `is_visible_to(target, attacker)`，不可攻击不可见玩家。**全局冷却**: 同一 `(world_id, target_player_id)` 每 50 tick 最多被 Overload 一次（不限攻击者数量）。
 
-**恢复**: 每 tick 恢复 `fuel_budget / 1000`（≈ 10k/tick 对于 10M 上限）。Fortify 立即清除 Overload 效果并重置恢复计时，Purge 同理。恢复曲线可配置（world.toml `overload.fuel_recovery_rate`）。
+**三种结果等价合同**：从攻击者视角，以下三种情况不可区分——消耗相同的 300 Energy、触发相同的 200 tick drone 冷却、触发相同的 50 tick 全局冷却、返回相同的 `Ok`：
+
+| 情况 | apply 前状态 | apply 行为 | 返回值 |
+|------|-------------|-----------|--------|
+| 成功 | target.fuel > floor + 500k | 正常扣除 500k | `Ok` |
+| 地板 | floor < target.fuel ≤ floor + 500k | 扣除至 floor | `Ok` |
+| 已在地板 | target.fuel == floor | 静默 no-op | `Ok` |
+
+外部不可区分是否触及 fuel 地板。攻击者只能通过目标后续行为变化间接推测（这是设计意图——Overload 是战术压制，不是间谍工具）。
+
+**恢复**: 每 tick 恢复 `fuel_budget / 1000`（≈ 10k/tick 对于 10M 上限）。Fortify 立即清除 Overload 效果并重置恢复计时。恢复曲线可配置（world.toml `overload.fuel_recovery_rate`）。
 
 **冷却**: 200 tick（每 drone）。**资源消耗**: 300 Energy。**抗性**: 目标 `EMP` 抗性影响削减量。
 
@@ -402,18 +412,19 @@ Drone 在 Phase 2b spawn_system 中创建——位于 death_mark（释放 room c
 ```
 
  检查项 | 失败码 |
---------|--------|
- `object_id` 是玩家拥有的 Drone | `NotOwner` |
- `drone.body` 包含 `Tough` 部件 | `MissingBodyPart(Tough)` |
- `target_id` 存在（Drone 或 Structure） | `ObjectNotFound` |
- `target_id.owner == player_id` 或为盟友 | `NotFriendly` |
- `object_id` 在范围内 (range = 1) | `OutOfRange` |
- `drone.fatigue == 0` | `Fatigued` |
- 冷却未到（300 tick，每 drone） | `OnCooldown` |
+|--------|--------|
+| `object_id` 是玩家拥有的 Drone | `NotOwner` |
+| `drone.body` 包含 `Tough` 部件 | `MissingBodyPart(Tough)` |
+| `target_id` 存在（Drone 或 Structure） | `ObjectNotFound` |
+| `target_id.owner == player_id` 或为盟友 | `NotFriendly` |
+| `object_id` 在范围内 (range = 1) | `OutOfRange` |
+| `drone.fatigue == 0` | `Fatigued` |
+| 目标 per-target 冷却（同一 target_id 过去 300 tick 内被 Fortify） | `TargetFortifyCooldown` |
+| 冷却未到（300 tick，每 drone） | `OnCooldown` |
 
 若 `target_id` 省略，默认 fortify 自身（`object_id`）。
 
-**效果**: 自身/友方获得护盾（所有抗性 ×0.5，即伤害减半）。**同时清除目标所有负面状态**（Debilitate/Drain/Overload/Hack 控制锁），持续 100 tick。
+**效果**: 自身/友方获得护盾（所有抗性 ×0.5，即伤害减半）。**同时清除目标所有负面状态**（Debilitate/Drain/Overload/Hack 控制锁），持续 100 tick。**不可刷新**——护盾持续期间对同一目标再次 Fortify 返回 `TargetFortifyCooldown`（per-target 冷却 300 tick）。
 
 **冷却**: 300 tick（每 drone）。**资源消耗**: 400 Energy。**抗性**: 无——这是增益+净化，不受抗性影响。
 
