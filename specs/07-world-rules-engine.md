@@ -356,12 +356,13 @@ Rhai 脚本执行
 - Rhai 脚本**不能**访问其他玩家的私有数据
 - Buffer apply 阶段由引擎核心在 FDB 事务中执行，保证确定性
 
-**进程隔离模式**（默认配置）：Rhai engine 运行于独立 sandbox 进程，通过 IPC 与核心引擎通信。Sandbox 进程受以下加固：
-- **cgroup 限制**: CPU 配额与内存上限（默认 256MB），超限进程被 OOM killer 终止
-- **seccomp 加固**: 仅允许 `read/write/sendmsg/recvmsg` 等 IPC 必需的系统调用，禁止 `fork/exec/open/socket` 等
-- 模组崩溃或恶意行为不影响核心引擎进程——该模组本 tick 的 actions 全部丢弃，其他模组正常执行
+**进程内模式**（唯一生产运行模式）：Rhai engine 在核心引擎进程内执行。安全边界由 Ed25519 数字签名验证保证——所有模组必须签名，不存在"允许未签名"的宽松模式。
 
-服主可通过 `world.toml` 切换为进程内模式（`[rhai] isolation = "inprocess"`），性能优先但需信任所有模组来源。
+- 签名验证在引擎启动时一次性完成，运行时无额外开销
+- 信任边界通过服主配置的公钥白名单控制（`world.toml` 中 `[rhai] trusted_keys = [...]`），而非进程边界
+- 模组超时（确定性 AST 节点预算超限）仅丢弃该模组本 tick 的 actions，不影响核心引擎或其他模组。AST 节点预算是确定性度量，同一输入在任何硬件上终止于相同节点，保证回放/重模拟一致性
+- 墙钟仅用于运维告警（如单模组 >2s 触发告警），不作为状态决定因素
+- RuleMod **禁止** inprocess 模式之外的其他执行模式——不存在 `[rhai] isolation` 切换选项
 
 **模组签名机制**：每个 `.rhai` 文件附带 `.sig` 文件（Ed25519 签名），引擎启动时验签：
 

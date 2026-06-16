@@ -390,11 +390,21 @@ Swarm 支持三个扩展层级：
 
 **Recycle 死亡路径**：Recycle 命令走标准 death_mark → death_cleanup 路径（与其他死亡一致），不在 Phase 2a 中立即 despawn。death_mark 在 2b 开头标记待死亡 entity 并释放 room cap 槽位，death_cleanup 在 2b 末尾执行实际 despawn。
 
-**Spawn 时序说明**：spawn_system 在 death_mark 之后（room cap 槽位已释放）、combat/decay 之前运行。新 spawn 的 drone **在同 tick 参与 combat 和 decay**——可能出生即被攻击或受衰减影响。此行为是有意设计（「出生即投入战斗」），非文档错误。
+**Spawn 时序说明**：spawn_system 在 death_mark 之后（room cap 槽位已释放）运行，紧接着 `spawning_grace_system` 为新生 drone 附加 1 tick 的无敌帧，然后进入 combat/decay。新生 drone 获得 `SpawningGrace { remaining: 1 }` 组件——在本 tick 内免疫所有伤害（含特殊攻击和衰减），下一 tick 恢复正常参与战斗。此机制防止"出生即斩"——对手在 Spawn 旁部署 RangedAttack drone 无法秒杀新生 drone。
 
 **Phase 2b 并行策略**：regeneration（资源点再生）和 decay（疲劳/冷却递减）只操作各自独立的数据，与主线 death→spawn→combat→death_cleanup 无数据竞争。利用 Bevy 的 `.before()/.after()` 将这两个系统与主线并行调度——Bevy 在幕后自动分配线程，无需手动管理。约束：两者必须在 `death_cleanup` 之前完成（防止操作已 despawn 的 entity），其他无顺序要求。正确性由数据独立 + Bevy 依赖图保证，确定性不依赖并行度（同 input 同 output）。
 
 **两阶段快照架构**：阶段一不再为每个玩家独立序列化世界状态。改为：(1) tick 开始时一次性构建完整世界快照，按房间分片；(2) 每个玩家根据其 drone 所在位置，拼接可见房间的分片（默认 ≤9 个）。复杂度从 `O(玩家数 × 实体数)` 降为 `O(实体数 + 玩家数 × 可见房间数)`，消除每玩家重复序列化开销。快照构建在玩家 WASM 执行前完成，与玩家顺序无关，天然确定。
+
+**快照扩展路线（三级规模模型）**：
+
+| 规模 | 目标 | 快照策略 | Snapshot 预算 | 状态 |
+|------|------|---------|:--:|:--:|
+| **Tier 1 — MVP** | ≤500 drone，≤50 房间，单节点 | Bevy World 深拷贝全量快照 | ≤16MB / tick，≤50ms 构建 | 当前设计目标，specs/01 已覆盖 |
+| **Tier 2 — 中等规模** | ≤5,000 drone，≤500 房间，单节点 | 增量快照 + modification-set tracking + copy-on-write 实体分页 | ≤64MB / tick，≤200ms 构建 | 需补充完整 spec（增量差异协议、CoW 实体页大小、modification-set 合并策略、truncation 在增量模式下的语义） |
+| **Tier 3 — 大规模** | >5,000 drone，多节点 | 按房间分片 + 跨节点 snapshot 路由 + 跨分片 combat 协议 | 每分片 ≤64MB / tick | 需补充完整 spec（分片键设计、跨分片实体引用、分布式 combat 结算、FDB 多区域部署） |
+
+Tier 2 和 Tier 3 的完整 spec 必须在 Phase 1 实现前完成——不得作为远期声明模糊处理。Tier 1 的深拷贝全量快照仅在 MVP 阶段有效；Tier 2 的增量快照 spec 必须定义从 Tier 1 深拷贝的迁移路径。
 
 **WASM 预编译**：玩家上传 WASM 模块时，引擎在部署阶段立即编译为原生码并存储（非 tick 时 JIT）。tick 时只需实例化已编译模块，消除首次加载的编译延迟。编译后的模块按 `(module_hash, wasmtime_version)` 缓存，Wasmtime 版本升级时自动重编译。
 
@@ -2333,6 +2343,7 @@ Swarm 提供两种**并行核心玩法**。引擎统一，规则可配置。
 | **旁观** | public_spectate 控制 | 由房间可见性控制 |
 | **回放** | 自身可见，隐私分级 | 赛后生成回放（房间公开则回放公开） |
 | **关注点** | 持久性、创造力、涌现玩法 | 算法对抗、策略测试、演示观赏 |
+| **胜利条件** | 无——类似 MMO 持续沙盒，玩家自行设定目标（建造、控制、经济、社交）。不存在"游戏结束"状态 | 一方 drone=0 > 一方认输 > tick 到上限按剩余资产判定（drone数→建筑数→资源量）> 平局 |
 
 ### 9.1 Arena 房间模型
 

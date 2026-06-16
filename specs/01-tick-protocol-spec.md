@@ -278,9 +278,10 @@ Phase 2b 采用主线串行 + 无冲突系统并行的策略，与 DESIGN §3.2 
 
 ```rust
 app.add_systems(Update, (
-    death_mark_system,       // 标记待死亡 entity，释放 room cap 槽位
-    spawn_system,            // 统一创建 Phase 2a 校验通过的 drone
-    combat_system,           // 战斗结算（damage 先 → heal 后，同 tick 内结算）
+    death_mark_system,          // 标记待死亡 entity，释放 room cap 槽位
+    spawn_system,               // 统一创建 Phase 2a 校验通过的 drone
+    spawning_grace_system,      // 为新生 drone 附加 SpawningGrace(1) 无敌帧
+    combat_system,              // 战斗结算（damage 先 → heal 后，同 tick 内结算）
 ).chain());
 
 // 以下无数据竞争，与主线并行调度（Bevy 自动管理线程）
@@ -294,7 +295,7 @@ app.add_systems(Update, (
 ));
 ```
 
-**主线 `.chain()` 顺序**：`death_mark → spawn → combat`。combat 在 regeneration 之前执行——确保战斗结算基于本轮状态，再生在战斗后补充资源。
+**主线 `.chain()` 顺序**：`death_mark → spawn → spawning_grace → combat`。combat 在 regeneration 之前执行——确保战斗结算基于本轮状态，再生在战斗后补充资源。
 
 **主线和并行调度关系**：`regeneration` 和 `decay` 与主线无数据竞争（各操作独立数据），通过 `.before(death_cleanup_system)` 约束必须在 `death_cleanup` 前完成。
 

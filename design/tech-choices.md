@@ -221,3 +221,35 @@ tick delta 的特点：(1) 每 3s 推一次，数据量小；(2) 错过可以回
 ### 选择: Monaco + PixiJS
 
 Monaco 的 TypeScript 智能提示直接对接 SDK 类型——玩家写 `drone.` 弹出 `harvest/move/transfer`。PixiJS 的 tilemap 渲染 `MAX_QUERY_RANGE` 内的可见实体，WebGL 加速下 500 drone 不卡。两者都是各自领域的第一梯队，且彼此无冲突。
+
+---
+
+## 12. 快照扩展：Tier 2/3 技术选型
+
+Tier 1（MVP）使用 Bevy World 深拷贝全量快照，适用于 ≤500 drone / ≤50 房间的单节点部署。Tier 2/3 需按以下路线演进，spec 必须在 Phase 1 实现前完成。
+
+### Tier 2 — 增量快照策略对比
+
+| 方案 | 原理 | 优势 | 劣势 | 选择 |
+|------|------|------|------|:--:|
+| Modification-set tracking | 追踪每 tick 变更的 Component 集合，仅序列化差异 | 增量最小；直接映射 ECS 语义 | 需 Bevy change detection 集成 | **首选** |
+| Copy-on-Write 实体分页 | 将 World 分成固定大小实体页（如 256 entity/page），仅复制被修改的页 | 内存局部性好；truncation 可按页优先级排序 | 页内修改粒度粗（1 entity 改 = 整页复制） | 备选 |
+| 操作日志 + 重建 | 仅记录 Command 序列，replay 时重建状态 | 存储最小 | 重建延迟不可接受（tick 内需实时 snapshot） | 否决 |
+
+### Tier 3 — 分片方案对比
+
+| 方案 | 原理 | 优势 | 劣势 | 选择 |
+|------|------|------|------|:--:|
+| 按房间分片 | 以 Room 为分片键，每个分片独立运行 ECS | 分片边界清晰；跨分片仅出口/边境交互 | 跨分片 combat 需协议设计 | **首选** |
+| 按玩家分片 | 以 PlayerId 为分片键 | 单玩家数据局部性好 | 同一房间内多玩家需跨分片通信（热点） | 否决 |
+| 全局路由 + 无分片 ECS | 单节点 ECS + FDB 作为分布式状态层 | 实现简单 | FDB 事务延迟不适合每 tick 热路径 | 否决 |
+
+### 待定技术决策
+
+| 决策点 | Tier 2 需 spec | Tier 3 需 spec |
+|--------|:--:|:--:|
+| CoW 实体页大小 vs modification-set 粒度权衡 | ✅ | — |
+| truncation 在增量模式下的确定性排序 | ✅ | — |
+| 跨分片实体引用格式（room_id:entity_id） | — | ✅ |
+| 分布式 combat 结算协议（单分片内结算 vs 两阶段提交） | — | ✅ |
+| FDB 多区域部署与分片亲和性 | — | ✅ |

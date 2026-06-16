@@ -37,6 +37,25 @@
 - **特性**: 同一玩家可占多槽位部署不同算法自我对抗；可见性 public/unlisted/private；map_seed 可复现；赛后回放。
 - **配置**: world.toml `[arena]` 段。
 
+### R4 用户裁决 (2026-06-16)
+
+四项设计方向裁决已落实：
+
+| ID | 裁决 | 影响范围 |
+|----|------|---------|
+| D-1 | Rhai inprocess + 强制 Ed25519 数字签名（删除 out-of-process 模式） | specs/07 |
+| D-2 | World 模式无胜利条件（MMO 沙盒） | DESIGN.md §9 |
+| D-3 | 新生 drone SpawningGrace 1 tick 无敌帧 | DESIGN.md, specs/01, specs/02 |
+| D-4 | Tier 2/3 快照扩展必须 spec-ready（不延后） | DESIGN.md, tech-choices, 本 ROADMAP |
+
+### Tier 2/3 快照扩展 — 待 spec
+
+| 项目 | 内容 | 状态 |
+|------|------|:--:|
+| Tier 2 spec | 增量快照协议、CoW 实体分页、modification-set 合并、truncation 增量语义 | ⬜ 待撰写 |
+| Tier 3 spec | 分片键设计、跨分片实体引用、分布式 combat 结算、FDB 多区域部署 | ⬜ 待撰写 |
+| tech-choices 更新 | 快照扩展路线技术选型（增量策略对比、CoW vs 日志、分片方案对比） | ⬜ 待撰写 |
+
 ---
 
 ## 🔴 P0 — 核心游戏循环完整性
