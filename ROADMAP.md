@@ -48,6 +48,7 @@
 | D-3 | 新生 drone SpawningGrace 1 tick 无敌帧 | DESIGN.md, specs/01, specs/02 |
 | D-4 | Tier 2/3 快照扩展必须 spec-ready（不延后） | DESIGN.md, tech-choices, 本 ROADMAP |
 | D-H1 | First-hour onboarding: 渐进威胁曲线 + soft_launch + AI 首次部署引导 + 低风险社交冲突 | specs/06 |
+| PvE | World PvE 生态层 (NPC/据点/事件/掉落/难度梯度) + Arena PvE Challenge 模式 (4 场景 + 评分) | DESIGN.md §9.0, §9.1.5 |
 
 ### Tier 2/3 快照扩展 — 待 spec
 
