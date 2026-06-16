@@ -72,8 +72,10 @@ Phase 2 — 结算与确认:
 
 ## 7. 待定项
 
-- 一致性哈希具体算法
-- 跨分片 combat 两阶段协议的确定性保证
-- FDB 多区域部署拓扑
-- 分片动态重平衡策略（新增/移除节点）
-- 跨分片 replay/anti-cheat 审计链
+以下项在正文中已提供候选策略，最终设计需 Tier 3 实现前冻结：
+
+- **一致性哈希算法**：候选 Google Jump Hash——需在 ≥100 分片的模拟环境验证重分配开销
+- **跨分片 combat 两阶段协议的确定性保证**：需验证 Phase 1→Phase 2 的 tick 边界一致性与 replay 可复现性
+- **FDB 多区域部署拓扑**：需与 FDB 专家评审 zone-aware placement + `versionstamp` tiebreaker 方案
+- **分片动态重平衡**：新增/移除节点时的 room 迁移策略——一致性哈希天然支持，但需定义迁移窗口内的 tick 暂停/降级语义
+- **跨分片 replay/anti-cheat 审计链**：多个分片的 TickTrace 如何合并为全局确定性审计链

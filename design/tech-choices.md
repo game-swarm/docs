@@ -246,10 +246,12 @@ Tier 1（MVP）使用 Bevy World 深拷贝全量快照，适用于 ≤500 drone 
 
 ### 待定技术决策
 
-| 决策点 | Tier 2 需 spec | Tier 3 需 spec |
-|--------|:--:|:--:|
-| CoW 实体页大小 vs modification-set 粒度权衡 | ✅ | — |
-| truncation 在增量模式下的确定性排序 | ✅ | — |
-| 跨分片实体引用格式（room_id:entity_id） | — | ✅ |
-| 分布式 combat 结算协议（单分片内结算 vs 两阶段提交） | — | ✅ |
-| FDB 多区域部署与分片亲和性 | — | ✅ |
+以下项已在 specs/10 和 specs/11 中收窄为候选方案，最终冻结需 Tier 2/3 实现前通过基准测试确认：
+
+| 决策点 | 状态 | 候选方案 |
+|--------|:--:|------|
+| CoW 页大小 vs modification-set 粒度 | 🟡 倾向 modification-set (specs/10 §3) | CoW=256 entity/page 备选 |
+| 增量 truncation 确定性排序键 | 🟡 倾向方案 A (specs/10 §4) | `(bucket, last_modified DESC, entity_id)` |
+| 跨分片实体引用格式 | 🟡 已定义 (specs/11 §3) | `shard_id:room_id:entity_id` |
+| 分布式 combat 结算协议 | 🟡 已设计 (specs/11 §4) | 两阶段意图广播+确认 |
+| FDB 多区域部署与分片亲和性 | 🟡 候选策略 (specs/11 §5) | zone-aware placement + last-writer-wins |

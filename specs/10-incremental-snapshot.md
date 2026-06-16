@@ -76,7 +76,8 @@ Keyframe 间隔：候选值 100 tick（约 5 分钟 @ 3s/tick），或每 1000 e
 
 ## 6. 待定项
 
-- CoW 页大小 vs modification-set 粒度最终选择
-- 增量 truncation 确定性排序键
-- Keyframe 间隔与存储成本权衡
-- 与 FDB 增量提交的整合策略
+以下项在正文中已提供候选方案，最终值需 Tier 2 实现前通过基准测试确定：
+
+- **CoW 页大小 vs modification-set 粒度**：当前倾向 modification-set（粒度更细），CoW 作为备选——需基准测试对比两者在 5000 entity 下的内存/CPU 开销
+- **Keyframe 间隔**：候选值 100 tick 或 1000 entity 变更——需权衡存储成本 (每 keyframe ≈16MB) 与重建延迟
+- **FDB 增量提交整合**：modification-set 如何映射到 FDB 的 atomic mutation——需与 FDB 事务模型对齐
