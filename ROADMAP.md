@@ -47,11 +47,14 @@
 
 - [ ] 实现真实模块查询——从 sandbox/engine 模块注册表获取已部署 WASM 列表
 
-### G14: swarm_get_replay 真实实现 — DESIGN §4.1
+### G14: swarm_get_replay 真实实现 — DESIGN §4.1 ✅
 
-**当前状态**: `swarm_get_replay()` 返回占位消息。
+**当前状态**: 已完成——`swarm_get_replay()` 通过 `ReplayStore` 查询 keyframe→delta 链，返回结构化 entity changes。
 
-- [ ] 利用 `ReplayStorageConfig` + `KeyframeData` + `WorldDelta` 实现真实 replay 查询
+- [x] `ReplayStore` 资源: BTreeMap 存储 keyframes + deltas, `nearest_keyframe()` / `deltas_in_range()` 查询
+- [x] `swarm_get_replay(from_tick, to_tick)`: 定位最近 keyframe → 加载 delta 链 → 返回 `ReplayResult { entity_changes, commands, ... }`
+- [x] 注册为 MCP tool: JSON-RPC dispatch + `mcp_tool_infos` + `mcp_tool_source`
+- 2 tests: 空 store 返回错误、非法 tick 范围
 
 ### S2: 缺失 RejectionReason 变体 — specs/02 §3.10-3.13
 
@@ -142,7 +145,7 @@ spec 要求但代码未实现:
 
 | 优先级 | 缺口 | 理由 |
 |--------|------|------|
-| 🟡 P1 | G13, G14 | MCP stub→真实——AI 玩家模块管理和回放 |
+| 🟡 P1 | G13 | MCP stub→真实——AI 玩家模块管理 |
 | 🟡 P1 | S2, S1 | 校验管线完整性 + tick 重试正确性 |
 | 🟢 P2 | S7a-S7d | 规则系统 stub 补完 |
 | 🟢 P2 | S6b | MVP 工具（Tutorial） |
