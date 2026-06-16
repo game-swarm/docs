@@ -298,3 +298,15 @@ R4 前最低要求：
 2. D-H1/D-H2 中编码前必需的数值/边界补齐。
 3. 根目录 review artifact 清理，R3 index 更新。
 4. 复审时 9/9 reviewers 全量运行，重点验证 R3 blocker closure。
+
+---
+
+## 用户裁决（2026-06-16）
+
+1. **B1 Rhai 隔离模型**：✅ in-process。Rhai 是服主安装的受信代码，嵌入引擎进程直接调 Bevy ECS。删除 specs 中矛盾的 process isolation 描述。保留信任链：mods.lock.checksum 必签、key 管理、ActionBuffer 硬上限。
+
+2. **B5 Overload side-channel**：✅ 保持设计，三种结果 cost/cooldown 完全等价。成功、地板、no-op 消耗同等 300 Energy + 200 tick drone cooldown + 50 tick 全局冷却，返回统一 `Ok`。外部不可区分是否触及 fuel 地板。
+
+3. **A-H1 CommandAction 扩展模型**：✅ 固定枚举。IDL 定义 Vanilla CommandAction enum，SDK 强类型。服主只能调参（cost/cooldown/damage），不能新增命令类型。新机制走 Rhai 模组注册，不走 world.toml custom_actions。
+
+4. **D-H1 Fortify + age_max**：✅ 采纳。Fortify 加 per-target cooldown（防永动护盾）；age_max = max(MIN_LIFESPAN, base + modifiers)，MIN_LIFESPAN 写入 world.toml（默认 100 tick）。
