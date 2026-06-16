@@ -64,25 +64,21 @@ let mut config = wasmtime::Config::new();
 
 // === 燃料计量 ===
 config.consume_fuel(true);                    // 启用燃料计量
-config.fuel_consumed_callback(|fuel| {        // 检查点回调
-    if fuel > MAX_FUEL { panic!("fuel exhausted"); }
-});
+// 注意: Wasmtime ≥30 移除了 fuel_consumed_callback API；
+// 燃料检查改为在 Store 层通过 get_fuel() 轮询
 
-// === 内存限制 ===
-config.static_memory_maximum_size(64 * 1024 * 1024);  // 64MB
-config.dynamic_memory_reserved_for_growth(0);          // 不允许动态增长
-config.memory_guard_size(2 * 1024 * 1024);             // 2MB 保护页
-config.guard_before_linear_memory(true);                // 前后均设保护
-
-// === 表限制 ===
-config.table_elements_max(10_000);
+// === 内存限制 (Wasmtime ≥30: StoreLimitsBuilder) ===
+let mut store_limits = wasmtime::StoreLimitsBuilder::new()
+    .memory_size(64 * 1024 * 1024)            // 64MB
+    .instances(1)
+    .memories(1)
+    .tables(10);
+config.memory_reservation_for_growth(0);       // 不允许动态增长
+config.memory_guard_size(2 * 1024 * 1024);     // 2MB 保护页
+config.guard_before_linear_memory(true);        // 前后均设保护
 
 // === 栈限制 ===
 config.max_wasm_stack(1 * 1024 * 1024);       // 1MB
-
-// === 实例限制 ===
-config.max_instances(1);
-config.max_wasm_memory_pages(1024);            // 64MB / 64KB pages
 
 // === 编译器 ===
 config.cranelift_opt_level(wasmtime::OptLevel::Speed);  // 生产: Speed

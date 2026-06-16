@@ -68,6 +68,8 @@ enums:
     - TileOccupied
     - InvalidTerrain
     - TooManyConstructionSites
+    - NotStructure
+    - NotController
     - AlreadyFullHealth
     - FriendlyTarget
     - NotYourSpawn
@@ -76,6 +78,18 @@ enums:
     - ExceedsRoomCapacity
     - RoomDroneCapReached
     - NotFriendly
+    - SourceNotAllowed
+    - AuthContextInvalid
+    - GlobalStorageDisabled
+    - TransferInProgress
+    - TerminalRequired
+    - OrderNotFound
+    - UnknownAction { action: String }
+    - AlreadyHacked
+    - InvalidDamageType
+    - AlreadyDebilitated { damage_type: String }
+    - PlayerNotFound
+    - TargetFuelTooLow
 
 commands:
   Move:

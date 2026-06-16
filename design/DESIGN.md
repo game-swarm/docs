@@ -950,7 +950,7 @@ drone age 维护由两层设施构成：
 | `global_storage_tax_tiers` | `[(u32, u32)]` | `[(30,0),(60,1),(85,5),(100,20)]` | 累进税率：(容量%, 每10万单位税率) |
 | `transfer_to_global_time` | u32 | 10 | 本地→全局转换所需 tick 数（不可为 0） |
 | `transfer_from_global_time` | u32 | 5 | 全局→本地转换所需 tick 数（不可为 0） |
-| `global_storage_public` | bool | false | 全局存储是否完全公开（默认仅排行榜区间） |
+| `global_storage_public` | bool | false | （计划中）全局存储是否完全公开 |
 
 #### 资源定义
 
@@ -1273,7 +1273,7 @@ cost = { Energy = 10 }
 **模组扩展**：Rhai 模组可通过以下 API 注册新 body part：
 
 ```rust
-// Rhai API（规划）
+// Rhai API（远期扩展——MVP阶段通过world.toml [[custom_actions]]声明式配置）
 actions.add_body_part_type("Leech", #{
     action: "Leech",           // 新 CommandAction
     damage_type: "Corrosive",
