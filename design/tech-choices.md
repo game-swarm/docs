@@ -253,5 +253,5 @@ Tier 1（MVP）使用 Bevy World 深拷贝全量快照，适用于 ≤500 drone 
 | CoW 页大小 vs modification-set 粒度 | 🟡 倾向 modification-set (specs/10 §3) | CoW=256 entity/page 备选 |
 | 增量 truncation 确定性排序键 | 🟡 倾向方案 A (specs/10 §4) | `(bucket, last_modified DESC, entity_id)` |
 | 跨分片实体引用格式 | 🟡 已定义 (specs/11 §3) | `shard_id:room_id:entity_id` |
-| 分布式 combat 结算协议 | 🟡 已设计 (specs/11 §4) | 两阶段意图广播+确认 |
-| FDB 多区域部署与分片亲和性 | 🟡 候选策略 (specs/11 §5) | zone-aware placement + last-writer-wins |
+| 分布式 combat 结算协议 | 🟡 已设计 (specs/future/T3 §4) | 两阶段意图广播+确认 + 逻辑时钟 |
+| FDB 多区域部署与分片亲和性 | 🟡 候选策略 (specs/future/T3 §5) | zone-aware placement + 逻辑时钟排序 |

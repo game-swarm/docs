@@ -56,15 +56,17 @@ Phase 2 — 结算与确认:
 
 ### 4.3 一致性与延迟
 
-| 场景 | 一致性 | 延迟 |
-|------|:--:|------|
-| 单分片 combat | 强一致（ECS chain 内） | 0 |
-| 跨分片 RangedAttack | 最终一致（两阶段） | 1 tick |
-| 跨分片 Move | 强一致（atomically transfer entity） | 0（drone 转移在本 tick 内完成） |
+| 场景 | 一致性 | 延迟 | 确定性 |
+|------|:--:|------|:--:|
+| 单分片 combat | 强一致（ECS chain 内） | 0 | ✅ tick-by-tick |
+| 跨分片 RangedAttack | 最终一致（两阶段） | 1 tick | ✅ 逻辑时钟 `(tick, shard_order, entity_id)` |
+| 跨分片 Move | 强一致（atomically transfer entity） | 0 | ✅ tick-by-tick |
+
+**确定性保证**：跨分片 tie-breaker 使用**逻辑时钟**，非物理时间戳。冲突排序键：`(tick, shard_priority, entity_id)`——全部由游戏状态派生，不依赖 FDB versionstamp 或墙钟。同一初始状态 + 同一指令 + 同一分片拓扑 → 同一结果 → 可回放。
 
 ## 5. FDB 多区域部署
 
-候选策略：FDB 集群跨区域部署时，每个分片绑定到最近的 FDB 区域（zone-aware placement）。跨分片事务通过 FDB 的 multi-region 配置处理——冲突解决策略：`last-writer-wins` with `versionstamp` tiebreaker。需在 Tier 3 实现前与 FDB 专家评审拓扑设计。
+候选策略：FDB 集群跨区域部署时，每个分片绑定到最近的 FDB 区域（zone-aware placement）。跨分片事务通过 FDB 的 multi-region 配置处理——冲突解决使用逻辑时钟排序键 `(tick, shard_priority, entity_id)`，不依赖 FDB versionstamp。需在 Tier 3 实现前与 FDB 专家评审拓扑设计。
 
 ## 6. 身份/CRL/Deploy Nonce 跨分片链
 
@@ -75,7 +77,7 @@ Phase 2 — 结算与确认:
 以下项在正文中已提供候选策略，最终设计需 Tier 3 实现前冻结：
 
 - **一致性哈希算法**：候选 Google Jump Hash——需在 ≥100 分片的模拟环境验证重分配开销
-- **跨分片 combat 两阶段协议的确定性保证**：需验证 Phase 1→Phase 2 的 tick 边界一致性与 replay 可复现性
-- **FDB 多区域部署拓扑**：需与 FDB 专家评审 zone-aware placement + `versionstamp` tiebreaker 方案
-- **分片动态重平衡**：新增/移除节点时的 room 迁移策略——一致性哈希天然支持，但需定义迁移窗口内的 tick 暂停/降级语义
+- **跨分片 combat 两阶段协议的确定性保证**：需验证 Phase 1→Phase 2 的 tick 边界一致性——已选定逻辑时钟方案 `(tick, shard_priority, entity_id)`
+- **FDB 多区域部署拓扑**：需与 FDB 专家评审 zone-aware placement 方案——冲突解决已选定逻辑时钟，不依赖 versionstamp
+- **分片动态重平衡**：新增/移除节点时的 room 迁移策略——需定义迁移窗口内的 tick 暂停/降级语义
 - **跨分片 replay/anti-cheat 审计链**：多个分片的 TickTrace 如何合并为全局确定性审计链
