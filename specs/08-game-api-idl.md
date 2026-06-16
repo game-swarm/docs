@@ -8,6 +8,11 @@
 
 **一个 IDL 生成所有绑定——不一致即编译错误。**
 
+**Core IDL vs World Action Manifest 边界**：
+
+- **Core IDL**（本文件 §2-4）：定义基础 envelope/ABI/host functions、内置基础指令（Move/Harvest/Build 等标准动作）、基础 CommandIntent 结构。Core IDL 长期稳定，ABI 版本号控制兼容性。
+- **World Action Manifest**（引擎从 world.toml `[[custom_actions]]` + `[[special_effects]]` 动态生成）：定义特定世界的自定义 action（特殊攻击、模组扩展）。包含 canonical hash（`Blake3(manifest)`）、版本 tag、TickTrace 绑定。WASM 模块通过 `target_manifest_hash` 声明兼容的世界版本。
+
 ```
 game_api.idl  (单一真相)
     │
@@ -39,7 +44,7 @@ types:
   Position: { x: i32, y: i32, room: RoomId }
 
 enums:
-  Direction: [Top, TopRight, BottomRight, Bottom, BottomLeft, TopLeft]
+  Direction: [North, South, East, West]
   BodyPart:  [Move, Work, Carry, Attack, RangedAttack, Heal, Claim, Tough]
   DamageType: [Kinetic, Thermal, EMP, Sonic, Corrosive, Psionic]
   StructureType: [Spawn, Extension, Tower, Storage, Link, Extractor, Lab,
@@ -89,7 +94,8 @@ enums:
     - InvalidDamageType
     - AlreadyDebilitated { damage_type: String }
     - PlayerNotFound
-    - TargetFuelTooLow
+    - TargetNotVisible
+    - TargetOverloadCooldown
 
 commands:
   Move:
@@ -181,10 +187,10 @@ commands:
 
   Overload:
     params: { object_id: ObjectId, target_id: PlayerId }
-    validator: [exists, owner, drone, body_part(RangedAttack), target_player, enemy_target, target_fuel_above(0.2), fatigue]
+    validator: [exists, owner, drone, body_part(RangedAttack), target_player, enemy_target, visible_target, target_global_cooldown(50), fatigue]
     cost: { Energy: 300 }
     cooldown: 200         # 每 drone 冷却
-    description: "消耗目标 fuel budget 500k，下限 MAX_FUEL×0.2"
+    description: "消耗目标 fuel budget 500k（短期压制，可恢复）。下限 MAX_FUEL×0.2，已触下限时静默 no-op。恢复 fuel_budget/1000 per tick。Fortify/Purge 清除效果。"
 
   Debilitate:
     params: { object_id: ObjectId, target_id: ObjectId, damage_type: DamageType }

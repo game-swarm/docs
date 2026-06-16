@@ -129,21 +129,29 @@ collect_timeout_ms = 2500  // 硬截止时间
 
 ### 2.3 快照构建
 
-```
+```rust
 fn build_snapshot(player_id, tick) -> Snapshot:
-    // all_entities 来自 Bevy World 内存（当前 tick 执行前的权威状态）
-    // 不从 FDB/Dragonfly 读 —— COLLECT 阶段不访问外部存储
-    entities = visibility_filter(all_entities, player_id, tick)
+    let mut entities = visibility_filter(all_entities, player_id, tick);
+    // 硬上限：每玩家快照最多 256KB
+    if serialized_size(&entities) > 256_000 {
+        entities = sort_and_truncate(entities, 256_000);
+    }
     return Snapshot {
         tick,
         player_id,
-        entities,    // 仅该玩家可见
+        entities,    // 仅该玩家可见，≤256KB
         terrain,     // 可见地形格
         resources,   // 玩家自身资源
-    }
+        snapshot_len: serialized_size(&entities),  // 实际序列化后大小
+        truncated: serialized_size > 256_000,      // 是否被截断
+        omitted_count: total_visible - visible_in_snapshot,
+    };
 ```
 
-快照按房间序列化一次，再按玩家过滤——不是 O(P × E)。
+- 快照按房间序列化一次，再按玩家过滤——不是 O(P × E)
+- 超限时按距离排序截断（最近优先），保证近距离实体不丢失
+- `truncated=true` 时 WASM 模块收到标记，应降级策略（如放弃全量扫描）
+- `host_get_objects_in_range` 返回 `{items, truncated, total_visible_count?}`
 
 ### 2.4 WASM 模块部署
 
@@ -243,28 +251,68 @@ Source E1: energy = 5
 - 创造了策略深度：要不要多个 drone 采集同一个源？万一排在后面就浪费指令
 - 不采用比例分配（太复杂且失去竞争性），不采用价高者得（需要市场机制，超出入门复杂度）
 
-### 3.3 指令执行模型（Inline）
+### 3.3 指令执行模型（Inline + Phase 2a TOCTOU 合同）
 
-命令循环采用 **Inline 模型**：逐条校验 + 逐条应用，校验基于**当前** Bevy World 状态（非快照）。Move/Harvest/Build/Transfer/Attack/Heal/Recycle 在命令循环中立即执行。Spawn 命令在 Phase 2a 中只校验不入队，在 Phase 2b spawn_system 中统一创建。
+命令循环采用 **Inline 模型**：逐条校验 + 逐条应用，校验基于**当前** Bevy World 状态（非快照）。
+
+**Phase 2a TOCTOU 保护合同**：
+
+以下规则防止 inline 执行中的时间窗口攻击——所有规则在 `validate_and_apply()` 单一路径中强制执行：
+
+1. **Spawn pending 不可见**：Phase 2a 中 Spawn 命令只校验不入队。新 drone 在 Phase 2b spawn_system 中统一创建。同 tick 后续命令无法看到、操作、或依赖尚未创建的 drone。
+2. **Hack 状态下的所有权**：Hack 施加控制锁后，原 owner 的后续 friendly/attack/recycle 命令仍以**原始 owner** 身份校验（Hack 不立即转移所有权）。5 tick 后实际夺取时 handler 切换 owner。
+3. **Per-drone per-tick action quota**：每 drone 每 tick 最多执行 1 个 main action（Move/Attack/Harvest/Build/Heal 及其特殊攻击变体）。Transfer/Withdraw 不计入此配额但受 carry 容量约束。此限制防止 Transfer chain resource amplification。
+4. **fuel/wall-clock 耗尽**：WASM 执行中 fuel 耗尽或 wall-clock timeout → 完整输出丢弃（不读取部分输出），不计 refund。
+5. **指令队列不跨 tick**：超时玩家的指令输出仅丢弃当前 tick，不携带到下个 tick（防止 sequence 冲突与状态污染）。
 
 非法指令 → 拒绝，记录 RejectionReason，写入 TickTrace。
 
-### 3.4 ECS 系统执行顺序 (Bevy)
+### 3.4 ECS 系统执行顺序（Bevy — 部分并行）
 
-Phase 2b 中 ECS Systems 按 `.chain()` 严格排序：
+Phase 2b 采用主线串行 + 无冲突系统并行的策略，与 DESIGN §3.2 保持一致：
 
 ```rust
 app.add_systems(Update, (
     death_mark_system,       // 标记待死亡 entity，释放 room cap 槽位
     spawn_system,            // 统一创建 Phase 2a 校验通过的 drone
-    regeneration_system,     // 资源点再生
-    combat_system,           // 战斗结算（damage 先 → heal 后）
-    decay_system,            // 疲劳/冷却递减
-    death_cleanup_system,    // 实际 despawn 已标记 entity
+    combat_system,           // 战斗结算（damage 先 → heal 后，同 tick 内结算）
 ).chain());
+
+// 以下无数据竞争，与主线并行调度（Bevy 自动管理线程）
+app.add_systems(Update, (
+    regeneration_system,     // 资源点再生
+    decay_system,            // 疲劳/冷却递减
+).before(death_cleanup_system));
+
+app.add_systems(Update, (
+    death_cleanup_system,    // 实际 despawn 已标记 entity（等全部完成）
+));
 ```
 
-`.chain()` 强制串行执行 → 确定性。后续优化用 `.before()/.after()` 实现部分并行同时保持正确性。
+**主线 `.chain()` 顺序**：`death_mark → spawn → combat`。combat 在 regeneration 之前执行——确保战斗结算基于本轮状态，再生在战斗后补充资源。
+
+**主线和并行调度关系**：`regeneration` 和 `decay` 与主线无数据竞争（各操作独立数据），通过 `.before(death_cleanup_system)` 约束必须在 `death_cleanup` 前完成。
+
+#### Component/Resource 读写矩阵
+
+以下矩阵定义并行安全性的精确边界。矩阵中 `R`=只读，`W`=写入，`-`=不访问。
+
+| System | `Position` | `HitPoints` | `Fatigue` | `Energy/Carry` | `Cooldown` | `RoomCap` | `DeathMark` | `Owner` |
+|--------|-----------|-------------|-----------|----------------|------------|-----------|-------------|---------|
+| **death_mark** | R | - | - | - | - | W | W | R |
+| **spawn** | W | W | - | W | W | R | - | W |
+| **combat** | R | W | - | - | - | - | - | R |
+| **regeneration** | - | - | - | W | - | - | - | - |
+| **decay** | - | - | W | - | W | - | - | - |
+| **death_cleanup** | - | - | - | - | - | - | W | - |
+
+**并行安全证明**：
+- `regeneration` 只写 `Energy/Carry`（资源总量），与其并行的主线系统不读/写此字段 → 无数据竞争
+- `decay` 只写 `Fatigue` 和 `Cooldown`，与其并行的主线系统不访问这些字段 → 无数据竞争
+- 两个并行系统之间无共享数据访问 → 彼此独立
+- 所有系统在 `death_cleanup` 之前完成（`.before()` 约束）→ 不会操作已 despawn 的 entity
+
+确定性由数据独立 + Bevy 依赖图保证，不依赖并行度（同 input 同 output）。
 
 ### 3.5 Tick 原子性
 

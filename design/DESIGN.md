@@ -1021,7 +1021,7 @@ Swarm 是一个**可配置的游戏引擎平台**——每个世界实例（worl
 | **身体部件** | 8 种标准件：`MOVE`, `CARRY`, `WORK`, `ATTACK`, `RANGED_ATTACK`, `HEAL`, `CLAIM`, `TOUGH` | 每种部件的 cost/age_modifier/能力 见 `[[body_part_types]]` 默认定义 |
 | **伤害类型** | 6 种：`Kinetic`, `Thermal`, `EMP`, `Sonic`, `Corrosive`, `Psionic` | 默认抗性均为 1.0，详见 §8 伤害与武器类型定义 |
 | **物流模式** | **模式 B（轻物流）** | 全局传输 1% 损耗，本地建造 5% 损耗。模式 A（无损耗）和模式 C（重物流）为可选项 |
-| **特殊攻击** | 全部 8 种可用：`Hack`, `Drain`, `Overload`, `Debilitate`, `Disrupt`, `Fortify`, `Leech`, `Fabricate` | 冷却时间与资源消耗见 §8 特殊攻击方式表格 |
+| **特殊攻击** | 分层解锁：Tutorial/Novice 默认禁用全部 8 种特殊攻击（`Hack`, `Drain`, `Overload`, `Debilitate`, `Disrupt`, `Fortify`, `Leech`, `Fabricate`）。Standard+ 全部可用 | 冷却时间与资源消耗见 §8 特殊攻击方式表格。层级配置: world.toml `vanilla.tier = \"Tutorial\" | \"Novice\" | \"Standard\" | \"Advanced\"` |
 | **Controller 维修** | 硬上限：每 tick 总 age 回退 ≤ 自然增长的 50% | 详见 §3.1 Controller 结构定义 |
 | **可见性** | `fog_of_war = true`，`player_view = drone`，`public_spectate = false` | 玩家仅可见自己 drone 视野内的内容；公开观战默认关闭 |
 | **排行榜** | World 模式无排行榜，Arena 模式有排行榜 | 持久世界天然不公平（老玩家先发优势），竞技场模式为有限时间窗口的公平竞争 |
@@ -2244,9 +2244,10 @@ if (rules.get("empire-upkeep").config.onshortfall.value === "damage") {
 
 ## 9. World 模式 vs Arena 模式
 
-| 维度 | World（持久世界） | Arena（比赛） |
-|------|-----------------|-------------|
+| **Arena（比赛）** ⚠️ Experimental |
+|------|-----------------|-----------------------|
 | **本质** | 有机世界，类似 Minecraft 服务器 | 竞技比赛，类似围棋对局 |
+| **状态** | ✅ MVP 主入口 | ⚠️ Experimental — MVP 阶段非主入口。需 quick match + basic rating + replay product 后方可正式发布 |
 | **地图** | 随机生成，不同玩家不同起点 | 对称初始条件，双方公平 |
 | **加入时机** | 随时，先来后到不同 | 同时开始，代码在比赛前锁定 |
 | **公平性** | 不追求——天然不对称 | 核心追求——对称起点 + 相同规则 |

@@ -61,22 +61,94 @@ Web UI (Monaco + PixiJS)          MCP Interface
   3. player_id 从证书提取，不可自报
 ```
 
-## 2. 网络架构
+## 2. 网络架构 — Transport 拆分
+
+MCP transport 按客户端环境明确分为两类，安全合同不再混用：
+
+### 2.1 Browser Web UI（浏览器环境）
 
 ```
-AI Agent (外部)
-    │
-    │ HTTPS + mTLS
+Browser (Web UI)
+    │ HTTPS + Origin/Host/CSRF/Fetch Metadata headers
+    │ (浏览器自动附加，不可伪造)
     ▼
 ┌──────────────────┐
-│  nginx / 网关     │  ← TLS 终止、限流、证书验证
+│  nginx / 网关     │  ← TLS 终止、限流、Origin 验证
+│                   │     CORS: 仅允许配置的 origin
+│                   │     CSRF: token + SameSite=Strict
 └────────┬─────────┘
-         │ 携带校验通过的证书
+         │
          ▼
 ┌──────────────────┐
-│  MCP Server       │  ← 引擎内嵌
-│  (仅 HTTP/SSE)    │     默认绑定 127.0.0.1:{port} — 不对外暴露
+│  Gateway/MCP      │  ← SSE 推送（text/event-stream）
+│  (仅 HTTP/SSE)    │     Token audience: gateway_origin + world_id + browser
 └──────────────────┘
+```
+
+**Browser 特有安全要求**：
+- MCP endpoint 仅接受来自允许 origin 的请求（`Origin` header 白名单）
+- `Host` header 严格匹配 gateway hostname
+- CSRF token 必需（`X-CSRF-Token` header），cookie `SameSite=Strict`
+- 支持 `Sec-Fetch-Dest`/`Sec-Fetch-Site`/`Sec-Fetch-Mode` 校验
+- Token `aud` field 绑定 `{gateway_origin, world_id, "browser"}`
+
+### 2.2 AI Agent / CLI（非浏览器环境）
+
+```
+AI Agent / CLI
+    │ HTTPS + mTLS（客户端证书）或 signed request
+    │ (不依赖 Origin — 原生 HTTP 客户端无浏览器安全上下文)
+    ▼
+┌──────────────────┐
+│  nginx / 网关     │  ← mTLS 验证 / Ed25519 signed request
+│                   │     拒绝缺少 mTLS 或签名的 AI endpoint 请求
+└────────┬─────────┘
+         │
+         ▼
+┌──────────────────┐
+│  Gateway/MCP      │  ← Agent endpoint（独立端口或路径）
+│  (mTLS / signed)  │     Token audience: gateway_origin + world_id + cli
+└──────────────────┘
+```
+
+**Agent/CLI 特有安全要求**：
+- Agent 端点必须使用 mTLS 或 Ed25519 签名（不上依赖 Origin header）
+- Token `aud` field 绑定 `{gateway_origin, world_id, "cli"}`
+- 拒绝任何携带 browser-style Origin/CSRF header 的 agent 端点请求（防跨协议混淆）
+
+### 2.3 DNS Rebinding 防御
+
+| 攻击向量 | 防御措施 |
+|----------|---------|
+| DNS rebinding → loopback (127.0.0.1) | Gateway bind 到 unix socket 或 127.0.0.1，不监听 0.0.0.0 |
+| DNS rebinding → private network (10.x, 192.168.x) | Gateway 检查 `Host` header，拒绝非白名单 hostname |
+| DNS rebinding → localhost container escape | Container 网络隔离 (`--network=host` 禁用)，gateway 仅绑定内部网桥 |
+| Loopback bypass via redirect | 不允许 302/307 redirect 到 private IP |
+| SSE reconnect to rebind target | SSE `Last-Event-ID` 验证 + token per-session binding — 重连时必须相同 session token |
+| Private network SSRF via MCP proxy | MCP tool 接受 URL 时，先 DNS resolve → 拒绝 private/rfc1918 IP |
+
+### 2.4 网络拓扑
+
+```text
+                         Internet
+                            │
+                   ┌────────┴────────┐
+                   │  nginx (TLS)     │
+                   │  port 443        │
+                   └──┬───────────┬──┘
+                      │           │
+             ┌───────▼──┐   ┌───▼────────┐
+             │ Browser  │   │ AI/CLI     │
+             │ endpoint │   │ endpoint   │
+             │ (Origin  │   │ (mTLS/     │
+             │  + CSRF) │   │  signed)   │
+             └────┬─────┘   └───┬────────┘
+                  │             │
+                  └──────┬──────┘
+                         │
+                  ┌──────▼──────┐
+                  │  MCP Server │  ← 引擎内嵌，仅监听 127.0.0.1
+                  └─────────────┘
 ```
 
 ## 3. 认证

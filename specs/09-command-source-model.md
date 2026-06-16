@@ -60,46 +60,79 @@
 
 ### 3.1 身份模型
 
-采用**服务端签发证书**模式：
+采用**客户端 Ed25519 密钥对 + 服务端签发证书**模式：
 
 ```
-注册/登录:  OAuth2 (GitHub/Google) → 服务端验证身份 → 签发短期证书
-代码签名:  WASM 部署附带证书签名 → 服务端验签
-吊销:      证书过期（24h 默认）/ 手动吊销 → 凭据泄露可止损
+注册:  客户端生成 Ed25519 密钥对 → 提交公钥 → 服务端签发证书（公钥+player_id+有效期，服务端 Ed25519 签名）
+签名:  部署 WASM 时客户端用私钥签名部署载荷 → 服务端验签
+吊销:  证书过期（默认 90 天）/ CRL / Auth Service epoch emergency bump
 ```
 
-**为何不用客户端 keypair**：新手友好（不需要理解密钥管理）、吊销可控（ban 玩家 = 吊销证书）、OAuth2 已有成熟的认证基础设施。
+**设计决策**（R2 用户裁决）：客户端持有 Ed25519 私钥，部署时对结构化载荷签名（非裸 WASM 字节）。此模型提供强审计链（可证明某玩家部署了某版本代码），同时通过 short-lived deploy_nonce 防重放。
 
-### 3.2 Auth Context
+### 3.2 部署载荷结构
 
-每条 RawCommand 携带的服务端注入字段：
+客户端签名 payload（`DeployPayload`）至少包含以下必填字段：
 
 ```json
 {
-  "command": { /* 原始指令 */ },
-  "auth": {
-    "source": "WASM",
-    "player_id": 42,                // 服务端注入——不可由客户端提供
-    "cert_fingerprint": "sha256:abcd1234...",  // 部署时使用的证书指纹
-    "session_id": "sess_abc",
-    "module_hash": "blake3:def567...",         // WASM 模块内容哈希
-    "tick_submitted": 4520,
-    "tick_target": 4521
-  }
+  "domain": "swarm-deploy",
+  "module_hash": "blake3:abc123...",
+  "player_id": 42,
+  "world_id": "world_v1",
+  "module_slot": "main",
+  "version_tag": "v1.2.3",
+  "deploy_nonce": "n_abc123...",
+  "expires_at": 1782000000,
+  "signature": "ed25519:sig..."
 }
 ```
 
-### 3.3 代码签名验证
+| 字段 | 说明 |
+|------|------|
+| `domain` | 域分隔符 `"swarm-deploy"`，防跨协议重放 |
+| `module_hash` | `Blake3(WASM bytes)` |
+| `player_id` | 服务端分配的玩家 ID |
+| `world_id` | 目标世界 ID |
+| `module_slot` | 模块槽位（main/defense/worker/...） |
+| `version_tag` | 语义化版本号 |
+| `deploy_nonce` | **服务端签发**的临时 nonce，短 TTL（60s），单次消费。通过 MCP `swarm_deploy_challenge` 获取 |
+| `expires_at` | 部署过期时间（建议 ≤ 15 min from deploy_nonce issue） |
+| `signature` | 客户端 Ed25519 私钥对上述字段的签名 |
 
-WASM 部署 (`swarm_deploy` / MCP_Deploy / Deploy) 时：
+### 3.3 部署验证流程
 
-1. 客户端发送 WASM 字节 + 证书（含服务端签名）
-2. 服务端验证证书未过期、未被吊销
-3. 服务端用证书中的 player_id 覆盖任何客户端自报的 ID
-4. 服务端计算 `module_hash = Blake3(WASM bytes)`，写入 `auth.module_hash`
-5. tick 执行阶段，引擎验证 `module_hash` 匹配已部署模块
+1. 客户端调用 MCP `swarm_deploy_challenge` → 服务端返回 `deploy_nonce`（单次，60s TTL）
+2. 客户端构建 `DeployPayload`，用 Ed25519 私钥签名
+3. 客户端发送 WASM bytes + DeployPayload + 证书
+4. 服务端验证：
+   a. 证书未过期、未被吊销（CRL 查询）
+   b. `player_id` 从证书提取，覆盖任何客户端自报 ID
+   c. `deploy_nonce` 有效且未消费（全局去重）
+   d. `expires_at ≥ now()` 且 `≤ issued_time + 15 min`
+   e. `module_hash == Blake3(收到的 WASM bytes)`
+   f. Ed25519 验签通过（证书中的公钥 + signature + payload）
+5. tick 执行时引擎验证 `module_hash` 匹配已部署模块
 
-**禁止**：客户端在 Command body 中自报 `player_id`。如果客户端提供了 player_id，服务端用它自己的值覆盖。
+### 3.4 证书生命周期
+
+- **有效期**：默认 90 天，可配置（`cert.validity_days`）
+- **CRL 吊销点**：
+  - deploy 时（校验证书是否在 CRL 中）
+  - 每 tick 开始前（扫描活跃玩家的证书状态）
+  - module cache validation 时（缓存 miss 时验证来源证书）
+- **Auth Service epoch**：全局单调递增整数。emergency bump 后所有旧 epoch 证书立即失效，强制全量重新认证
+- **紧急轮换 runbook**：Auth Service 私钥泄露 → bump epoch → 所有客户端重新签发证书 → 旧证书 CRL 加入永久条目
+
+### 3.5 编译缓存键
+
+编译缓存键包含以下不可变字段（任一变更 → 缓存 miss → 重新验证 + 编译）：
+
+```
+blake3(wasmparser_version || validation_policy_version || wasmtime_build_commit || target_arch || security_epoch)
+```
+
+缓存仅跳过编译，不跳过验证——每次 tick 启动时对缓存条目重新执行证书/CRL 检查。
 
 ## 4. 校验管线
 

@@ -300,6 +300,34 @@ cargo test --test wasm_sandbox -- --test-threads=1
 | get_objects_in_range 调用 | 5/tick | 计数 |
 | 输出 JSON 体积 | 256 KB | 返回值大小检查 |
 
+### 6.1 MCP Simulate/Dry-Run 限制
+
+MCP 在线模拟（`swarm_simulate`）使用 snapshot 副本执行——不修改真实世界状态，但消耗引擎计算资源。以下硬限制防止 DoS：
+
+| 参数 | 限制 | 说明 |
+|------|------|------|
+| `max_ticks` | 100 | 每次模拟最多 100 tick |
+| `max_entities` | 1000 | 模拟世界最多 1000 个实体 |
+| `max_output_bytes` | 1 MB | 模拟结果最大输出 |
+| `max_cpu_ms` | 5000 | 每次模拟最多 5 秒 CPU 时间 |
+| `max_fuel_per_hour` | 50,000,000 | 每玩家每小时模拟总 fuel 配额 |
+| `concurrent_simulates` | 3 | 每玩家最多并行 3 个模拟（排队的拒绝） |
+
+超限 → 返回错误码 + 审计日志。长模拟（>100 tick）必须使用本地 CLI 离线模拟或异步隔离 worker。
+
+### 6.2 Audit / TickTrace 字段限制
+
+TickTrace 中存储的审计日志受以下大小限制，防止磁盘 DoS：
+
+| 字段 | 限制 | 超限处理 |
+|------|------|---------|
+| RawCommand body | 1 KB（hash + truncated preview） | 完整 body 丢弃，保留 `command_hash` + 前 200 字符 |
+| Rejection detail | 512 bytes | 截断至 500 字符 + `…truncated` |
+| Snapshot metadata | 4 KB per player | 仅存 entity count + truncation markers |
+| Untrusted string（player name, room name 等） | 256 字符 | 超出截断，记录原始 hash |
+
+所有 untrusted string 在写入 TickTrace 前经过 escaping（防 JSON 注入 + 日志注入），并在长度上限处截断。
+
 ## 7. 编译时预算
 
 | 资源 | 限制 | 执行点 |

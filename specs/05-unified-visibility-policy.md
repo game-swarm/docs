@@ -251,7 +251,7 @@ fn test_vision_range_boundary() { ... }
  `fog_of_war` | bool | true | drone 的 WASM `tick()` snapshot 是否受可见性限制。true = drone 只能看到感知范围内的实体；false = snapshot 包含全地图（教学/合作世界） |
  `player_view` | enum | `drone` | 玩家视野模式 |
  `public_spectate` | bool | false | 未登录用户实时旁观。World 默认关，Arena 默认开 |
- `spectate_delay` | u32 | 0 | 旁观延迟（tick）。0 = 实时；>0 = 延迟回放，防止观众信息泄露 |
+ | `spectate_delay` | u32 | 50 | 旁观延迟（tick）。`public_spectate=true` 时强制最低 50（`validate_config` 拒绝 < 50）；`false` 时忽略 |
  `replay_privacy` | enum | `private` | 回放可见性。Arena 赛后强制 `public` |
 
 ### 8.2 PlayerView 模式
