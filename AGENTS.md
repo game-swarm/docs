@@ -15,18 +15,18 @@
 
 **仅 ROADMAP.md** 包含进度状态、日期、实施追踪——因为它的职责就是追踪现状。
 
-design/README.md、specs/、api/ 中的所有文档，读起来应该像一件成品的规格说明书。
+design/README.md、specs/、specs/reference/ 中的所有文档，读起来应该像一件成品的规格说明书。
 
 **引用方向（单向向上）：**
 
 ```
-design/*.md  ←──  specs/  ←──  api/
+design/*.md  ←──  specs/  ←──  specs/reference/
  (被引用)         (引用设计)    (引用规范)
 ```
 
 - `design/design/README.md` 是总导航——自足，不引用 specs
 - 每个 spec 头部声明 `> 详见 DESIGN §X` 或 `> 详见 design/<domain>.md`
-- api/ 文档引用对应 spec
+- specs/reference/ 文档引用对应 spec
 
 ```
 design/design/README.md    设计导航 — 愿景 + 架构全景 + 域文件索引
@@ -39,7 +39,7 @@ specs/security/    安全规范 (MCP, 可见性, 来源)
 specs/gameplay/    游戏规范 (反馈循环, IDL)
 specs/future/      扩展路线 (T2 增量快照, T3 分片)
 ROADMAP.md         实施追踪 — 唯一含日期/状态/进度的文档
-api/               API 参考 — 开发者面向的接口文档
+specs/reference/               API 参考 — 开发者面向的接口文档
 ```
 
 ## 规范管理
@@ -94,7 +94,7 @@ R{N+1}: (重复，文档已回到稳定状态)
 
 - `docs/README.md` — 目录导航，指向 DESIGN + ROADMAP
 - Root `README.md` — 仓库入口，指向 docs/
-- `api/` — 开发者参考文档（与 spec 互补，非替代）
+- `specs/reference/` — 开发者参考文档（与 spec 互补，非替代）
 
 ## AGENTS.md
 

@@ -205,7 +205,7 @@ swarm sim --ticks=5000 --speed=100x
 ### 5.1 每 Tick 解释
 
 ```
-GET /api/v1/ticks/4521/explanation?player=42
+GET /specs/reference/v1/ticks/4521/explanation?player=42
 ```
 
 ```json

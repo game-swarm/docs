@@ -14,7 +14,7 @@
 | **MCP 与 API** | [`design/interface.md`](interface.md) | MCP 接口架构、Game API deferred command model、SDK |
 | **技术选型** | [`design/tech-choices.md`](tech-choices.md) | 各子系统技术栈对比与选型理由 |
 | **技术规范** | [`specs/`](../specs/) | 11 个技术规范，按域分 core/security/gameplay/future |
-| **API 参考** | [`api/`](../api/) | 面向开发者的接口文档 |
+| **API 参考** | [`specs/reference/`](../specs/reference/) | 面向开发者的接口文档 |
 | **进度追踪** | [`ROADMAP.md`](../ROADMAP.md) | 实现差距与进度（不作为设计评审目标） |
 | **运维手册** | [`RUNBOOK.md`](../RUNBOOK.md) | 启动序列、降级模式、备份恢复、监控 |
 
@@ -144,7 +144,7 @@ swarm/
 ├── docs/           # 设计文档、技术规范
 │   ├── design/     #   架构设计（本目录）
 │   ├── specs/      #   技术规范 (core/ security/ gameplay/ future/)
-│   ├── api/        #   API 参考
+│   ├── specs/reference/        #   API 参考
 │   └── security/   #   安全策略
 ├── engine/         # Rust 游戏引擎 — Bevy ECS, Tick 调度, 世界模拟
 ├── sandbox/        # WASM 沙箱运行时 — 编译服务, 模块管理, 安全审计

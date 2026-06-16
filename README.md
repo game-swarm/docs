@@ -11,7 +11,7 @@ docs/
 ├── ROADMAP.md                   # 模块化实施追踪
 ├── GETTING-STARTED.md           # 5 分钟入门指南
 ├── RUNBOOK.md                   # 运维手册
-├── api/                         # API 参考
+├── specs/reference/                         # API 参考
 │   ├── commands.md              #   23 种 CommandAction
 │   ├── host-functions.md        #   WASM host functions
 │   └── mcp-tools.md             #   MCP 工具完整列表

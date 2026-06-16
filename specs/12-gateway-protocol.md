@@ -73,7 +73,7 @@ Delta 仅包含对 subscriber 可见的实体——经 `is_visible_to(subscriber
       fetch_missing_ticks(last_tick + 1, received_tick - 1)
 
 fetch 回退路径:
-  GET /api/v1/world/ticks?from=<N>&to=<M>
+  GET /specs/reference/v1/world/ticks?from=<N>&to=<M>
   → 返回该范围的 delta 数组
   → 若 NATS 不可用，客户端通过此路径主动拉取
 ```
@@ -100,10 +100,10 @@ Client → Gateway:  pong
 
 | 端点 | 方法 | 用途 | 可见性过滤 |
 |------|------|------|-----------|
-| `/api/v1/world/rooms/:id` | GET | 房间实体列表 | `is_visible_to(requester, tick)` |
-| `/api/v1/world/rooms/:id/map` | GET | 仅地形（公开） | 无 |
-| `/api/v1/world/ticks` | GET | delta 批量 fetch | `is_visible_to(requester, tick)` |
-| `/api/v1/player/status` | GET | 自身资源/排名 | 仅自身 |
+| `/specs/reference/v1/world/rooms/:id` | GET | 房间实体列表 | `is_visible_to(requester, tick)` |
+| `/specs/reference/v1/world/rooms/:id/map` | GET | 仅地形（公开） | 无 |
+| `/specs/reference/v1/world/ticks` | GET | delta 批量 fetch | `is_visible_to(requester, tick)` |
+| `/specs/reference/v1/player/status` | GET | 自身资源/排名 | 仅自身 |
 | `/healthz` | GET | Gateway 健康检查 | 无 |
 | `/metrics` | GET | Prometheus 指标 | 无 |
 
@@ -121,7 +121,7 @@ Gateway 职责:
   - SSE 事件推送（deploy_accepted, first_tick_executed）
 ```
 
-MCP 工具清单见 `api/mcp-tools.md`。
+MCP 工具清单见 `specs/reference/mcp-tools.md`。
 
 ## 6. NATS 主题结构
 
