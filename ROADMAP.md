@@ -1,69 +1,143 @@
 # Swarm — 实现差距追踪
 
-> 审计日期: 2026-06-16。全量代码审计 vs DESIGN.md。
+> 审计日期: 2026-06-16。全量 DESIGN + 9 specs vs 代码审计。
 > 测试总数: engine:159, sandbox:14, sdk-rust:8, sdk-ts:11, gateway:9, frontend:13
 
 ## 总览
 
 | 模块 | 仓库 | 状态 |
 |------|------|------|
-| engine | `engine/` | 3 缺口待修复 |
+| engine | `engine/` | 10 缺口 |
 | sandbox | `sandbox/` | ✅ 完成 |
 | gateway | `gateway/` | ✅ 完成 |
 | frontend | `frontend/` | ✅ 完成 |
-| **总计** | | **5 缺口** |
+| **总计** | | **13 缺口** |
 
 ---
 
-## P0 — 核心游戏循环完整性
+## 🔴 P0 — 核心游戏循环完整性
 
 ### G5b: Depot 维修系统 — DESIGN §8.2
 
 **当前状态**: Depot 在 `StructureTypeRegistry` 中已定义（含 `repair_capacity`/`repair_range`/`repair_aging`/`maintenance`），但无对应的 ECS system 执行维修。
-**设计要求**: Controller 已实现维修。Depot 作为前线维修节点——消耗存储资源降低 drone age，可被占领，固定 range=1。
 
 - [ ] 实现 `depot_repair_system`: 查询范围内 Depot，消耗 maintenance 资源，降低 drone age
 - [ ] Controller 维修硬上限需扩展——Controller + Depot 合计 age 回退 ≤ 自然增长 50%
-- [ ] maintenance 耗尽时 Depot 停止维修（已定义字段，需实现逻辑）
+- [ ] maintenance 耗尽时 Depot 停止维修
 
 ### G8a: BodyPartTypeDef.age_modifier — DESIGN §8.2
 
-**当前状态**: `BodyPartTypeDef` 结构体缺 `age_modifier: i32` 字段。所有 body part 对 drone lifespan 无影响。
-**设计要求**: 每个 body part 类型有 `age_modifier`（TOUGH +100 延寿、ATTACK -80 折寿、Heal -30、Claim -50、RangedAttack -50、Move/Work/Carry 默认 0）。
+**当前状态**: `BodyPartTypeDef` 结构体缺 `age_modifier: i32` 字段。
 
 - [ ] `BodyPartTypeDef` 新增 `age_modifier: i32` 字段，默认 0
-- [ ] `BodyPartRegistry::default()` 为各类型设置正确的 age_modifier
-- [ ] 确保 world.toml 解析 `[[body_part_types]]` 时支持此字段
-- [ ] `BodyPartRegistry::from_defs()` 传递 age_modifier
+- [ ] `BodyPartRegistry::default()` 为各类型设置正确的 age_modifier (TOUGH=+100, ATTACK=-80, RangedAttack=-50, Heal=-30, Claim=-50)
+- [ ] world.toml 解析 `[[body_part_types]]` 支持此字段
 
 ### G8b: Drone age_max 计算 — DESIGN §8.2
 
 **当前状态**: `Drone::new()` 始终设置 `lifespan = DEFAULT_DRONE_LIFESPAN` (1500)，不聚合 body part 的 age_modifier。
-**设计要求**: `age_max = BASE_AGE + sum(每个 body part 的 age_modifier)`。
 
-- [ ] `Drone::new()` 改为接收 `&BodyPartRegistry` 或 age_modifier 列表
-- [ ] 计算 `lifespan = DEFAULT_DRONE_LIFESPAN + body.iter().map(|p| registry.age_modifier(p)).sum::<i32>()`
-- [ ] 更新所有 spawn 调用点传入 registry
+- [ ] `Drone::new()` 接收 `&BodyPartRegistry`，计算 `lifespan = DEFAULT_DRONE_LIFESPAN + sum(age_modifier)`
+- [ ] 更新 `spawn_system` 调用点传入 registry
 
 ---
 
-## P1 — MCP 工具完善
+## 🟡 P1 — MCP + 校验管线
 
 ### G13: swarm_list_modules 真实现有 — DESIGN §4.1
 
-**当前状态**: `swarm_list_modules()` 返回硬编码 stub（hash="not-implemented", deployed_at="not-implemented"）。
-**设计要求**: 返回所有已部署 WASM 模块列表（module_id, hash, deployed_at, status）。
+**当前状态**: `swarm_list_modules()` 返回硬编码 stub。
 
-- [ ] 实现模块存储查询（从 sandbox/engine 的模块注册表获取真实数据）
-- [ ] 返回真实的 module_id、hash、部署时间
+- [ ] 实现真实模块查询——从 sandbox/engine 模块注册表获取已部署 WASM 列表
 
 ### G14: swarm_get_replay 真实实现 — DESIGN §4.1
 
-**当前状态**: `swarm_get_replay()` 返回占位消息（"requires keyframe+delta storage integration"）。
-**设计要求**: 返回指定 tick 范围的回放数据（实体变更、指令日志）。
+**当前状态**: `swarm_get_replay()` 返回占位消息。
 
-- [ ] 利用已有的 `ReplayStorageConfig` + `KeyframeData` + `WorldDelta` 实现真实 replay 查询
-- [ ] 组装 from_tick→to_tick 的 delta 链并返回实体变更集
+- [ ] 利用 `ReplayStorageConfig` + `KeyframeData` + `WorldDelta` 实现真实 replay 查询
+
+### S2: 缺失 RejectionReason 变体 — specs/02 §3.10-3.13
+
+**当前状态**: `RejectionReason` enum 缺 5 个 spec 声明的变体。特殊攻击的校验绕过标准管线（用 custom action 路径替代 RejectionReason）。
+
+spec 要求但代码未实现:
+- `AlreadyHacked` — Hack 目标已被他人 Hack 中
+- `InvalidDamageType` — Debilitate 的 damage_type 不在 DamageType 枚举中
+- `AlreadyDebilitated(damage_type)` — 目标已有同类型 Debilitate
+- `PlayerNotFound` — Overload 的 target_id 不是有效玩家
+- `TargetFuelTooLow` — Overload 目标 fuel 低于下限
+
+- [ ] 在 `RejectionReason` enum 新增 5 个变体
+- [ ] 在对应的特殊攻击校验路径中返回这些 RejectionReason
+
+### S1: COLLECT 结果跨 FDB 重试缓存 — specs/01 §3.5
+
+**当前状态**: FDB commit 失败重试时重新执行 WASM COLLECT（重复扣 fuel），spec 要求复用首次 COLLECT 结果。
+
+- [ ] 首次 COLLECT 后缓存 `Map<PlayerId, Vec<ValidatedCommand>>` + fuel 扣费明细
+- [ ] FDB commit 失败重试跳过 COLLECT，使用缓存
+- [ ] 跨重试 fuel 消耗上限 = `1 × MAX_FUEL`
+
+---
+
+## 🟢 P2 — 规则系统 Stub + MVP 工具
+
+### S7a: code_propagation_system 空实现 — specs/07 §3
+
+**当前状态**: `fn code_propagation_system() {}` — 函数体为空。WorldConfig 解析完整但系统未实现。
+
+- [ ] 实现代码传播逻辑：按 `propagation_speed` 每 tick 传播 N 格
+- [ ] 支持 `propagation_source` (Spawn/Controller/AnyDrone)
+
+### S7b: memory_upkeep_system 未注册 — specs/07 §3
+
+**当前状态**: `DroneConfig.memory_upkeep_cost` 配置存在，但 `memory_upkeep_system` 未实现/未注册。
+
+- [ ] 实现 memory_upkeep_system: 按 `memory_upkeep_cost` 扣除维护费
+- [ ] 注册到 ECS pipeline
+
+### S7c: drone_env_var_system 未实现 — specs/07 §3
+
+**当前状态**: `DroneConfig.env_vars` 配置存在，但系统未实现。
+
+- [ ] 实现 drone_env_var_system: 允许 WASM 模块读写 drone 环境变量
+
+### S7d: pvp_block_system 未实现 — specs/07 §3
+
+**当前状态**: `CombatConfig.pvp_enabled` 配置存在（默认 true），但 `pvp_block_system` 未实现。
+
+- [ ] 实现 pvp_block_system: 当 `pvp_enabled=false` 时阻止所有敌对操作
+
+### S6a: 本地模拟 CLI — specs/06 §3.3
+
+**当前状态**: engine 有 `mode=local-sim` 内部路径但标记为 training-only。无独立 `swarm sim` CLI。
+
+- [ ] 实现 `swarm sim --ticks=N --speed=N` CLI（独立二进制或 engine 子命令）
+- [ ] MCP `swarm_simulate` 工具已存在，需打通本地路径
+
+### S6b: Tutorial 引导系统 — specs/06 §2.1
+
+**当前状态**: `WorldMode::Tutorial` + `CommandSource::Tutorial` 存在，但无引导覆盖层/教程 bot/分步指导。
+
+- [ ] 实现 Tutorial 世界引导覆盖层（前端 overlay）
+- [ ] 教程 bot 自动运行+可编辑
+- [ ] 分步指导：spawn drone → collect → build tower → deploy
+
+---
+
+## 已对齐 ✓
+
+| Spec | 状态 |
+|------|------|
+| specs/01 | ✅ 核心 tick 协议完整（除 COLLECT 缓存） |
+| specs/02 | ✅ 指令管线完整（除 5 个 RejectionReason） |
+| specs/03 | ✅ MCP 工具 + OAuth2 + 限流全部对齐 |
+| specs/04 | ✅ WASM 沙箱（Wasmtime/seccomp/cgroup/WASI）完整对齐 |
+| specs/05 | ✅ 可见性（is_visible_to/fog/player_view/replay_privacy）完整对齐 |
+| specs/06 | ✅ 回放查看器 + 策略仪表盘已实现（除 Tutorial + sim CLI） |
+| specs/07 | ✅ world.toml 解析 + 资源系统 + 模组加载完整（除 4 个 stub system） |
+| specs/08 | ✅ IDL CommandAction/BodyPart/DamageType/Direction 枚举完整对齐 |
+| specs/09 | ✅ CommandSource + SourceGate + Auth Context 完整对齐 |
 
 ---
 
@@ -73,4 +147,7 @@
 |--------|------|------|
 | 🔴 P0 | G8a, G8b | Body part age modifier——核心 drone 生命周期差异化 |
 | 🔴 P0 | G5b | Depot 维修——前线物流玩法完整性 |
-| 🟡 P1 | G13, G14 | MCP stub→真实——AI 玩家模块管理和回放查看 |
+| 🟡 P1 | G13, G14 | MCP stub→真实——AI 玩家模块管理和回放 |
+| 🟡 P1 | S2, S1 | 校验管线完整性 + tick 重试正确性 |
+| 🟢 P2 | S7a-S7d | 规则系统 stub 补完 |
+| 🟢 P2 | S6a, S6b | MVP 工具（本地模拟 + Tutorial） |
