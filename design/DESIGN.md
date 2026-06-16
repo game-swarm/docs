@@ -2244,89 +2244,83 @@ if (rules.get("empire-upkeep").config.onshortfall.value === "damage") {
 
 ## 9. World 模式 vs Arena 模式
 
-Swarm 提供两种**并行核心玩法**——World 和 Arena 同等重要，面向不同玩家群体。引擎统一，规则可配置。
+Swarm 提供两种**并行核心玩法**。引擎统一，规则可配置。
 
 | 维度 | World（持久世界） | Arena（竞技场） |
 |------|-----------------|-----------------------|
-| **本质** | 有机世界，类似 Minecraft 服务器 | 竞技比赛，类似围棋对局 |
+| **本质** | 有机世界，类似 Minecraft 服务器 | 限时对决，类似围棋对局 |
 | **状态** | ✅ MVP 核心 | ✅ MVP 核心 |
 | **地图** | 随机生成，不同玩家不同起点 | 对称初始条件，双方公平 |
-| **加入时机** | 随时，先来后到不同 | 同时开始，代码在比赛前锁定 |
+| **加入时机** | 随时，先来后到不同 | 由房主控制开始时间 |
 | **公平性** | 不追求——天然不对称 | 核心追求——对称起点 + 相同规则 |
-| **运行方式** | 7x24 tick 循环 | 固定时长（例：5000 tick ~ 4h） |
-| **代码** | 随时更新（热重载） | 比赛开始时锁定 |
-| **排行榜** | 无意义——起点不同无法比较 | 有意义——赛季排名、锦标赛 |
-| **回放** | 自身可见，隐私分级控制 | 赛后自动公开（replay_privacy = public） |
-| **旁观** | public_spectate 控制，默认关闭 | 默认公开（public_spectate=true） |
-| **玩家** | 人类和 AI agent 在同一世界共存 | 1v1 或团队对决 |
-| **关注点** | 持久性、创造力、涌现玩法 | 策略深度、公平性、观赏性 |
+| **运行方式** | 7x24 tick 循环 | 固定时长，比赛结束即销毁 |
+| **代码** | 随时更新（热重载） | 房间创建时锁定每个槽位的 WASM |
+| **玩家** | 人类和 AI agent 共存 | 1v1，同一玩家可以操控双方（分别部署不同算法自我对抗） |
+| **旁观** | public_spectate 控制 | 由房间可见性控制 |
+| **回放** | 自身可见，隐私分级 | 赛后生成回放（房间公开则回放公开） |
+| **关注点** | 持久性、创造力、涌现玩法 | 策略测试、算法对抗、演示观赏 |
 
-### 9.1 Arena 匹配与排名系统
+### 9.1 Arena 房间模型
 
-Arena 模式提供完整的竞技闭环：匹配 -> 对战 -> 结算 -> 回放。
+Arena 采用**房间制**——玩家创建比赛房间，设定参数，自己或他人加入。无自动匹配、无天梯排名、无赛季。
 
-#### 9.1.1 匹配队列
+#### 9.1.1 创建与加入
 
-玩家发起匹配 -> 按 rating 区间 + 等待时间匹配配对 -> 准备阶段（30s 确认）-> 代码锁定 -> 比赛开始。
+```
+房主创建房间
+    |
+    +-- 设定参数（地图、时长、初始资源）
+    +-- 选择可见性（public / unlisted / private）
+    +-- 分配槽位——每个槽位指定一个 WASM 模块
+    |   槽位 A: 自己的主策略
+    |   槽位 B: 自己的实验策略（或留空等他人加入）
+    |
+    v
+房间就绪 -> 房主点击开始 -> 双方代码锁定 -> 比赛执行
+```
 
-| 参数 | 默认值 | 说明 |
-|------|--------|------|
-| match_type | 1v1 | 1v1 / 2v2 / FFA(4人) |
-| match_duration | 5000 tick | 比赛固定时长（约4h） |
-| rating_window | +/-200 Elo | 初始匹配窗口 |
-| window_expand_rate | +50/min | 每分钟扩大窗口 |
-| max_wait_time | 300s | 超时后跨任意区间匹配 |
+**关键特性**：同一玩家可以占据多个槽位——在 Arena 中用不同算法自我对抗，测试策略优劣。也可以开放槽位邀请他人对战。
 
-#### 9.1.2 排名系统 (Elo)
-
-初始 Elo: 1200，K-factor: 32。胜：Elo += K x (1 - expected)；负：Elo -= K x expected；平：Elo += K x (0.5 - expected)。
-
-赛季长度 1 个月，段位：Bronze/Silver/Gold/Platinum/Diamond。软重置：new_elo = 1200 + (old_elo - 1200) x 0.5。定级赛前 5 场 K=64。
-
-**联赛分层**：
-
-| 联赛 | 参与者 | 排名 |
-|------|--------|------|
-| Human | 人类编写 WASM | 计入主力排名 |
-| AI-Assisted | 人类 + AI 协作 | 独立榜单 |
-| AI Tournament | 纯 AI agent | 独立榜单 |
-
-联赛之间不混合匹配。
-
-#### 9.1.3 比赛流程
-
-Lobby（匹配配对）-> Lock（代码锁定，30s 确认）-> Play（比赛中，引擎运行专用 Arena 实例，对称地图）-> Result（计算 Elo，更新排名）-> Replay（赛后自动公开回放，含完整 TickTrace + 双方视角）。
-
-比赛终止条件（按优先级）：一方 drone=0 提前获胜 > 一方认输 > tick 到上限按剩余资产判定 > 平局。
-
-#### 9.1.4 Arena 配置
+#### 9.1.2 房间配置
 
 ```toml
 [arena]
 enabled = true
-match_type = "1v1"
-match_duration = 5000
-tick_interval_ms = 300
+max_rooms = 10                   # 服务器最多同时运行的 Arena 房间
+
+[arena.defaults]
+match_duration = 5000            # 默认比赛 tick 数
+tick_interval_ms = 300           # Arena tick 间隔
+slots = 2                        # 默认槽位数（当前仅支持 1v1）
 initial_resources = { Energy = 10000, Crystal = 5000 }
-map_symmetry = "rotational"
-
-[arena.rating]
-initial_elo = 1200
-k_factor = 32
-placement_matches = 5
-placement_k_factor = 64
-season_duration_days = 30
-soft_reset_ratio = 0.5
-
-[arena.spectator]
-public_spectate = true
-spectate_delay = 100
-allow_chat = false
+map_symmetry = "rotational"      # rotational | mirror
 ```
 
-#### 9.1.5 回放与社区分享
+**创建房间时的可选项**：
 
-赛后生成 Full Replay（TickTrace JSONL）+ Highlights（关键时刻摘要）。回放播放器支持速度控制、双视角切换、tick 定位、指令展开、性能叠加。社区分享：每场生成 share card（头像/段位/Elo变化 + 关键统计 + 二维码），支持一键分享。
+| 参数 | 默认 | 说明 |
+|------|------|------|
+| match_duration | 5000 tick | 比赛时长 |
+| initial_resources | 默认配置 | 双方初始资源 |
+| map_seed | 随机 | 地图种子（相同种子 = 相同地图，可复现对决） |
+| visibility | public | public（列表可见）/ unlisted（有链接可进）/ private（仅受邀） |
+| allow_spectate | true | 是否允许旁观 |
+| spectate_delay | 100 tick | 旁观延迟 |
+
+#### 9.1.3 比赛流程
+
+```
+Create -> Configure -> Ready -> Play -> Finish -> Replay
+   |          |          |        |        |         |
+  创建房间   设参数     双方就绪  比赛中   结算      回放生成
+           选WASM     锁定代码          结果展示    (可公开)
+```
+
+**终止条件**（按优先级）：一方 drone=0 > 一方认输 > tick 到上限按剩余资产判定（drone数->建筑数->资源量） > 平局。
+
+#### 9.1.4 回放
+
+赛后自动生成回放（TickTrace JSONL）。房间 `public` 则回放公开可访问；`unlisted/private` 则仅参与者可见。回放播放器支持速度控制、双视角切换、tick 定位、指令展开。
 
 ---
 
