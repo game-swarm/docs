@@ -17,13 +17,14 @@
 
 ## 🔴 P0 — 核心游戏循环完整性
 
-### G5b: Depot 维修系统 — DESIGN §8.2
+### G5b: Depot 维修系统 — DESIGN §8.2 ✅
 
-**当前状态**: Depot 在 `StructureTypeRegistry` 中已定义（含 `repair_capacity`/`repair_range`/`repair_aging`/`maintenance`），但无对应的 ECS system 执行维修。
+**当前状态**: 已完成——`depot_repair_system` 实现，结合 Controller 共享 `RepairTracker` 硬上限。
 
-- [ ] 实现 `depot_repair_system`: 查询范围内 Depot，消耗 maintenance 资源，降低 drone age
-- [ ] Controller 维修硬上限需扩展——Controller + Depot 合计 age 回退 ≤ 自然增长 50%
-- [ ] maintenance 耗尽时 Depot 停止维修
+- [x] 实现 `depot_repair_system`: 查询范围内 Depot，消耗 maintenance 资源（Structure.energy），降低 drone age
+- [x] Controller 维修硬上限已扩展——Controller + Depot 通过 `RepairTracker` 共享 hard_cap，合计 age 回退 ≤ 自然增长 50%
+- [x] maintenance 耗尽时 Depot 停止维修（energy < maintenance_cost 时跳过）
+- 3 tests: 范围内维修、能量耗尽、玩家归属过滤
 
 ### G8a: BodyPartTypeDef.age_modifier — DESIGN §8.2
 
@@ -146,7 +147,6 @@ spec 要求但代码未实现:
 | 优先级 | 缺口 | 理由 |
 |--------|------|------|
 | 🔴 P0 | G8a, G8b | Body part age modifier——核心 drone 生命周期差异化 |
-| 🔴 P0 | G5b | Depot 维修——前线物流玩法完整性 |
 | 🟡 P1 | G13, G14 | MCP stub→真实——AI 玩家模块管理和回放 |
 | 🟡 P1 | S2, S1 | 校验管线完整性 + tick 重试正确性 |
 | 🟢 P2 | S7a-S7d | 规则系统 stub 补完 |
