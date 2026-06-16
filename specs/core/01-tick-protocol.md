@@ -1,6 +1,6 @@
 # Tick 协议规范
 
-> 详见 DESIGN §3.1a, §3.2
+> 详见 design/engine.md
 
 ## 1. 世界拓扑
 
@@ -708,7 +708,7 @@ assert_eq!(replayed.entity_count, recorded.entity_count);
 
 ## 8. Tick 资源预算统一模型
 
-本节定义单 tick 内所有阶段的资源预算，消除跨文档（specs/01、specs/04、specs/09）分散定义导致的实现分叉风险。specs/04 §6 的具体预算值以此表为准。
+本节定义单 tick 内所有阶段的资源预算，消除跨文档（specs/core/01、specs/core/04、specs/security/09）分散定义导致的实现分叉风险。specs/core/04 §6 的具体预算值以此表为准。
 
 ### 8.1 Tick Interval 语义
 

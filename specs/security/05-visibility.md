@@ -1,6 +1,6 @@
 # 统一可见性策略
 
-> 详见 DESIGN §3.1a, §8.2
+> 详见 design/engine.md + design/gameplay.md
 
 ## 1. 核心原则
 
@@ -249,7 +249,7 @@ attacker 视角:
 
 target 视角:
   - 可见: 自身 entity 上存在 `Hacked { by: player_id, remaining: 5 }` 状态（MCP `inspect_entity`）
-  - 可见: 被 Hack 的 entity 无法执行部分命令（拒绝码见 specs/02）
+  - 可见: 被 Hack 的 entity 无法执行部分命令（拒绝码见 specs/core/02-command-validation）
   - 不可见: attacker 的后续意图（夺取后如何使用）
 ```
 

@@ -1,6 +1,6 @@
 # MVP 反馈循环规范
 
-> 详见 DESIGN §9
+> 详见 design/modes.md
 
 ## 1. MVP 反馈循环
 

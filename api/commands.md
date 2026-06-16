@@ -1,6 +1,6 @@
 # Command API 参考
 
-> 详见 `specs/08-game-api-idl`、`specs/02-command-validation`
+> 详见 `specs/gameplay/08-game-api-idl`、`specs/core/02-command-validation`
 
 WASM 模块通过 `tick(snapshot) → CommandIntent[]` JSON 返回指令。
 
@@ -13,7 +13,7 @@ WASM 模块通过 `tick(snapshot) → CommandIntent[]` JSON 返回指令。
 | `sequence` | u32 | 玩家内序列号（每 tick 单调递增） |
 | `action` | Action | 指令类型 + 参数，见下方逐指令定义 |
 
-`player_id`、`source`、`tick` 由服务端 Source Gate 注入后形成 RawCommand（见 `specs/02-command-validation` §2）。
+`player_id`、`source`、`tick` 由服务端 Source Gate 注入后形成 RawCommand（见 `specs/core/02-command-validation` §2）。
 
 ## 指令列表（23 种）
 
@@ -207,7 +207,7 @@ WASM 模块通过 `tick(snapshot) → CommandIntent[]` JSON 返回指令。
 
 ## 拒绝原因（36 种）
 
-> IDL 定义见 `specs/08-game-api-idl` §RejectionReason。
+> IDL 定义见 `specs/gameplay/08-game-api-idl` §RejectionReason。
 
 | 拒绝原因 | 说明 |
 |----------|------|

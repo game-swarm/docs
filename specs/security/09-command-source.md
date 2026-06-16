@@ -1,6 +1,6 @@
 # Command Source Model — 指令来源模型
 
-> 详见 DESIGN §3
+> 详见 design/engine.md
 
 > **目标**: 所有指令来源显式建模，不可伪造 auth context
 
@@ -153,7 +153,7 @@ RawCommand (携带 auth context)
 └────────┬────────┘
          │
          ▼
-   ──→ 进入 Command Validation Pipeline (specs/02-command-validation)
+   ──→ 进入 Command Validation Pipeline (specs/core/02-command-validation)
 ```
 
 ## 5. Replay 与审计
@@ -185,9 +185,9 @@ JWT Token 的 `aud`（audience）字段用于绑定 token 到特定 transport，
 
 | Transport | `aud` 值 | 判定方式 |
 |-----------|---------|---------|
-| MCP (Agent) | `mcp:{world_id}:{player_id}` | HTTP header `X-Swarm-Transport: mcp` + `Authorization: Bearer <jwt>` |
+| MCP (Agent) | `mcp:{world_id}:{player_id}` | HTTP header `X-Swarm-Transport: mcp` + `Authorization: Bearer *** |
 | WebSocket (Browser) | `ws:{world_id}:{player_id}` | WebSocket 升级请求中 `X-Swarm-Transport: ws` header + `?token=<jwt>` query param |
-| REST (Browser/CLI) | `rest:{world_id}:{player_id}` | HTTP header `X-Swarm-Transport: rest` + `Authorization: Bearer <jwt>` |
+| REST (Browser/CLI) | `rest:{world_id}:{player_id}` | HTTP header `X-Swarm-Transport: rest` + `Authorization: Bearer *** |
 | Replay (Viewer) | `replay:{world_id}:{match_id}` | HTTP header `X-Swarm-Transport: replay` |
 
 **判定规则**：

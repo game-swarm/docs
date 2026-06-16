@@ -8,54 +8,62 @@
 |------|------|
 | 日期标记 (`2026-06-14`) | 文档不是日志，git 已记录时间 |
 | 状态行 (`> **状态**: 当前`) | 无"当前/过去"之分，只描述目标 |
-| 实现注释 (`锚定 DESIGN.md §X`) | 文档自足，不需要"锚定"声明 |
+| 实现注释 (`锚定 design/README.md §X`) | 文档自足，不需要"锚定"声明 |
 | 变更标记 (`新增`/`删除`/`v0.2`) | git diff 负责历史，文档不回溯 |
 | Phase/版本号 (`P0-N`/`Phase 0`) | 无阶段概念，无版本标记 |
 | 最后更新日期 | git blame 负责归属 |
 
 **仅 ROADMAP.md** 包含进度状态、日期、实施追踪——因为它的职责就是追踪现状。
 
-DESIGN.md、specs/、api/ 中的所有文档，读起来应该像一件成品的规格说明书。
+design/README.md、specs/、api/ 中的所有文档，读起来应该像一件成品的规格说明书。
 
 **引用方向（单向向上）：**
 
 ```
-DESIGN.md  ←──  specs/  ←──  api/
- (被引用)       (引用设计)    (引用规范)
+design/*.md  ←──  specs/  ←──  api/
+ (被引用)         (引用设计)    (引用规范)
 ```
 
-- DESIGN.md 自足，不引用 specs
-- 每个 spec 头部声明 `> 详见 DESIGN §X`
+- `design/design/README.md` 是总导航——自足，不引用 specs
+- 每个 spec 头部声明 `> 详见 DESIGN §X` 或 `> 详见 design/<domain>.md`
 - api/ 文档引用对应 spec
 
 ```
-DESIGN.md      设计真相源 — 架构全景 + 设计决策
-specs/         技术规范 — 各子系统的完整规格
-ROADMAP.md     实施追踪 — 唯一含日期/状态/进度的文档
-api/           API 参考 — 开发者面向的接口文档
+design/design/README.md    设计导航 — 愿景 + 架构全景 + 域文件索引
+design/engine.md    引擎架构 — Tick 生命周期, ECS, 快照, 确定性
+design/gameplay.md  游戏机制 — Vanilla, 身体部件, 伤害, 特殊攻击
+design/modes.md     游戏模式 — World vs Arena, PvE
+design/interface.md MCP 与 API — 工具, 命令模型, SDK
+specs/core/        核心引擎规范 (tick, 命令, WASM, 规则)
+specs/security/    安全规范 (MCP, 可见性, 来源)
+specs/gameplay/    游戏规范 (反馈循环, IDL)
+specs/future/      扩展路线 (T2 增量快照, T3 分片)
+ROADMAP.md         实施追踪 — 唯一含日期/状态/进度的文档
+api/               API 参考 — 开发者面向的接口文档
 ```
 
 ## 规范管理
 
-- `specs/` 目录存放当前规范文件，无版本子目录
+- `specs/` 按域分子目录：`core/` `security/` `gameplay/` `future/`
+- `specs/12-gateway-protocol.md` 为跨域 Gateway 协议（汇聚 specs/core/01 §4 + specs/security/03 §2 等）
 - **历史版本由 git 管理**——`git log specs/` 可追溯所有变更
 - 需要 checkpoint 时用 `git tag v0.N` 标记，不需要复制目录
-- DESIGN.md 是活文档，直接修改提交
-- 所有文档引用规范时使用 `specs/<文件名>`
+- `design/design/README.md` 是导航入口；域细节在各 `design/<domain>.md`
+- 所有文档引用规范时使用 `specs/<dir>/<NN>-<name>.md` 格式
 
 ## 工作流
 
 ```
-DESIGN.md 更新 → spec 对齐 → 代码实现对齐 spec
+design/*.md 更新 → spec 对齐 → 代码实现对齐 spec
 ```
 
-1. 设计变更先在 DESIGN.md 中完成
+1. 设计变更先在 design/README.md 中完成
 2. 设计稳定后同步到 `specs/`
 3. 代码实现对齐 spec
 
 ## 评审流程
 
-**评审对象**：DESIGN.md + specs/ + tech-choices.md。**ROADMAP.md 和 reviews/ 是临时性追踪文件，不作为评审目标。**
+**评审对象**：design/ 域文件 + specs/ + tech-choices.md。**ROADMAP.md 和 reviews/ 是临时性追踪文件，不作为评审目标。**
 
 | 仓库状态由 `reviews/` 目录是否存在来判断：
 

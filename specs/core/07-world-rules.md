@@ -1,6 +1,6 @@
 # World Rules Engine — 世界规则配置规范
 
-> 详见 DESIGN §8
+> 详见 design/gameplay.md
 
 ## 1. 定位
 
@@ -351,7 +351,7 @@ Rhai 脚本执行
 - 所有脚本执行完毕后，buffer 中有效的 action 一次性 apply
 
 **隔离保证**：
-- Rhai 脚本**不能**绕过 Command Validation Pipeline（见 specs/02-command-validation §1）
+- Rhai 脚本**不能**绕过 Command Validation Pipeline（见 specs/core/02-command-validation §1）
 - Rhai 脚本**不能**直接写入 ECS 组件——只能通过 `actions.*` API
 - Rhai 脚本**不能**访问其他玩家的私有数据
 - Buffer apply 阶段由引擎核心在 FDB 事务中执行，保证确定性
@@ -1176,4 +1176,3 @@ fn validate_config(config: &WorldConfig) -> Result<(), Vec<String>> {
 4. 绝不可绕过 Command 校验管线
 
 ---
-

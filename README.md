@@ -16,7 +16,7 @@ docs/
 │   ├── host-functions.md        #   WASM host functions
 │   └── mcp-tools.md             #   MCP 工具完整列表
 ├── design/
-│   ├── DESIGN.md                # 架构全景 + 游戏设计
+│   ├── design/README.md                # 架构全景 + 游戏设计
 │   └── tech-choices.md          # 技术选型
 ├── specs/                       # 当前规范（git 管理历史版本）
 ├── security/CVE-SLA.md          # Wasmtime CVE 响应 SLA
