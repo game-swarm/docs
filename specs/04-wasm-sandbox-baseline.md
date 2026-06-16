@@ -335,7 +335,7 @@ TickTrace 中存储的审计日志受以下大小限制，防止磁盘 DoS：
 | 编译超时 | 30s | 独立超时进程 |
 | 编译内存 | 512 MB | cgroup |
 | 编译进程 | 每次部署独立 fork | 不缓存编译中间产物 |
-| 模块缓存 | 按 (module_hash, wasmtime_version) 缓存 | 每次 tick 执行前校验 player 的证书未过期未吊销——过期/吊销立即终止 WASM 执行（该 tick 0 指令）。缓存条目随撤销清除 |
+| 模块缓存 | 按 `Blake3(module_hash || wasmtime_build_commit || wasmparser_version || validation_policy_version || target_arch || security_epoch)` 缓存 | 每次 tick 执行前校验 player 证书未过期未吊销——过期/吊销立即终止 WASM 执行。security_epoch 或 validation policy 变更 → 全量失效。编译仅跳过，验证不跳过。 |
 | 并发编译 | 最多 5 个 | 防止编译阶段 DoS |
 | module validation | 10ms | wasmparser 解析超时 |
 
@@ -343,10 +343,10 @@ TickTrace 中存储的审计日志受以下大小限制，防止磁盘 DoS：
 
 以下仅列出 §3.2 允许的**查询类 host function**。Mutating 操作的 cost 定义在 specs/08- IDL 各 command 的 `cost` 字段中。
 
-| 函数 | fuel 成本 | 响应大小上限 |
-|------|----------|------------|
-| `host_get_terrain` | 500 | 4 bytes |
-| `host_get_objects_in_range` | 2,000 + 100/entity | 64 KB |
-| `host_path_find` | 10,000 + 50/tile | 8 KB | **缓存键**: `(from, to, terrain_hash, player_visibility_fingerprint)` — 不同玩家的可见性状态产生不同缓存条目，防止跨玩家路径泄露 |
-| `host_get_world_config` | 1,000 | 16 KB |
-| `host_get_world_rules` | 1,000 | 16 KB |
+| 函数 | fuel 成本 | 响应大小上限 | 说明 |
+|------|----------|------------|------|
+| `host_get_terrain` | 500 | 4 bytes | |
+| `host_get_objects_in_range` | 2,000 + 100/entity | 64 KB | |
+| `host_path_find` | 500 × explored_nodes + 200 × expanded_edges + cache_miss_penalty | 8 KB | **成本按实际工作量**：explored_nodes（A* 展开的节点数）、expanded_edges（评估的邻居数）、cache_miss（CPU 重算）。不可达目标消耗更高（无路径可剪枝）。per-player/per-tick 上限：10 次调用 + 100,000 explored_nodes 总额度。超限 deterministic fail。**缓存键**: `(from, to, terrain_hash, player_visibility_fingerprint)` |
+| `host_get_world_config` | 1,000 | 16 KB | |
+| `host_get_world_rules` | 1,000 | 16 KB | |
