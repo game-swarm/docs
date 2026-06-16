@@ -109,12 +109,12 @@ spec 要求但代码未实现:
 
 - [ ] 实现 pvp_block_system: 当 `pvp_enabled=false` 时阻止所有敌对操作
 
-### S6a: 本地模拟 CLI — specs/06 §3.3
+### S6a: 本地模拟 CLI — specs/06 §3.3 ✅
 
-**当前状态**: engine 有 `mode=local-sim` 内部路径但标记为 training-only。无独立 `swarm sim` CLI。
+**当前状态**: 已完成——`swarm sim --ticks=N --speed=N` CLI 已实现，使用 `sim` 模块。
 
-- [ ] 实现 `swarm sim --ticks=N --speed=N` CLI（独立二进制或 engine 子命令）
-- [ ] MCP `swarm_simulate` 工具已存在，需打通本地路径
+- [x] 实现 `swarm sim --ticks=N --speed=N` CLI（engine 子命令 `sim`，通过 `create_local_simulation_world` 创建本地世界）
+- [x] MCP `swarm_simulate` 工具已存在；本地 sim 模块通过 `lib.rs` 注册为公共 API
 
 ### S6b: Tutorial 引导系统 — specs/06 §2.1
 
@@ -150,4 +150,4 @@ spec 要求但代码未实现:
 | 🟡 P1 | G13, G14 | MCP stub→真实——AI 玩家模块管理和回放 |
 | 🟡 P1 | S2, S1 | 校验管线完整性 + tick 重试正确性 |
 | 🟢 P2 | S7a-S7d | 规则系统 stub 补完 |
-| 🟢 P2 | S6a, S6b | MVP 工具（本地模拟 + Tutorial） |
+| 🟢 P2 | S6b | MVP 工具（Tutorial） |
