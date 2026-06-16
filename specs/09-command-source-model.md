@@ -179,6 +179,40 @@ RawCommand (携带 auth context)
 
 ## 7. Session 与 Deploy Nonce 状态机
 
+### 7.0 Transport Audience 与 Browser/Agent 判定
+
+JWT Token 的 `aud`（audience）字段用于绑定 token 到特定 transport，防止跨 transport 重放：
+
+| Transport | `aud` 值 | 判定方式 |
+|-----------|---------|---------|
+| MCP (Agent) | `mcp:{world_id}:{player_id}` | HTTP header `X-Swarm-Transport: mcp` + `Authorization: Bearer <jwt>` |
+| WebSocket (Browser) | `ws:{world_id}:{player_id}` | WebSocket 升级请求中 `X-Swarm-Transport: ws` header + `?token=<jwt>` query param |
+| REST (Browser/CLI) | `rest:{world_id}:{player_id}` | HTTP header `X-Swarm-Transport: rest` + `Authorization: Bearer <jwt>` |
+| Replay (Viewer) | `replay:{world_id}:{match_id}` | HTTP header `X-Swarm-Transport: replay` |
+
+**判定规则**：
+- 缺少 `X-Swarm-Transport` header → 拒绝（`401 MissingTransportHeader`）
+- `aud` 不匹配请求 transport → 拒绝（`403 AudienceMismatch`）
+- MCP token **不得**用于 WebSocket 连接（Agent transport 与 Browser transport 不可互换）
+- Deploy nonce 的 `audience` 字段同上规则
+
+**Server-issued Certificate 所有权模型**：
+
+```
+证书层级:
+  玩家 Ed25519 密钥对（客户端生成，私钥不离开客户端）
+    │
+    └─→ 服务端签发 Certificate { player_id, public_key, validity, epoch }
+         │
+         └─→ 部署时客户端用私钥签名 DeployPayload
+               │
+               └─→ 服务端用证书中的公钥验签
+
+所有权: 玩家 = 私钥持有者 = 证书主体。证书不可跨玩家转移。
+CRL: 吊销证书 → 该密钥对的所有部署立即失效 → player 需重新注册
+Epoch: 全局 bump → 所有证书失效 → 全量重新认证
+```
+
 ### 7.1 Session 生命周期
 
 `session_id` 由 Auth Service 在玩家认证时签发，绑定到单个连接生命周期：

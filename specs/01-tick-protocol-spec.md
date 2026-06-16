@@ -154,9 +154,50 @@ fn build_snapshot(player_id, tick) -> Snapshot:
   2. **高优先桶**（按距离排序）：己方 drone、己方建筑
   3. **中优先桶**（按距离排序）：敌方可见实体、资源点
   4. **低优先桶**（按距离排序）：友方实体、中立实体
-  同一桶内按距离优先（最近的先保留）。敌方无法通过堆廉价实体挤掉对方关键实体。
+  同一桶内按**确定性排序键** `(distance_to_drone, entity_id)` 升序排列，保证同输入同截断结果。距离以 drone 当前位置到实体的曼哈顿距离计算。
 - `truncated=true` 时 WASM 模块收到标记，应降级策略
 - `host_get_objects_in_range` 返回 `{items, truncated, total_visible_count?}`
+
+**截断确定性保证**：`sort_and_truncate` 的结果完全由 `(tick_state, player_visibility_fingerprint)` 决定：
+- 排序键完全基于世界状态中的确定值（距离、entity_id、分桶归属）——不使用墙钟、随机数或并行度
+- 同一 tick、同一世界状态、同一玩家 → 同一截断结果（包括哪些实体被丢弃）
+- 此保证是 replay determinism 的必要条件
+
+**玩家可预期性**：玩家可通过以下方式推理截断行为：
+- 关键桶实体**永不**被截断
+- 高优先桶内，离 drone 最近的实体优先保留
+- 同一桶内，entity_id 较小者优先（创建顺序）
+- `omitted_count` 告知被丢弃的实体数量——WASM 代码可据此判断信息完整度
+- `snapshot_len` 告知实际快照大小——WASM 可检测是否接近 256KB 阈值
+
+**滥用检测**：以下模式在引擎侧自动检测并标记：
+| 滥用模式 | 检测方法 | 响应 |
+|---------|---------|------|
+| 实体膨胀攻击 | 玩家可见实体数连续 5 tick 超过 `MAX_VISIBLE_ENTITIES`（500） | 标记玩家 `visibility_abuse`，降低其 COMBAT 优先级 |
+| 出口视野扩展 | 单 tick 内可见房间数 > 9（默认 ≤9） | 截断到 9 房间，记录审计日志 |
+| 截断频率异常 | 连续 3 tick `truncated=true` | 告警；该玩家 `snapshot_quota -= 10%` |
+| path_find 路径膨胀 | 单 tick `path_find` cache_miss > 50 | 该 tick 后续 path_find 返回空路径 |
+
+**快照构建时序边界**：
+
+```
+tick N 时间线:
+  COLLECT 开始
+    ├── [1] 构建完整世界快照（Bevy World 深拷贝）      ← 一次性，O(entities)
+    ├── [2] 按房间分片快照                             ← 并行，O(rooms)
+    ├── [3] 对每个玩家：视野过滤 + 截断                  ← 并行，O(players × visible_entities)
+    ├── [4] WASM tick(snapshot) 执行                   ← 并行，O(players)，此阶段快照只读
+    ├── [5] MCP query（swarm_get_snapshot）            ← 读取同一快照（步骤 1 构建的副本）
+    │                                                ← MCP query 与 WASM tick 看到的是同一份快照
+  COLLECT 完成
+  EXECUTE（修改 Bevy World）
+  FDB commit（快照仅用于回滚，不持久化）
+```
+
+关键不变量：
+- 步骤 [4] WASM tick() 和步骤 [5] MCP query 基于**同一份**快照——`snapshot_tick == current_tick`
+- 快照在 COLLECT 阶段构建一次，COLLECT 期间不变（FDB commit 失败回滚时使用同一快照恢复）
+- MCP query 不能观察到 EXECUTE 阶段的中间状态——只能看到 COLLECT 开始时的世界快照
 
 ### 2.4 WASM 模块部署
 
@@ -282,6 +323,7 @@ app.add_systems(Update, (
     spawn_system,               // 统一创建 Phase 2a 校验通过的 drone
     spawning_grace_system,      // 为新生 drone 附加 SpawningGrace(1) 无敌帧
     combat_system,              // 战斗结算（damage 先 → heal 后，同 tick 内结算）
+    status_advance_system,      // 特殊攻击状态推进（Hack stage、Overload 恢复、Debuff 递减）
 ).chain());
 
 // 以下无数据竞争，与主线并行调度（Bevy 自动管理线程）
@@ -295,7 +337,7 @@ app.add_systems(Update, (
 ));
 ```
 
-**主线 `.chain()` 顺序**：`death_mark → spawn → spawning_grace → combat`。combat 在 regeneration 之前执行——确保战斗结算基于本轮状态，再生在战斗后补充资源。
+**主线 `.chain()` 顺序**：`death_mark → spawn → spawning_grace → combat → status_advance`。combat 在 regeneration 之前执行——确保战斗结算基于本轮状态，再生在战斗后补充资源。status_advance 在 combat 之后——特殊攻击状态推进基于最新 HP/状态。
 
 **主线和并行调度关系**：`regeneration` 和 `decay` 与主线无数据竞争（各操作独立数据），通过 `.before(death_cleanup_system)` 约束必须在 `death_cleanup` 前完成。
 
@@ -595,3 +637,68 @@ cargo test --test determinism -- --samples 1000 --sample-rate 0.05
 assert_eq!(replayed.state_checksum, recorded.state_checksum);
 assert_eq!(replayed.entity_count, recorded.entity_count);
 ```
+
+---
+
+## 8. Tick 资源预算统一模型
+
+本节定义单 tick 内所有阶段的资源预算，消除跨文档（specs/01、specs/04、specs/09）分散定义导致的实现分叉风险。specs/04 §6 的具体预算值以此表为准。
+
+### 8.1 Tick Interval 语义
+
+| 参数 | 值 | 语义 |
+|------|-----|------|
+| `tick_interval_ms` | 3000ms（World）/ 可配置（Arena，默认 300ms） | **目标值**，非硬上限 |
+| `tick_soft_deadline_ms` | 2500ms | **软截止**——超过此值触发告警并跳过剩余玩家 COLLECT（0 指令） |
+| `tick_hard_deadline_ms` | 4000ms | **硬截止**——超过此值 tick 放弃（Bevy snapshot 恢复），连续 3 tick 引擎降级 |
+| `tick_overrun_policy` | `skip_remainder` | 软截止超时后：跳过未完成玩家，已收集的玩家正常 EXECUTE。不下个 tick 补偿 |
+
+### 8.2 统一预算表
+
+| 阶段 | 资源 | 预算 | 超限行为 | 退还 |
+|------|------|------|---------|:--:|
+| **COLLECT** | wall-clock per player | 2500ms（`collect_timeout_ms`） | 该玩家 0 指令 | ❌ |
+| **COLLECT** | WASM fuel per player | 10,000,000 fuel units | 完整输出丢弃，0 指令 | ❌ |
+| **COLLECT** | WASM linear memory | 64 MB | OOM → 该玩家 0 指令 | ❌ |
+| **COLLECT** | Host function calls | 1000/tick | 第 1001 次返回错误 | ❌ |
+| **COLLECT** | `host_path_find` calls | 10/tick + 100,000 explored_nodes 总额度 | 超限 → deterministic fail | ❌ |
+| **COLLECT** | Output JSON | 256 KB | 截断（保留前 256KB） | ❌ |
+| **EXECUTE** | wall-clock total | `tick_soft_deadline_ms` 内完成 | 软截止前必须完成（EXECUTE 不单独超时，由 COLLECT+EXECUTE 总预算控制） | — |
+| **EXECUTE** | FDB retry count | 3 次 | 第 4 次失败 → tick 放弃 | ✅ 全额退还 |
+| **EXECUTE** | COLLECT 缓存跨重试 | 复用首次 COLLECT 结果 | 不重新执行 WASM，fuel 不追加扣费 | — |
+| **BROADCAST** | wall-clock | 无硬限制（异步发布） | Dragonfly/NATS 失败不影响已持久化 tick | — |
+| **COMPILE** | wall-clock | 30s per module | 超时 → 拒绝部署 | ✅ (deploy 阶段，非 tick) |
+| **COMPILE** | memory | 512 MB | OOM → 拒绝部署 | ✅ |
+
+### 8.3 Simulate / Dry-Run 独立预算
+
+MCP `swarm_simulate` / `swarm_dry_run` 使用独立于 tick 的配额池——防止模拟消耗影响实际 tick 预算：
+
+| 资源 | 限制 | 说明 |
+|------|------|------|
+| `max_ticks` | 100 | 每次模拟最多 100 tick |
+| `max_entities` | 1000 | 模拟世界最多实体数 |
+| `max_output_bytes` | 1 MB | 模拟结果最大输出 |
+| `max_cpu_ms` | 5000 | 每次模拟 CPU 时间 |
+| `max_fuel_per_hour` | 50,000,000 | 每玩家每小时总模拟 fuel（独立于 tick fuel） |
+| `concurrent_simulates` | 3 | 每玩家并行模拟上限 |
+
+World 与 Arena 的 simulate 配额**相同**——两者使用同一引擎和同一预算模型。Arena 因为 tick_interval_ms 更短，模拟的 wall-clock 窗口更窄，但 fuel/entity 配额不变。
+
+### 8.4 COLLECT 缓存复用 `consumed_fuel` 语义
+
+FDB commit 失败重试时，COLLECT 结果被缓存复用。fuel 扣费语义：
+
+```
+首次 COLLECT: consumed_fuel[tick] = actual_fuel_used
+FDB commit 成功: final_fuel[tick] = consumed_fuel[tick]
+
+FDB commit 失败 (retry 1): 跳过 COLLECT，直接 EXECUTE
+  → consumed_fuel 不变（不追加扣费）
+  → 跨重试总 fuel ≤ 1 × MAX_FUEL
+
+FDB commit 成功 (retry N): final_fuel[tick] = consumed_fuel[tick]
+FDB commit 失败 (retry 3，放弃): 退还 consumed_fuel[tick]
+```
+
+禁止通过故意竞争失败构造重试绕过 budget：同 tick 内 WASM 仅执行一次（首次 COLLECT），后续重试不触发新的 WASM 调用。

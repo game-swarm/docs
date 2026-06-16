@@ -356,6 +356,32 @@ Rhai 脚本执行
 - Rhai 脚本**不能**访问其他玩家的私有数据
 - Buffer apply 阶段由引擎核心在 FDB 事务中执行，保证确定性
 
+**RuleMod 角色声明**：RuleMod 是**世界规则系统**——通过声明式钩子（`on_tick`、`on_command`、`on_event`）修改世界参数和行为，不是玩家命令旁路。RuleMod 不能：(a) 为特定玩家创建或销毁实体；(b) 绕过 Command Validation Pipeline 注入 RawCommand；(c) 直接修改玩家私有数据（如 WASM 内存、部署历史）。RuleMod 的生效范围是**世界级**（全局资源税率、事件触发、环境效果），不得降级为**玩家级作弊通道**。
+
+**能力命名空间**：`actions.*` API 是 RuleMod 修改世界状态的唯一渠道。每个能力有明确的读写范围和审计要求：
+
+| API | 能力 | 允许范围 | 禁止项 | 审计字段 |
+|-----|------|---------|--------|---------|
+| `actions.deduct(resource, amount, reason)` | 扣除全局资源 | 全局资源池（Energy、Crystal 等） | 禁止扣到负数；禁止扣除玩家私有资源 | `mod_id, tick, resource, amount, reason` |
+| `actions.award(resource, amount, reason)` | 发放全局资源 | 全局资源池 | 禁止超过 `world.toml` 中 `max_award_per_tick` 上限 | `mod_id, tick, resource, amount, reason` |
+| `actions.emit_event(event_type, data)` | 发射世界事件 | 预定义事件类型（`ResourceCrisis`, `Invasion`, `WeatherChange` 等） | 禁止伪造玩家命令事件；禁止包含玩家私有数据 | `mod_id, tick, event_type` |
+| `actions.set_world_param(key, value)` | 修改世界参数 | `world.toml` 中标记 `mutable = true` 的参数 | 禁止修改 `mutable = false` 的参数（如 tick_interval_ms） | `mod_id, tick, key, old_value, new_value` |
+| `actions.set_entity_flag(entity_id, flag, value)` | 设置实体 flag | 仅全局实体（Source、Controller）；flag 必须在 `allowed_flags` 白名单中 | 禁止设置玩家 drone 的 flag；禁止 `immune_*` 以外的 combat 修改 | `mod_id, tick, entity_id, flag, value` |
+
+能力扩展（如 `actions.spawn_npc`）需通过 `mod.toml` 声明 `required_capabilities = ["spawn_npc"]`，服主在 `world.toml` 中显式授权。
+
+**信任链**：模组的完整生命周期受以下信任链约束：
+
+| 阶段 | 机制 | 说明 |
+|------|------|------|
+| **签名** | Ed25519 签名（SHA-256 摘要） | 每个 `.rhai` 和 `mod.toml` 必须附带 `.sig` 签名文件；未签名 → 拒绝加载 |
+| **版本锁定** | `mod.toml` 声明 `version = "1.2.3"` + `api_version = "1"` | 引擎检查 API 版本兼容性；不兼容版本拒绝加载 |
+| **信任白名单** | `world.toml` 中 `[rhai] trusted_keys = [...]` | 仅白名单内公钥签名的模组可加载 |
+| **吊销 (CRL)** | `world.toml` 中 `[rhai] revoked_keys = [...]` | 被吊销密钥签名的模组拒绝加载——即使曾在白名单中 |
+| **Epoch 升级** | `world.toml` 中 `[rhai] epoch = N` | 服主提升 epoch → 所有旧签名失效，需重新签名。防止被吊销密钥的历史签名重放 |
+| **Operator Override** | `swarm mod disable <mod_id> --world <world>` | 运行时禁用指定模组（不卸载，仅暂停执行）。下次 tick 不再调用该模组钩子 |
+| **回滚策略** | 模组禁用后，其历史 effects 不回滚（已持久化到 FDB） | 世界状态不可逆——effects 一旦 apply 即永久生效。服主需通过新模组或手动修复纠正 |
+
 **进程内模式**（唯一生产运行模式）：Rhai engine 在核心引擎进程内执行。安全边界由 Ed25519 数字签名验证保证——所有模组必须签名，不存在"允许未签名"的宽松模式。
 
 - 签名验证在引擎启动时一次性完成，运行时无额外开销

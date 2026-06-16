@@ -89,9 +89,14 @@ LEADERBOARD: 公开。指标: GCL、房间数、drone 数。
   "resources": { "energy": 5000, "minerals": {"H": 1200} },  // 仅自身
   "controller": { "level": 3, "progress": 4500 },            // 仅自身
   "market_orders": [/* 可见订单 */],
-  "leaderboard_snapshot": { "rank": 42, "gcl": 1500000 }
+  "leaderboard_snapshot": { "rank": 42, "gcl": 1500000 },
+  "snapshot_tick": 4521,        // 快照构建时刻的 tick 编号——与 WASM tick(snapshot) 输入一致
+  "truncated": false,           // 是否因 256KB 限制被截断
+  "omitted_count": 0            // 因截断被丢弃的实体数
 }
 ```
+
+**`snapshot_tick` 语义**：`swarm_get_snapshot` 返回的 `snapshot_tick` 等于当前 COLLECT 阶段开始时的 tick 编号。WASM `tick()` 收到的 `snapshot.tick` 与此相同。MCP query 与 WASM tick 看到的是**同一份快照**——不存在时差。
 
 ### 3.2 MCP 工具
 
@@ -195,7 +200,67 @@ GET /api/v1/world/rooms/:id/map → 仅地形（公开）
 
 所有输出面读取此缓存。防止「快照说隐藏但 WebSocket 增量泄露」的 bug。
 
-## 6. 测试
+### 各输出面 Tick 基准
+
+所有输出面在 `tick N` 时看到的世界状态基于 **COLLECT 阶段开始时的快照**（即 `snapshot_tick == N`）：
+
+| 输出面 | tick 基准 | 过滤函数 | 备注 |
+|--------|:--:|---------|------|
+| WASM `tick(snapshot)` | N | `is_visible_to(player, N)` | snapshot.tick == N |
+| MCP `swarm_get_snapshot` | N | `is_visible_to(player, N)` | 与 WASM tick 同一份快照 |
+| MCP `swarm_get_objects_in_range` | N | `is_visible_to(player, N)` | 同一快照的子集查询 |
+| MCP `swarm_explain_last_tick` | N-1 | 仅自身 | 解释上一 tick 的执行结果 |
+| MCP `swarm_get_replay` | N | `is_visible_to(player, tick)` | 每帧按该 tick 的视野重建 |
+| WebSocket delta | N | `is_visible_to(subscriber, N)` | 仅推送变更实体 |
+| REST `/api/v1/world/rooms/:id` | N | `is_visible_to(requester, N)` | 快照缓存读取 |
+| Replay (自身) | 历史 tick | `is_visible_to(player, tick)` | 逐 tick 重建视野 |
+| Replay (Arena 赛后公开) | 历史 tick + ≥100 延迟 | 全知（无过滤） | 仅赛后可用 |
+| Spectator WebSocket | N - spectate_delay | 无过滤（全地图） | 仅 `public_spectate=true` 时可用 |
+
+## 6. 特殊攻击可见性规则
+
+特殊攻击从 attacker 和 target 两侧的可观察性必须明确——防止信息泄露形成 oracle。
+
+### 6.1 Overload 可观察性
+
+```
+attacker 视角（执行 Overload 的玩家）:
+  - 可见: 是否成功执行（无拒绝码） + target_player_id
+  - 不可见: target 的 actual_fuel（仅知 target 在当前世界中有可见实体）
+  - 不可见: target 是否真的因 Overload 受到影响
+  - 语义: "结果三等价"——Overload 成功 / target fuel 太低静默 no-op / target 不存在 ——
+          从 attacker 视角不可区分，attacker 仅知"命令已接受"
+  - 下一 tick 通过观察 target drone 是否停止行动来间接推断（合法信息）
+
+target 视角（被 Overload 的玩家）:
+  - 可见: 自身 fuel 变化（MCP `get_player_status`）
+  - 可见: 自身 drone 因 fuel 不足未执行 action（MCP `swarm_explain_last_tick`）
+  - 不可见: 谁执行的 Overload
+  - 不可见: Overload 是否被应用（若 fuel 远高于扣除量，行为不变）
+```
+
+### 6.2 Hack 可观察性
+
+```
+attacker 视角:
+  - 可见: Hack 是否成功执行（无拒绝码） + target_entity_id
+  - 可见: Hack 施加后，target entity 的 owner 暂不变（5 tick 后夺取）
+  - 不可见: target 玩家的 WASM 是否检测到 Hack（target 可通过 entity.owner 自查）
+
+target 视角:
+  - 可见: 自身 entity 上存在 `Hacked { by: player_id, remaining: 5 }` 状态（MCP `inspect_entity`）
+  - 可见: 被 Hack 的 entity 无法执行部分命令（拒绝码见 specs/02）
+  - 不可见: attacker 的后续意图（夺取后如何使用）
+```
+
+### 6.3 通用不变量
+
+所有特殊攻击遵循：
+- attacker 不可通过特殊攻击的返回码区分"目标不存在"与"目标不可见"——统一返回 `NotVisibleOrNotFound`
+- attacker 不可通过特殊攻击的返回码推断目标的资源/状态内部值
+- target 可通过自身数据看到特殊攻击的**效果**（HP 变化、状态标记、fuel 变化），但不可看到**攻击者身份**——除非攻击者实体在 target 视野内
+
+## 7. 测试
 
 ### 6.1 单元测试
 
@@ -228,7 +293,7 @@ fn test_vision_range_boundary() { ... }
 //   3. 断言: 隐藏数据不在输出中
 ```
 
-## 7. 双模式可见性
+## 8. 双模式可见性
 
 ### World 模式（持久世界）
 
@@ -240,7 +305,7 @@ fn test_vision_range_boundary() { ... }
 
 ---
 
-## 8. 可见性配置
+## 9. 可见性配置
 
 可见性分两层：**drone 感知**（影响游戏公平性）和**玩家视野**（影响观战体验）。
 
