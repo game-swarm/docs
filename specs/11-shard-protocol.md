@@ -13,7 +13,7 @@ Tier 3 支持 >5,000 drone / 多节点部署。世界状态按房间分片，每
 | 参数 | 值 | 说明 |
 |------|-----|------|
 | `shard_key` | `room_id` | 以 Room 为分片键——每个 room 的所有实体归属于同一分片 |
-| `shard_assignment` | 一致性哈希 | TBD — 具体哈希算法待定 |
+| `shard_assignment` | 一致性哈希（`jump_hash` 或 `ring_hash`） | 候选：Google Jump Hash（简单、无状态、最小重分配）。需在 Tier 3 实现前基准测试确认 |
 | `max_rooms_per_shard` | 50 | 与 Tier 1 的限制一致 |
 | `cross_shard_rooms` | 仅相邻房间 | 跨分片交互仅发生在房间边界 |
 
@@ -64,11 +64,11 @@ Phase 2 — 结算与确认:
 
 ## 5. FDB 多区域部署
 
-TBD — FDB 集群在多个物理区域部署时的延迟、冲突解决和分片亲和性策略。
+候选策略：FDB 集群跨区域部署时，每个分片绑定到最近的 FDB 区域（zone-aware placement）。跨分片事务通过 FDB 的 multi-region 配置处理——冲突解决策略：`last-writer-wins` with `versionstamp` tiebreaker。需在 Tier 3 实现前与 FDB 专家评审拓扑设计。
 
 ## 6. 身份/CRL/Deploy Nonce 跨分片链
 
-TBD — 证书吊销列表、deploy nonce 去重、epoch bump 等全局状态的跨分片同步。
+候选策略：Auth Service 作为全局单例（非分片），所有分片通过 RPC 查询证书状态。CRL 缓存每分片本地维护，60s TTL + Auth Service push 失效。Deploy nonce 去重：全局 nonce registry（单点 FDB key space）——所有分片写入同一 `nonce/{nonce_id}` key，利用 FDB 事务原子性去重。
 
 ## 7. 待定项
 

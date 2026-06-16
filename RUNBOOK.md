@@ -1,6 +1,87 @@
 # Swarm 运维手册 (Runbook)
 
-## 密钥轮换
+## 1. 启动序列
+
+### 1.1 完整栈启动 (生产)
+
+```bash
+# 1. 基础设施
+docker compose up -d fdb nats dragonfly
+
+# 2. 等待依赖就绪
+docker compose exec fdb fdbcli --exec "status" | grep -q "available"
+docker compose exec nats nats server check connection
+docker compose exec dragonfly redis-cli PING | grep -q "PONG"
+
+# 3. 编译服务 (独立启动，不阻塞引擎)
+docker compose up -d compiler
+
+# 4. 引擎 (等待 FDB + NATS 就绪后)
+docker compose up -d engine
+
+# 5. 健康检查
+curl -f http://localhost:8080/healthz          # 引擎
+curl -f http://localhost:8081/healthz          # compiler
+curl -f http://localhost:8082/healthz          # gateway
+```
+
+### 1.2 启动顺序约束
+
+```
+fdb ──→ nats ──→ engine ──→ gateway ──→ frontend
+  │                │
+  └──→ compiler ───┘  (compiler 可与 engine 并行启动)
+  │
+  └──→ dragonfly     (缓存独立，可与 FDB 并行)
+```
+
+| 服务 | 依赖 | 启动超时 | 就绪信号 |
+|------|------|---------|---------|
+| FDB | 无 | 30s | `fdbcli --exec status` 返回 `available` |
+| NATS | 无 | 10s | `nats server check connection` |
+| Dragonfly | 无 | 10s | `redis-cli PING` → `PONG` |
+| Compiler | FDB | 15s | `/healthz` → 200 |
+| Engine | FDB + NATS | 60s | `/healthz` → 200，`tick_ok: true` |
+| Gateway | Engine + NATS | 15s | `/healthz` → 200 |
+| Frontend | Gateway | 10s | HTTP 200 on `/` |
+
+### 1.3 降级启动
+
+```bash
+# 仅引擎 (无 FDB/NATS/Dragonfly) — 开发/测试
+docker compose up engine
+
+# 引擎 + FDB (无 NATS) — 单节点持久化
+docker compose up fdb engine
+
+# 引擎 + NATS + Dragonfly (无 FDB) — 无持久化，仅广播
+docker compose up nats dragonfly engine
+```
+
+降级模式下引擎自动检测依赖缺失：
+- 无 FDB → 状态仅内存，tick 继续运行，`/healthz` 返回 `503 degraded`
+- 无 NATS → delta 推送暂停，客户端 REST fetch 同步
+- 无 Dragonfly → 所有读取回退 FDB 直读
+
+### 1.4 启动后验证
+
+```bash
+# 1. 引擎存活
+curl -s http://localhost:8080/healthz | jq .
+
+# 2. 首个 tick 完成
+curl -s http://localhost:8080/metrics | grep "tick_number"
+
+# 3. 玩家连接就绪
+curl -s http://localhost:8082/healthz | jq .
+
+# 4. WASM 编译就绪
+curl -s http://localhost:8081/healthz | jq .
+```
+
+---
+
+## 2. 密钥轮换
 
 ### world_seed
 ```bash
@@ -27,7 +108,9 @@ swarm cert revoke --player-id <ID>
 fdbcli --exec "configure new ssd"
 ```
 
-## 备份恢复
+---
+
+## 3. 备份恢复
 
 ### 备份
 ```bash
@@ -45,37 +128,43 @@ fdbbackup restore file:///backup/fdb -t default
 swarm snapshot restore --input /backup/snapshot_20260614.json
 ```
 
-## 降级模式
+---
 
-### 无 FDB（降级运行）
-引擎自动检测 FDB 不可达，进入降级模式：
-- `/healthz` 返回 `503 degraded`
-- 状态仅存于内存，不持久化
-- tick 继续运行，无中断
+## 4. 降级模式
 
-### 无 NATS（无广播）
-- delta 推送暂停
-- `/healthz` 返回 `503 degraded`
-- 客户端检测 gap 后通过 REST fetch 同步
+| 模式 | 触发 | 影响 | 恢复 |
+|------|------|------|------|
+| **无 FDB** | FDB 连接丢失 >3s | 状态仅内存，`/healthz 503` | FDB 恢复后自动重连 |
+| **无 NATS** | NATS 连接丢失 | delta 推送暂停，客户端 REST fetch | NATS 恢复后自动重连 |
+| **无 Dragonfly** | Dragonfly 连接丢失 | 读取回退 FDB 直读，性能下降 | Dragonfly 恢复后自动重建缓存 |
+| **引擎 OOM** | cgroup OOM killer | 进程重启，当前 tick 丢失（snapshot 恢复） | systemd auto-restart |
+| **FDB commit 连续失败** | ≥3 次/tick | tick 放弃，引擎降级 | 运维介入检查 FDB 集群 |
 
-### 完全降级（仅引擎）
-`docker compose up engine` 仅启动引擎，无 FDB/NATS。
+---
 
-## 监控指标
+## 5. 监控指标
 
-| 指标 | 告警阈值 |
-|------|---------|
-| tick_duration_p99 | > 3s |
-| refund_abuse_rate | > 20% |
-| command_rejection_rate | > 30% |
-| consecutive_tick_failures | > 3 |
-| FDB 连接丢失 | 即时告警 |
+| 指标 | 告警阈值 | 严重度 |
+|------|---------|:--:|
+| tick_duration_p99 | > 3s | WARN |
+| tick_duration_p99 | > 4s | CRITICAL — tick 放弃风险 |
+| refund_abuse_rate | > 20% | WARN |
+| command_rejection_rate | > 30% | WARN |
+| consecutive_tick_failures | > 3 | CRITICAL |
+| FDB 连接丢失 | 即时 | CRITICAL |
+| NATS 连接丢失 | > 5s | WARN |
+| WASM compile queue depth | > 10 | WARN |
+| Engine memory usage | > 80% cgroup limit | WARN |
+| Sandbox worker crash rate | > 5% | WARN |
 
-## 灾难恢复
+---
 
-1. 停止引擎
-2. 恢复 FDB 备份
-3. 恢复引擎快照
-4. 验证 state_checksum
-5. 启动引擎
-6. 监控 100 tick
+## 6. 灾难恢复
+
+1. 停止引擎: `docker compose stop engine`
+2. 恢复 FDB 备份: `fdbbackup restore file:///backup/fdb`
+3. 恢复引擎快照: `swarm snapshot restore --input /backup/snapshot_latest.json`
+4. 验证 state_checksum: `swarm verify --tick $(swarm status --last-tick)`
+5. 启动引擎: `docker compose up -d engine`
+6. 监控 100 tick: `watch -n 5 "curl -s localhost:8080/metrics | grep tick_number"`
+7. 验证无玩家数据丢失: 抽样检查 player 资源总量

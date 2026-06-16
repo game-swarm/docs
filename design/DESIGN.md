@@ -381,6 +381,23 @@ Swarm 支持三个扩展层级：
 | 阶段 | 执行模型 | 包含的命令/系统 | 分类原则 |
 |------|---------|---------------|---------|
 | **Phase 2a (Inline)** | 串行 inline 应用 | Move, Harvest, Build, Transfer, Attack, RangedAttack, Heal, Recycle | **玩家提交的命令**——效果依赖执行顺序，且「先到先得」竞争有意义。对 Bevy World 做立即修改，后续命令基于最新状态校验 |
+
+**Move 作为 Main Action 的设计理由**：Move 与 Harvest/Attack/Build 竞争同一个 per-drone per-tick action slot。此设计偏离了大多数 RTS 的「移动 + 行动」双动作模型，是 Swarm 有意的简化和 philosophic commitment：
+
+```
+传统 RTS:  Move (free) + Action (attack/harvest/build)  → 每 tick 两个操作
+Swarm:     Move = Action  → 每 tick 移动 OR 采集 OR 攻击 OR 建造
+```
+
+| 理由 | 说明 |
+|------|------|
+| **确定性优先** | 双动作模型引入 Move+Attack 的顺序竞争——`move_then_attack` vs `attack_then_move` 在不同排序下产生不同结果。单 action slot 消除了这类二义性 |
+| **编程游戏本质** | Swarm 是**编程游戏**，不是微操 RTS。玩家编写策略，不是逐 tick 下指令。Move 占用 action slot 迫使玩家思考"这一 tick 我的 drone 应该移动到哪？"——而不是无脑移动+攻击 |
+| **简化 Command 模型** | 单 action slot 使校验、排序、审计链路单一化——不存在 Move 和 Attack 的并发写入冲突 |
+| **战术深度** | 玩家必须权衡：这 tick 是继续追击（Move）还是停下来打（Attack）？追击可能让对方跑掉，攻击可能打不中——这是有意义的战术决策 |
+| **手感差异** | 新玩家会觉得 drone "迟钝"——移动一格后下一 tick 才能采集。这是**设计意图**：drone 不是即时代理，玩家需通过代码预判和批量调度来弥补单 drone 的动作延迟 |
+
+此设计在 playtest 阶段可能被挑战——如果证据表明玩家普遍因 Move 占用 action slot 而流失，可重新评估。当前作为有意的设计选择冻结。
 | **Phase 2b (Deferred)** | ECS Systems `.chain()` + `.before()/.after()` | death_mark, spawn, combat（主线 `.chain()`）；regeneration, decay（并行，仅需 before death_cleanup） | **被动系统**——对有依赖关系的系统串行执行（保证正确性），无数据竞争的系统利用 Bevy 并行调度。不接收玩家命令，响应 2a 产生的状态变化 |
 
 **Attack 与 combat_system 的职责分离**：

@@ -38,19 +38,26 @@ apply = remove(removed_entities) ∪ add(added_entities) ∪ update(modified_com
 
 | 参数 | 值 | 说明 |
 |------|-----|------|
-| `cow_page_size` | 256 entity/page | TBD — 需基准测试确定最优值 |
+| `cow_page_size` | 256 entity/page | 候选值，需基准测试确认——目标：page 内平均 50% entity 在单 tick 变更 |
 | `max_dirty_pages` | 64 | 每 tick 最多复制的页面数 |
-| `page_allocation_policy` | lazy-alloc | TBD — 首次写入时分配 |
+| `page_allocation_policy` | lazy-alloc | 首次写入时分配页面——与 Bevy change detection 集成 |
 
 CoW 策略在 modification-set tracking 与 CoW 分页之间选择。当前倾向 modification-set（粒度更细），CoW 作为备选。
 
 ## 4. 增量截断确定性排序
 
-TBD — 增量模式下 256KB 截断的确定性排序键需重新定义：
+增量模式下 256KB 截断的确定性排序键：
 
-- Tier 1 使用 `(distance_to_drone, entity_id)` 排序
-- Tier 2 的 modification-set 中 entity 可能无 drone 位置参考 → 需新的确定性排序键
-- 关键不变量：同 tick、同世界状态、同玩家 → 同截断结果
+```
+候选方案:
+  方案 A: (entity_priority_bucket, last_modified_tick DESC, entity_id)
+    — 优先保留最近被修改的实体（高信息价值），旧实体先截断
+  方案 B: (entity_priority_bucket, distance_to_nearest_player_drone, entity_id)
+    — 与 Tier 1 语义一致，但需维护 drone→entity 距离索引
+
+推荐方案 A——增量模式下 modification_set 自带变更信息，无需额外索引。
+关键不变量：同 tick、同世界状态、同玩家 → 同截断结果。
+```
 
 ## 5. Tier 1 → Tier 2 迁移路径
 
@@ -65,7 +72,7 @@ Tier 2 (增量):
       snapshot = apply(prev_snapshot, modification_set)
 ```
 
-Keyframe 间隔 = TBD（建议每 100 tick 或每 1000 entity 变更）。
+Keyframe 间隔：候选值 100 tick（约 5 分钟 @ 3s/tick），或每 1000 entity 变更。最终值需在 Tier 2 实现前通过基准测试确定——权衡存储成本（全量 keyframe 大小）与重建延迟（keyframe→当前 需 replay 的最大 tick 数）。
 
 ## 6. 待定项
 

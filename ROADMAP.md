@@ -51,6 +51,10 @@
 | D-4 | Tier 2/3 快照扩展必须 spec-ready（不延后） | DESIGN.md, tech-choices, 本 ROADMAP |
 | D-H1 | First-hour onboarding: 渐进威胁曲线 + soft_launch + AI 首次部署引导 + 低风险社交冲突 | specs/06 |
 | PvE | World PvE 生态层 (NPC/据点/事件/掉落/难度梯度) + Arena PvE Challenge 模式 (4 场景 + 评分) | DESIGN.md §9.0, §9.1.5 |
+| A-H3 | Engine 启动序列 + RUNBOOK 补全 (启动顺序约束/降级启动/启动后验证) | RUNBOOK.md |
+| S-H2 | TickTrace 审计完整性 — FDB 同事务写入 + WAL 降级链 | specs/01 §6.3.4 |
+| S-H3 | WASM sandbox OS 边界加固 checklist (seccomp/cgroup/namespace/CI) | specs/04 §9 |
+| D-H3 | Move-as-action 设计理由 (确定性/编程游戏本质/战术深度) | DESIGN.md §3.2 |
 
 ### Tier 2/3 快照扩展 — 待 spec
 

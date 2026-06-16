@@ -611,6 +611,27 @@ fn replay_tick(tick_N) -> WorldState:
 
 **策略**: TickTrace 始终记录 `Command[]` 而非 WASM 输出。回放时引擎直接执行已记录的指令序列，不重新调用 WASM。Wasmtime 版本变更不影响回放。仅当 tick 被标记为"降级模式"（WASM 执行异常）时，需匹配 Wasmtime 版本进行二次回放验证。
 
+#### 6.3.4 TickTrace 写入失败与审计完整性
+
+TickTrace 写入 FDB 与 tick 执行在同一事务中。写入失败时的降级链：
+
+| 失败次数 | 行为 | 审计完整性 |
+|:--:|------|:--:|
+| 1 | 重试写入（同一 FDB 事务内） | ✅ 完整 |
+| 2 | 重试写入（指数退避 100ms） | ✅ 完整 |
+| 3 | 写入本地 WAL（`/var/lib/swarm/wal/ticktrace/`） | ⚠️ 本地完整，未全局持久化 |
+| 4+ | WAL 写入 + 告警升级 CRITICAL | ⚠️ 本地完整 + 人工介入 |
+
+**WAL 恢复**：WAL 中的 TickTrace 在 FDB 恢复后异步回放写入——不阻塞 tick 执行。WAL 保留策略：最多 10,000 tick 或 24h（先到者清理）。
+
+**审计完整性保证**：
+- tick 执行与 TickTrace 写入是**同一 FDB 事务**——要么都成功，要么都失败
+- FDB 事务冲突回滚时，TickTrace **不**写入——避免"有审计记录但世界状态未变"的不一致
+- 连续 3 次 FDB 写入失败 → tick 放弃（见 §6.1），TickTrace 同样放弃——不存在"世界状态已变但无审计记录"的缺口
+- WAL 提供最终一致性：最坏情况下审计记录延迟 ≤ WAL 保留窗口
+
+**与回放的关系**：TickTrace 写入失败 = tick 放弃（Bevy snapshot 恢复）→ 无状态变化 → 无可回放内容。不存在"tick 成功但回放数据丢失"的审计缺口。
+
 ### 6.4 MCP/Query 读源优先级
 
 查询接口（MCP_Query / REST / WebSocket）的权威读源优先级：

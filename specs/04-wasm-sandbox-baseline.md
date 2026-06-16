@@ -350,3 +350,74 @@ TickTrace 中存储的审计日志受以下大小限制，防止磁盘 DoS：
 | `host_path_find` | 500 × explored_nodes + 200 × expanded_edges + cache_miss_penalty | 8 KB | **成本按实际工作量**：explored_nodes（A* 展开的节点数）、expanded_edges（评估的邻居数）、cache_miss（CPU 重算）。不可达目标消耗更高（无路径可剪枝）。per-player/per-tick 上限：10 次调用 + 100,000 explored_nodes 总额度。超限 deterministic fail。**缓存键**: `(from, to, terrain_hash, player_visibility_fingerprint)` |
 | `host_get_world_config` | 1,000 | 16 KB | |
 | `host_get_world_rules` | 1,000 | 16 KB | |
+
+---
+
+## 9. Sandbox OS 边界加固 Checklist
+
+每个 WASM sandbox worker 进程必须在以下 OS 边界受约束。以下为部署前必须逐项验证的 checklist。
+
+### 9.1 seccomp 系统调用白名单
+
+| 系统调用 | 允许？ | 理由 |
+|---------|:--:|------|
+| `read` | ✅ | WASM 线性内存读写所需 |
+| `write` | ✅ | 输出指令 JSON |
+| `mmap` | ✅ | Wasmtime 内存管理 |
+| `mprotect` | ✅ | Wasmtime JIT 代码页执行权限 |
+| `madvise` | ✅ | 内存优化提示 |
+| `futex` | ✅ | Wasmtime 内部同步 |
+| `sigaltstack` | ✅ | Wasmtime 信号处理 |
+| `clock_gettime` | ❌ | 禁止——确定性要求（时间由引擎提供） |
+| `getrandom` | ❌ | 禁止——随机数由 host function 提供 |
+| `open/openat` | ❌ | 禁止——无文件系统访问 |
+| `socket/connect/sendmsg/recvmsg` | ❌ | 禁止——无网络访问 |
+| `fork/vfork/clone` | ❌ | 禁止——无进程创建 |
+| `execve` | ❌ | 禁止——无程序执行 |
+| `ptrace` | ❌ | 禁止——无调试 |
+| `kill/tkill` | ❌ | 禁止——无信号发送 |
+| `mount/umount` | ❌ | 禁止——无文件系统操作 |
+
+### 9.2 cgroup 资源限制
+
+| 资源 | 限制 | 验证命令 |
+|------|------|---------|
+| `memory.max` | 128 MB | `cgget -r memory.max /swarm-sandbox` |
+| `cpu.max` | `50000 100000`（50% CPU） | `cgget -r cpu.max /swarm-sandbox` |
+| `pids.max` | 16 | `cgget -r pids.max /swarm-sandbox` |
+| `io.max` | `8:0 rbps=1048576 wbps=0`（仅 1MB/s 读，禁止写） | `cgget -r io.max /swarm-sandbox` |
+
+### 9.3 命名空间隔离
+
+| 命名空间 | 隔离内容 | 验证 |
+|---------|---------|------|
+| `pid` | 独立 PID 空间——sandbox 看不到宿主进程 | `lsns -t pid` |
+| `net` | 独立网络栈——无网络接口 | `ip netns list` |
+| `mnt` | 独立挂载点——`/proc` 只读绑定 | `findmnt` |
+| `ipc` | 独立 IPC——无共享内存/Semaphore | `lsns -t ipc` |
+| `uts` | 独立 hostname | `lsns -t uts` |
+
+### 9.4 CI 验证
+
+```bash
+# 每个 sandbox 部署前 CI 运行：
+cargo test --test sandbox_boundary -- --test-threads=1
+# 验证:
+# 1. 禁止的系统调用返回 EPERM（非 ENOSYS——避免 fallback）
+# 2. 内存超限 → OOM killed（非 hang）
+# 3. CPU 超限 → 进程被 throttled（非 infinite loop）
+# 4. PID 命名空间内 fork → 失败（EPERM）
+# 5. 网络命名空间内 socket → 失败（EAFNOSUPPORT）
+```
+
+### 9.5 加固例外
+
+以下场景允许放宽某些限制——仅限 `world.toml` 中显式声明 `sandbox.relaxed = true` 的开发/调试世界：
+
+| 放宽项 | 默认 | relaxed 模式 | 风险 |
+|--------|:--:|:--:|------|
+| `clock_gettime` | 禁止 | 允许（确定性种子） | 无——引擎仍覆盖返回值 |
+| `stderr` 输出 | 禁止 | 允许（仅 1KB/tick） | sandbox 日志泄露（仅 dev） |
+| 内存上限 | 128 MB | 256 MB | 资源消耗 |
+
+生产环境 **禁止** `sandbox.relaxed = true`。引擎启动时检查配置，若为 true 且 `world.mode != "development"` → 拒绝启动。
