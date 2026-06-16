@@ -997,7 +997,113 @@ actions.set_attribute(entity_id, "Flaming", true);
 - 持续型攻击在 drone 移动或被 Disrupt 时中断
 - 所有特殊攻击受 `damage_multiplier` 世界规则影响
 
-## 8. 配置校验
+## 8. 模组结构 (mod.toml)
+
+每个模组仓库根目录下的 `mod.toml` 是模组的声明式元数据——描述身份、依赖、兼容性和可配置参数。
+
+### 8.1 完整示例
+
+```toml
+# mod.toml — 模组元数据与可配置参数声明
+
+[meta]
+name = "empire-upkeep"
+version = "1.2.0"
+description = "帝国规模维护费——drone 和房间越多，每 tick 消耗越大"
+author = "kagurazaka"
+license = "MIT"
+
+# 依赖声明：依赖解析在引擎启动时完成
+[dependencies]
+"rhai-std" = ">=0.4, <1.0"          # Rhai 标准库
+"base-economy" = ">=1.0, <2.0"      # 需要基础经济模组
+
+# 兼容性声明
+[compatibility]
+engine = ">=0.8, <1.0"              # 支持的引擎版本范围
+swarm_abi = 1                        # 最低 ABI 版本
+
+# 冲突声明
+conflicts = ["no-upkeep"]            # 与此模组互斥
+
+# 可配置参数——每项在脚本中作为全局变量可用
+[config]
+drone_cost = { type = "u32", default = 2, min = 0, max = 100, description = "每 drone 每 tick 维护费" }
+room_base = { type = "u32", default = 10, min = 0, max = 1000, description = "每房间基础维护费" }
+room_superlinear = { type = "fixed<u32,4>", default = 1, min = 0, max = 100, description = "超线性系数（定点数，4位小数精度）" }
+onshortfall = { type = "enum", default = "degrade", values = ["degrade", "damage", "despawn"], description = "资源不足时的处理方式" }
+```
+
+### 8.2 字段说明
+
+#### [meta]
+
+ 字段 | 类型 | 必需 | 说明 |
+|------|------|------|------|
+| `name` | string | ✅ | 唯一标识符，在 world.toml `[[mods]].name` 中引用 |
+| `version` | string | ✅ | 语义化版本，git tag 必须匹配 |
+| `description` | string | ✅ | 人类可读描述 |
+| `author` | string | ✅ | 作者标识 |
+| `license` | string | ✅ | 开源许可证（MIT/Apache-2.0 等） |
+
+#### [dependencies]
+
+声明此模组依赖的其他模组。引擎启动时解析依赖图：
+
+- 每个条目为 `"<mod_name>" = "<version_req>"`，version_req 语法兼容 semver
+- 依赖解析在引擎启动时完成——缺失依赖 → 世界启动失败
+- 循环依赖 → 启动失败
+- 依赖的配置参数可通过 `deps.<mod_name>.<param>` 访问
+
+#### [compatibility]
+
+声明模组对引擎和 ABI 的版本要求：
+
+ 字段 | 类型 | 必需 | 说明 |
+|------|------|------|------|
+| `engine` | string | ✅ | 支持的引擎版本范围（semver），如 `">=0.8, <1.0"` |
+| `swarm_abi` | u32 | ✅ | 最低 ABI 版本。引擎 ABI 版本 >= 此值 → 兼容 |
+
+引擎启动时校验：
+- `engine` 不匹配 → 警告，模组仍加载（允许服主自行承担风险）
+- `swarm_abi` 不满足 → **拒绝加载**（ABI 不兼容必然导致 WASM 崩溃）
+
+#### conflicts
+
+与此模组互斥的模组名列表。引擎启动时若检测到同世界启用了冲突模组，**拒绝启动**并列出冲突对。
+
+#### [config]
+
+模组可配置参数的声明式定义。每项为一个 `TOML 内联表`：
+
+ 字段 | 类型 | 必需 | 说明 |
+|------|------|------|------|
+| `type` | string | ✅ | `u32` / `u64` / `f64` / `fixed<u32,N>` / `bool` / `string` / `enum` / `[u32]` |
+| `default` | 对应 type | ✅ | 默认值 |
+| `min` / `max` | 对应 type | 否 | 范围约束 |
+| `values` | string[] | enum 时必需 | 枚举可选值 |
+| `description` | string | ✅ | 人类可读描述 |
+
+服主在 world.toml 的 `[[mods]].config` 中覆盖这些值。引擎启动时将配置注入 Rhai 脚本的全局变量。
+
+### 8.3 多语言描述
+
+`[meta.description]` 和每个 config 参数的 `description` 支持多语言：
+
+```toml
+[meta.description_i18n]
+zh = "帝国规模维护费——drone 和房间越多，每 tick 消耗越大。维护费不足时效率下降。"
+en = "Empire upkeep — more drones and rooms cost more per tick. Shortfall degrades efficiency."
+ja = "帝国維持費——ドローンと部屋が多いほど毎 tick のコストが増加。不足時は効率低下。"
+
+[config.onshortfall.description_i18n]
+zh = "资源不足时的处理方式：degrade=效率下降, damage=建筑受损, despawn=单位消亡"
+en = "Behavior on resource shortfall: degrade=slow, damage=hurt buildings, despawn=lose units"
+```
+
+引擎根据请求的 `Accept-Language` 头或 MCP 客户端的 `locale` 参数返回对应语言。缺少翻译时回退到 `en`，再回退到顶层 `description` 字段。
+
+## 9. 配置校验
 
 ```rust
 fn validate_config(config: &WorldConfig) -> Result<(), Vec<String>> {
@@ -1018,7 +1124,7 @@ fn validate_config(config: &WorldConfig) -> Result<(), Vec<String>> {
 }
 ```
 
-## 9. 与核心引擎的边界
+## 10. 与核心引擎的边界
 
 核心引擎**不知道规则的存在**。规则 System 是外挂的：
 

@@ -341,3 +341,86 @@ git diff --exit-code        # 生成代码与提交代码一致 → 不一致则
 - 服主可在 world.toml 中新增 `[[custom_actions]]` 条目引用已有 `[[special_effects]]` ——无需改 Rust 代码
 - 需全新 handler 时通过 Rhai 模组注册
 - SDK 和 MCP schema 自动包含所有已注册 action
+
+## 6. SDK 生成与分发
+
+SDK 由引擎基于世界加载的模组**动态生成**，而非预先编译分发。不同世界加载不同模组 → 不同的 API 面 → 不同的 SDK。
+
+### 6.1 生成流程
+
+```
+引擎启动
+    │
+    ├─ 解析 world.toml + 加载 mods/
+    ├─ 计算 mod_manifest_hash = Blake3(world.toml || mods.lock || engine_abi_version)
+    │
+    ├─ 扫描注册表:
+    │   ├─ Core IDL:   内置指令 (Move/Harvest/Build/...)
+    │   ├─ custom_actions: world.toml [[custom_actions]] 条目
+    │   ├─ mod config:  各模组暴露的可配置参数
+    │   └─ Body parts:  [[body_part_types]] 中的自定义 parts
+    │
+    ├─ 生成 SDK artifacts:
+    │   ├─ sdk-rust:  Rust crate (types + Command enum + host function stubs)
+    │   ├─ sdk-ts:    npm package (types + autocomplete)
+    │   └─ sdk.json:  machine-readable manifest (供 MCP/CLI 查询)
+    │
+    ├─ 暴露下载端点:
+    │   ├─ MCP:  swarm_sdk_fetch(world_id)
+    │   ├─ CLI:  swarm sdk fetch <world_id>
+    │   └─ Web:  世界详情页 SDK 下载链接
+    │
+    └─ 缓存: 按 (mod_manifest_hash, sdk_target) 缓存，相同 hash 复用
+```
+
+### 6.2 WASM 模块声明
+
+每个 WASM 模块在编译时嵌入目标世界标识：
+
+```toml
+# Cargo.toml (Rust) / package.json (TS)
+[package.metadata.swarm]
+target_manifest_hash = "abc123..."   # 编译时从 swarm sdk fetch 获取
+engine_abi_version = 1
+```
+
+### 6.3 部署验证
+
+```
+玩家部署 WASM
+    │
+    ▼
+引擎校验:
+  module.target_manifest_hash == world.current_manifest_hash ?
+    ├─ 是 → 接受部署
+    └─ 否 → 拒绝，返回错误:
+         "SDK mismatch: module built for hash X, world currently at hash Y.
+          Run `swarm sdk fetch` to update."
+```
+
+### 6.4 版本兼容性
+
+| 变更 | manifest_hash 变化 | 已部署 WASM |
+|------|-------------------|------------|
+| world.toml 调参（cost/cooldown） | 不变 | ✅ 兼容 |
+| 新增 mod（新 handler） | 变化 | ❌ 需重新编译 |
+| 移除 mod | 变化 | ❌ 需重新编译 |
+| engine ABI 升级 | 变化 | ❌ 需重新编译 |
+| Vanilla world（无 mods） | 固定 hash `vanilla-v1` | ✅ 跨世界兼容 |
+
+### 6.5 离线开发
+
+```
+swarm sdk fetch world_v1          # 拉取 SDK
+swarm sdk build --target world_v1 # 编译 WASM（离线）
+swarm sdk publish world_v1        # 部署到目标世界（在线）
+```
+
+本地开发时 SDK 缓存到 `~/.swarm/sdks/{hash}/`，相同 hash 复用。
+
+### 6.6 模组世界标识
+
+任何使用 Layer 3 扩展（自定义 body part / damage type / Command）的世界实例标记为非官方世界：
+- 在世界列表中显示 `[MOD]` 标识
+- 不参与官方排名（World 模式无排行榜，Arena 模式仅 Vanilla 世界计入排名）
+- 玩家加入时显示警告：「此世界使用非标准规则集，请确认已安装对应世界 SDK。」
