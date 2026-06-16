@@ -2,7 +2,6 @@
 
 ## 核心原则：目标状态，非现状追踪
 
-**除 ROADMAP.md 外，所有文档描述的是设计目标——成品应有的样子，而非当前实现状态。**
 
 | 禁止 | 原因 |
 |------|------|
@@ -13,7 +12,6 @@
 | Phase/版本号 (`P0-N`/`Phase 0`) | 无阶段概念，无版本标记 |
 | 最后更新日期 | git blame 负责归属 |
 
-**仅 ROADMAP.md** 包含进度状态、日期、实施追踪——因为它的职责就是追踪现状。
 
 design/README.md、specs/、specs/reference/ 中的所有文档，读起来应该像一件成品的规格说明书。
 
@@ -38,7 +36,6 @@ specs/core/        核心引擎规范 (tick, 命令, WASM, 规则)
 specs/security/    安全规范 (MCP, 可见性, 来源)
 specs/gameplay/    游戏规范 (反馈循环, IDL)
 specs/future/      扩展路线 (T2 增量快照, T3 分片)
-ROADMAP.md         实施追踪 — 唯一含日期/状态/进度的文档
 specs/reference/               API 参考 — 开发者面向的接口文档
 ```
 
@@ -63,7 +60,6 @@ design/*.md 更新 → spec 对齐 → 代码实现对齐 spec
 
 ## 评审流程
 
-**评审对象**：design/ 域文件 + specs/ + tech-choices.md。**ROADMAP.md 和 reviews/ 是临时性追踪文件，不作为评审目标。**
 
 | 仓库状态由 `reviews/` 目录是否存在来判断：
 
@@ -92,7 +88,6 @@ R{N+1}: (重复，文档已回到稳定状态)
 
 ## README 职责
 
-- `docs/README.md` — 目录导航，指向 DESIGN + ROADMAP
 - Root `README.md` — 仓库入口，指向 docs/
 - `specs/reference/` — 开发者参考文档（与 spec 互补，非替代）
 

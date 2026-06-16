@@ -15,7 +15,6 @@
 | **技术选型** | [`design/tech-choices.md`](tech-choices.md) | 各子系统技术栈对比与选型理由 |
 | **技术规范** | [`specs/`](../specs/) | 11 个技术规范，按域分 core/security/gameplay/future |
 | **API 参考** | [`specs/reference/`](../specs/reference/) | 面向开发者的接口文档 |
-| **进度追踪** | [`ROADMAP.md`](../ROADMAP.md) | 实现差距与进度（不作为设计评审目标） |
 | **运维手册** | [`RUNBOOK.md`](../RUNBOOK.md) | 启动序列、降级模式、备份恢复、监控 |
 
 ---

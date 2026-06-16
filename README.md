@@ -2,13 +2,11 @@
 
 可编程 MMO RTS 游戏引擎的设计文档仓库。
 
-进度追踪 → [ROADMAP.md](ROADMAP.md)
 
 ## 目录结构
 
 ```
 docs/
-├── ROADMAP.md                   # 模块化实施追踪
 ├── GETTING-STARTED.md           # 5 分钟入门指南
 ├── RUNBOOK.md                   # 运维手册
 ├── specs/reference/                         # API 参考
