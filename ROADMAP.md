@@ -7,11 +7,11 @@
 
 | 模块 | 仓库 | 进度 |
 |------|------|------|
-| engine | `engine/` | ✅ 12/14 done — G5 (Depot), G9 (Room State Machine), G10 (Transport Intercept) pending |
+| engine | `engine/` | ✅ 14/14 done — ALL gaps closed |
 | sandbox | `sandbox/` | ✅ G22 (WASM cache) done |
 | gateway | `gateway/` | ✅ 5/5 done (G15-G19) |
 | frontend | `frontend/` | ✅ 2/2 done (G20-G21) |
-| **总计** | | **18/22 done — 4 remaining** |
+| **总计** | | **22/22 done — ALL gaps closed 🎉** |
 
 ---
 
