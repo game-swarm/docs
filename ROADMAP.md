@@ -1,5 +1,7 @@
 # Swarm — 实现差距追踪
 
+> **本文档是临时性进度追踪文件——不作为设计评审目标。** 设计合同见 DESIGN.md + specs/。
+>
 > 审计日期: 2026-06-16。全量 DESIGN + 9 specs vs 代码审计。
 > 测试总数: engine:166, sandbox:14, sdk-rust:8, sdk-ts:11, gateway:9, frontend:13
 > **R2 评审**: 2026-06-16。9 评审员 + Speaker 裁决。6 共识 Blocker + 5 用户裁决。Convergence patch 已应用 (B1-B6 全部闭合)。

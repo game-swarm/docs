@@ -55,7 +55,9 @@ DESIGN.md 更新 → spec 对齐 → 代码实现对齐 spec
 
 ## 评审流程
 
-**仓库状态由 `reviews/` 目录是否存在来判断：**
+**评审对象**：DESIGN.md + specs/ + tech-choices.md。**ROADMAP.md 和 reviews/ 是临时性追踪文件，不作为评审目标。**
+
+| 仓库状态由 `reviews/` 目录是否存在来判断：
 
 | 状态 | 标志 | 含义 |
 |------|------|------|
