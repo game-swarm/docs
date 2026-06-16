@@ -1886,8 +1886,19 @@ version = "1.2.0"
 description = "帝国规模维护费——drone 和房间越多，每 tick 消耗越大"
 author = "kagurazaka"
 license = "MIT"
-dependencies = []       # 依赖的其他模组
-conflicts = []          # 冲突的模组
+
+# 依赖声明：依赖解析在引擎启动时完成
+[dependencies]
+"rhai-std" = ">=0.4, <1.0"          # Rhai 标准库
+"base-economy" = ">=1.0, <2.0"      # 需要基础经济模组
+
+# 兼容性声明
+[compatibility]
+engine = ">=0.8, <1.0"              # 支持的引擎版本范围
+swarm_abi = 1                        # 最低 ABI 版本
+
+# 冲突声明
+conflicts = ["no-upkeep"]            # 与此模组互斥
 
 # 可配置参数——每项在脚本中作为全局变量可用
 [config]
@@ -1978,27 +1989,19 @@ actions.log_warn(message)
 
 #### Rhai 安全隔离
 
-Rhai 模组默认在**进程隔离**模式下运行，通过 IPC 与核心引擎通信，确保模组崩溃或恶意行为不会影响引擎稳定性。
+Rhai 模组在**引擎进程内**运行——服主安装的模组是受信代码。不引入进程隔离的复杂性和性能开销。
 
-**隔离模式**：
+**安全模型**：
 
-| 模式 | 隔离级别 | 性能 | 适用场景 |
-|------|---------|------|---------|
-| 进程隔离（默认） | Rhai engine 运行于独立 sandbox 进程（cgroup + seccomp 加固） | 中等 | 生产环境、不信任模组来源 |
-| 进程内 | Rhai engine 与核心引擎共享进程 | 高 | 开发/调试、完全信任所有模组来源 |
+| 层级 | 机制 | 说明 |
+|------|------|------|
+| **源码完整性** | `mods.lock` pin 到 git commit + `checksum`（sha256） | 服主审查过的模组版本不可变，重现代码审计 |
+| **执行预算** | AST 节点预算 + action 次数上限 | 防止死循环或资源耗尽（见上表） |
+| **能力白名单** | 所有 `actions.*` 调用经引擎白名单校验 | 未注册的 action 被拒绝 + 审计日志。当前白名单：deduct_resource/award_resource/damage_entity/set_entity_flag/emit_event/log_info/log_warn |
+| **事务隔离** | 单模组超限 → 该模组本 tick 所有 actions 回滚 | 不影响其他模组和玩家 |
+| **引擎稳定性** | 超限模组连续 10 tick 自动禁用 | 需服主手动重新启用 |
 
-服主可通过 `world.toml` 切换模式：
-
-```toml
-[rhai]
-isolation = "process"   # "process" | "inprocess"
-```
-
-> **安全建议**: 生产环境始终使用 `process` 模式。`inprocess` 模式下，恶意模组可通过死循环或内存耗尽拖垮整个引擎进程。
-
-**能力白名单**：所有 Rhai actions 必须经过引擎显式注册的 action handler 白名单。未注册的 action 调用在引擎侧被拒绝，即使 Rhai 脚本语法正确。引擎启动时构建白名单，运行时所有 `actions.*` 调用经白名单校验后才执行。
-
-当前白名单 action：
+**能力白名单**（引擎启动时构建，运行时所有 `actions.*` 调用经白名单校验）：
 
 | Action | Handler | 说明 |
 |--------|---------|------|
@@ -2009,7 +2012,7 @@ isolation = "process"   # "process" | "inprocess"
 | `emit_event` | `engine::rule::handler::emit_event` | 发出世界事件 |
 | `log_info` / `log_warn` | `engine::rule::handler::log` | 日志输出 |
 
-> 扩展新 action 需在引擎中注册 handler + 加入白名单。未注册的 action 在运行时被拒绝并记录安全审计日志。
+> 扩展新 action 需在引擎中注册 handler + 加入白名单。未注册的 action 在运行时被拒绝并记录安全审计日志。所有 actions 操作被记录到 TickTrace——可回放、可审计。
 
 #### 安装与配置
 
