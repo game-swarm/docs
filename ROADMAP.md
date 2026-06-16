@@ -56,9 +56,11 @@
 
 | 项目 | 内容 | 状态 |
 |------|------|:--:|
-| Tier 2 spec | 增量快照协议、CoW 实体分页、modification-set 合并、truncation 增量语义 | ⬜ 待撰写 |
-| Tier 3 spec | 分片键设计、跨分片实体引用、分布式 combat 结算、FDB 多区域部署 | ⬜ 待撰写 |
-| tech-choices 更新 | 快照扩展路线技术选型（增量策略对比、CoW vs 日志、分片方案对比） | ⬜ 待撰写 |
+| Tier 2 spec | 增量快照协议、CoW 实体分页、modification-set 合并、truncation 增量语义 | 🟡 stub — `specs/10-incremental-snapshot.md`（Phase 1+ 冻结） |
+| Tier 3 spec | 分片键设计、跨分片实体引用、分布式 combat 结算、FDB 多区域部署 | 🟡 stub — `specs/11-shard-protocol.md`（Phase 1+ 冻结） |
+| tech-choices 更新 | 快照扩展路线技术选型 | ✅ 已完成 |
+
+> **R5 Speaker 裁决**: Tier 1 / MVP 可进入实现。D-4 (specs/10, specs/11) 作为 Phase 1+ entry gate——不阻塞 Tier 1，但 Tier 2/3 启动前必须冻结。
 
 ---
 
