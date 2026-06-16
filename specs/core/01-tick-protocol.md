@@ -360,7 +360,7 @@ Source E1: energy = 5
 
 ### 3.4 ECS 系统执行顺序（Bevy — 部分并行）
 
-Phase 2b 采用主线串行 + 无冲突系统并行的策略，与 DESIGN §3.2 保持一致：
+Phase 2b 采用主线串行 + 无冲突系统并行的策略，与 design/engine.md 保持一致：
 
 ```rust
 app.add_systems(Update, (
