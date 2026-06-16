@@ -176,3 +176,80 @@ RawCommand (携带 auth context)
 | Rollback | ✅ 双人审计 | ❌ |
 | Replay | ✅ | ✅ 赛后自动公开 |
 | TestHarness | ✅ | ✅ |
+
+## 7. Session 与 Deploy Nonce 状态机
+
+### 7.1 Session 生命周期
+
+`session_id` 由 Auth Service 在玩家认证时签发，绑定到单个连接生命周期：
+
+```
+认证成功 → 签发 session_id（128-bit 随机，服务端签名）
+    │
+    ├─ 连接存活期间: session 有效
+    ├─ 断连: session 标记为 pending_close
+    ├─ 重连（60s 内）: 恢复原 session，refund credit 保留
+    ├─ 超时（>60s）: session 关闭，refund credit 清零
+    └─ 长期 agent: 定期心跳续期（建议 30s 间隔）
+```
+
+| 字段 | 说明 |
+|------|------|
+| session_id | 服务端签发，不可伪造 |
+| player_id | 绑定单一玩家 |
+| created_at | 签发时间 |
+| expires_at | 上次心跳 + 60s（断连超时） |
+| status | active / pending_close / closed |
+
+### 7.2 Refund Credit 作用域
+
+```
+refund_credit 归属:
+  player_id + wasm_slot + session_id + tick_window
+
+跨 slot 不得转移（slot A 的 refund 不能给 slot B 用）
+跨 session 不得转移（重连恢复除外）
+跨 audience 不得转移（World refund 不能用于 Arena）
+每 tick 上限: MAX_FUEL × 10%
+```
+
+### 7.3 Deploy Nonce 生命周期
+
+```
+1. 客户端调用 swarm_deploy_challenge → 服务端签发 nonce
+   nonce 属性:
+     - 128-bit 随机
+     - TTL: 60s
+     - audience: {player_id, world_id, wasm_slot}
+     - IP-bound（默认）: 签发 IP 与请求 IP 一致才接受
+     - single-use: 消费后立即作废
+
+2. 客户端签名 payload（含 nonce）→ 提交部署
+
+3. 服务端验证:
+   a. nonce 存在且未被消费（全局去重）
+   b. nonce 未过期（≤ 60s from issue）
+   c. nonce audience 匹配请求（player/world/slot/IP）
+   d. Ed25519 验签通过
+
+4. 编译时间 > nonce TTL:
+   → 服务端创建 pending_deploy 状态
+   → 返回 deploy_token（30min TTL）
+   → 编译完成后用 deploy_token 提交
+   → 不延长裸 nonce（防重放窗口扩大）
+```
+
+### 7.4 状态转换表
+
+| 状态 | 触发 | 下一状态 |
+|------|------|---------|
+| idle | 客户端请求 nonce | nonce_issued |
+| nonce_issued | 客户端提交 signed payload + 验签通过 | compiling |
+| nonce_issued | nonce 过期（60s） | idle（nonce 作废） |
+| compiling | 编译成功 | deployed |
+| compiling | 编译失败 | idle（可重试，需新 nonce） |
+| compiling | deploy_token 过期（30min） | idle |
+| deployed | tick 执行验证失败 | rejected |
+| deployed | tick 执行成功 | active |
+
+所有状态转换写入 audit log，包含 timestamp + session_id + player_id + world_id + slot。

@@ -464,15 +464,19 @@ delta = compute_delta(world_state_before, world_state_after)
 
 | 失败点 | 触发条件 | 对本 tick 影响 | 对玩家影响 | 恢复策略 |
 |--------|---------|--------------|-----------|---------|
+| **COLLECT crash** | Bevy World 读取时 panic/OOM | tick 放弃，state 不变 | 该 tick 不执行，不退 fuel | 立即重试；连续 3 tick 引擎降级 |
+| **Phase 2a panic/OOM** | inline apply 中 panic 或内存耗尽 | Bevy snapshot 恢复，tick 放弃 | 已消耗 fuel 不退，已执行玩家空 tick | 重试 3 次（复用 COLLECT 缓存）；失败降级 |
 | **WASM timeout** | 玩家 tick() 超过 collect_timeout_ms (2500ms) | 该玩家 0 指令，其他玩家正常 | 空 tick，不退 fuel | 下 tick 正常执行 |
 | **WASM crash** | 玩家 WASM 崩溃/panic/OOM | 同上 | 空 tick，不退 fuel。连续 3 tick crash → 玩家标记 degraded | 自动恢复，degraded 需人工解除 |
-| **WASM output invalid** | tick 输出不符合 JSON schema（见 specs/02-command-validation §1.1） | 该玩家所有指令丢弃 | 空 tick，不退 fuel | 下 tick 正常（需玩家修复代码） |
-| **FDB commit fail** | FoundationDB 事务冲突/网络错误 | tick 放弃（state 不变，tick_counter 不递增） | CPU fuel 退还 | 重试 3 次，失败等 1s 重试同 tick。连续 3 tick abandon → 引擎降级 |
+| **WASM output invalid** | tick 输出不符合 JSON schema | 该玩家所有指令丢弃 | 空 tick，不退 fuel | 下 tick 正常（需玩家修复代码） |
+| **FDB commit fail** | FoundationDB 事务冲突/网络错误 | tick 放弃，Bevy snapshot 恢复 | CPU fuel 退还 | 重试 3 次，失败等 1s 重试同 tick。连续 3 次 → 引擎降级 |
 | **Dragonfly cache miss** | 缓存未命中/过期 | 无——回退到 FDB 直读 | 无影响 | 从 FDB 重建缓存（异步） |
 | **Dragonfly cache stale** | 缓存版本落后于 FDB | 无——FDB 为权威源 | 旧数据给查询入口，不影响 tick | 下次写入时自动刷新 |
-| **NATS publish fail** | NATS 连接断开/超时 | tick 结果已持久化到 FDB，但客户端未收到 delta | 客户端未更新，需等 polling fallback | NATS 重连；客户端 5s 未收到 delta → 主动拉取 |
-| **Broadcast partial** | 部分客户端已收到 delta，部分未收到 | 客户端间状态不一致（暂时） | 未收到的客户端显示旧状态 | 客户端通过 last_tick 字段检测 gap → 主动 fetch |
-| **TickTrace write fail** | FDB 写入 TickTrace 失败（磁盘满） | tick 执行完成但审计日志不完整 | 无 gameplay 影响 | 告警；TickTrace 丢失的 tick 标记为不可回放 |
+| **NATS publish fail** | NATS 连接断开/超时 | tick 已持久化到 FDB，客户端未收到 delta | 客户端未更新 | NATS 重连；客户端 5s 未收到 delta → 主动拉取 |
+| **Broadcast partial** | 部分客户端收到 delta | 客户端间状态暂时不一致 | 未收到的显示旧状态 | 客户端 last_tick gap 检测 → fetch |
+| **BROADCAST overload** | 单 tick delta 过大导致 fan-out 积压 | tick 已持久化，但广播延迟 | 客户端收到延迟 delta | 降级：降低 fan-out rate，优先推送关键实体 |
+| **TickTrace write fail** | FDB 写入审计日志失败 | tick 执行完成，审计不完整 | 无 gameplay 影响 | 告警；标记为不可回放 |
+| **Replay write fail** | 回放记录写入失败（磁盘满） | tick 执行完成 | 无影响 | 告警；丢失 tick 后续从 keyframe 重建 |
 
 ### 6.2 降级模式 (Degraded Mode)
 
@@ -514,7 +518,18 @@ fn replay_tick(tick_N) -> WorldState:
 
 **策略**: TickTrace 始终记录 `Command[]` 而非 WASM 输出。回放时引擎直接执行已记录的指令序列，不重新调用 WASM。Wasmtime 版本变更不影响回放。仅当 tick 被标记为"降级模式"（WASM 执行异常）时，需匹配 Wasmtime 版本进行二次回放验证。
 
-#### 6.3.4 Tick Boundary Contract
+### 6.4 MCP/Query 读源优先级
+
+查询接口（MCP_Query / REST / WebSocket）的权威读源优先级：
+
+| 查询类型 | 权威源 | 说明 |
+|---------|--------|------|
+| 当前世界状态（snapshot） | Bevy World（内存） | COLLECT 阶段已构建，最新 |
+| 历史 tick 数据 | FDB | 不可变记录 |
+| 高频读取（地图/资源） | Dragonfly 缓存 | 允许滞后 ≤ 2 tick；cache miss → FDB |
+| 实时事件（delta） | NATS | 仅推送，不保证送达；gap → FDB fetch |
+
+MCP_Query 不得直接读取 FDB（绕过可见性过滤）。所有查询路径共享 `is_visible_to` 过滤器。
 
 COLLECT 阶段从 Bevy World 内存读取权威状态，不访问 FDB/Dragonfly。EXECUTE 阶段在 Bevy World 上原地修改 → FDB 事务提交 → 成功后 FDB 为新的权威源。Bevy World 与 FDB 的关系：Bevy 是每 tick 的工作副本，FDB 是持久化的权威源。启动/恢复时从 FDB 重建 Bevy World。
 
