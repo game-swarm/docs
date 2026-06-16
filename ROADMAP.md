@@ -47,6 +47,7 @@
 | D-2 | World 模式无胜利条件（MMO 沙盒） | DESIGN.md §9 |
 | D-3 | 新生 drone SpawningGrace 1 tick 无敌帧 | DESIGN.md, specs/01, specs/02 |
 | D-4 | Tier 2/3 快照扩展必须 spec-ready（不延后） | DESIGN.md, tech-choices, 本 ROADMAP |
+| D-H1 | First-hour onboarding: 渐进威胁曲线 + soft_launch + AI 首次部署引导 + 低风险社交冲突 | specs/06 |
 
 ### Tier 2/3 快照扩展 — 待 spec
 

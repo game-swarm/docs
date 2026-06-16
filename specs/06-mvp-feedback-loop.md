@@ -80,6 +80,72 @@ Starter bot 必须开箱即编译/运行。一键部署：
 swarm deploy ./basic-harvester
 ```
 
+### 2.4 First-Hour 过渡：从教程到参与
+
+教程（§2.1-2.3）覆盖前 5 分钟的「按钮在哪」，但新玩家在 safe_mode 结束后到首次 PvP 接触之间存在**体验真空**——可能数小时独自优化，然后突然被碾压。
+
+#### 渐进式威胁曲线
+
+```
+Tick 0-500:     safe_mode（房间无敌）          → 纯学习，无压力
+Tick 500-2000:  soft_launch 阶段                → 仅 PvE 威胁（中立 NPC、资源竞争）
+Tick 2000+:     正常 PvP                         → 完整玩家交互
+```
+
+`soft_launch` 阶段机制：
+
+| 机制 | 说明 |
+|------|------|
+| **中立 NPC 据点** | 新手房间附近生成低威胁中立 drone（固定巡逻路径、低 HP），玩家可练习 combat |
+| **限时资源潮 (Resource Surge)** | 每隔 200 tick 在新手区域随机刷新高密度资源点——鼓励探索和轻竞争（多人抢同一资源潮） |
+| **新手区公共事件** | 广播事件："x=15,y=20 发现古代遗迹，前 3 个到达的 drone 获得 500 Energy"——诱导玩家离开基地 |
+| **PvP 警告广播** | soft_launch 结束后 50 tick 前，全局广播 "PvP 保护将在 50 tick 后解除"，给玩家心理准备 |
+
+#### 低风险社交冲突
+
+在 full PvP 之前引入零和但非毁灭性的互动：
+
+| 机制 | 风险等级 | 说明 |
+|------|:--:|------|
+| **资源抢占** | 低 | 多人抢同一 Source / Resource Surge——先到先得，但不损失已有资产 |
+| **房间占领竞速** | 低 | 多玩家试图 Claim 同一中立房间——输家仅损失 Claim drone，不损失基地 |
+| **Arena Challenge 嵌入 World** | 低 | 玩家可在 World UI 中向附近玩家发起小型 Arena 挑战（1v1, 100 tick, 对称初始资源）——输赢不影响 World 资产 |
+| **Market Contracts** | 低 | 老玩家发布资源运输/防御 bot challenge，新玩家接单获得安全奖励。失败仅损失 contract 押金 |
+
+#### AI Agent 首次部署引导
+
+AI agent 的 onboarding 瓶颈不在教程——在「部署后看不到反馈」：
+
+```
+AI 首次部署流程:
+  1. MCP 连接 → swarm_deploy → WASM 上传成功
+  2. ⚠️ 真空: 等待 tick 执行 → 不知道 drone 是否在动
+  3. 解决方案: 部署后引擎立即推送 "deploy_accepted" 事件 +
+      下一 tick 推送 "first_tick_executed" 事件（drone 位置变化/action 计数）
+  4. AI 无需 polling——通过 MCP 事件订阅接收首次执行确认
+```
+
+AI agent 开发循环强化：
+
+| 工具 | 用途 | 首次部署专用 |
+|------|------|:--:|
+| `swarm_deploy` | 上传 WASM | 返回 `deploy_id` 用于追踪 |
+| `swarm_explain_last_tick` | 解释上一 tick 执行结果 | AI 首个 tick 后自动调用——回答"我的 drone 做了什么？" |
+| `swarm_get_snapshot` | 查看世界状态 | 确认 drone 位置、HP、资源变化 |
+| `swarm_dry_run_commands` | 预测指令结果 | 部署前验证——不用等 tick 才知道逻辑错误 |
+| Deploy result event | 部署结果推送 | `{status: "compiled" \| "active", drone_count: N, first_position: (x,y)}` |
+
+#### 人类玩家首次 PvP 引导
+
+```
+首次被攻击时:
+  1. UI 弹出 "你的一架 drone 正在被攻击！" 通知
+  2. 一键跳转到战斗位置（地图聚焦）
+  3. 提供反制建议: "你可以: [移动逃离] [反击] [呼叫友方 drone]"
+  4. 战斗结束后显示 "战斗报告": 谁攻击了你、损失了什么、对方的可见信息
+  5. 引导到 Arena Challenge: "想练习 PvP 但不想冒风险？向攻击者发起 Arena 挑战"
+```
+
 ## 3. 决策：信息与工具
 
 ### 3.1 MCP 发现型 Verb
