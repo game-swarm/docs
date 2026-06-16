@@ -26,20 +26,16 @@
 - [x] maintenance 耗尽时 Depot 停止维修（energy < maintenance_cost 时跳过）
 - 3 tests: 范围内维修、能量耗尽、玩家归属过滤
 
-### G8a: BodyPartTypeDef.age_modifier — DESIGN §8.2
+### G8a+G8b: BodyPart age_modifier + Drone lifespan — DESIGN §8.2 ✅
 
-**当前状态**: `BodyPartTypeDef` 结构体缺 `age_modifier: i32` 字段。
+**当前状态**: 已完成——`BodyPartTypeDef` 含 `age_modifier: i32`，`Drone::new()` 聚合计算 lifespan。
 
-- [ ] `BodyPartTypeDef` 新增 `age_modifier: i32` 字段，默认 0
-- [ ] `BodyPartRegistry::default()` 为各类型设置正确的 age_modifier (TOUGH=+100, ATTACK=-80, RangedAttack=-50, Heal=-30, Claim=-50)
-- [ ] world.toml 解析 `[[body_part_types]]` 支持此字段
-
-### G8b: Drone age_max 计算 — DESIGN §8.2
-
-**当前状态**: `Drone::new()` 始终设置 `lifespan = DEFAULT_DRONE_LIFESPAN` (1500)，不聚合 body part 的 age_modifier。
-
-- [ ] `Drone::new()` 接收 `&BodyPartRegistry`，计算 `lifespan = DEFAULT_DRONE_LIFESPAN + sum(age_modifier)`
-- [ ] 更新 `spawn_system` 调用点传入 registry
+- [x] `BodyPartTypeDef` 新增 `age_modifier: i32` 字段，默认 0
+- [x] `BodyPartRegistry::default()` 设置: Tough=+100, Attack=-80, RangedAttack=-50, Heal=-30, Claim=-50, Move/Work/Carry=0
+- [x] world.toml 解析 `[[body_part_types]]` 通过 `#[serde(default)]` 自动支持
+- [x] `Drone::new(owner, body, &BodyPartRegistry)` 计算 `lifespan = DEFAULT_DRONE_LIFESPAN + sum(age_modifier)`
+- [x] `spawn_system` 接收 `Res<BodyPartRegistry>`，`spawn_drone_in_room` 传入
+- 1 test: `drone_lifespan_includes_age_modifiers` (4 scenarios)
 
 ---
 
@@ -146,7 +142,6 @@ spec 要求但代码未实现:
 
 | 优先级 | 缺口 | 理由 |
 |--------|------|------|
-| 🔴 P0 | G8a, G8b | Body part age modifier——核心 drone 生命周期差异化 |
 | 🟡 P1 | G13, G14 | MCP stub→真实——AI 玩家模块管理和回放 |
 | 🟡 P1 | S2, S1 | 校验管线完整性 + tick 重试正确性 |
 | 🟢 P2 | S7a-S7d | 规则系统 stub 补完 |
