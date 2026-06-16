@@ -619,12 +619,115 @@ Corrosive = 1.5        # 建筑怕腐蚀
 | **Debilitate** | Work | 给目标附加易伤状态。指定伤害类型抗性 ×2，持续 50 tick | 150 tick | 200 Energy | 目标 `Corrosive` 抗性 |
 | **Disrupt** | Attack | 打断目标当前动作（Drain/Hack 等持续动作立即终止）。不造成 HP 伤害 | 50 tick | 100 Energy | 目标 `Sonic` 抗性 |
 | **Fortify** | Tough | 自身/友方获得护盾（所有抗性 ×0.5）。**同时清除目标所有负面状态**（Debilitate/Drain/Overload/Hack控制锁），持续 100 tick | 300 tick | 400 Energy | 无——增益+净化 |
-| **Leech** | Attack | 吸血攻击——造
+| **Leech** | Attack | 吸血攻击——造成 Corrosive 15 dmg，伤害的 50% 治疗自身 | 0（即时） | 300 Energy | 目标 `Corrosive` 抗性 |
+| **Fabricate** | Work | 将敌方 drone 转化为己方建筑 | 500 tick | 2000 Energy + 500 Matter | 目标 `Psionic` 抗性 |
 
-... [OUTPUT TRUNCATED - 1675 chars omitted out of 51675 total] ...
+**通用规则**：
+- 特殊攻击与 HP 伤害互斥——同一 body part 在同一 tick 只能执行一种
+- 特殊攻击的"命中判定"取决于 body part 数量与目标防御的差值，非简单的命中/未命中
+- 持续型攻击（Drain/Hack）在 drone 移动或被 Disrupt 时中断
+- 所有特殊攻击受 `damage_multiplier` 世界规则影响（倍率作用于成功率/效果量）
 
--30
+**Neutral 状态**（Hack 夺取后）:
+- `owner = Neutral (0)`——不归任何玩家所有
+- 停止执行 WASM（进入 idle 状态，不提交指令）
+- 不消耗 lifespan、不消耗 fuel
+- 5 tick 后自动恢复原 owner（Hack 自然到期）
+- 恢复前免疫再次 Hack
+- 可见性：对原 owner 保持可见（ally 级），对其他玩家为 enemy 级
+
+#### 身体部件类型定义（`[[body_part_types]]`）
+
+与资源类型和伤害类型一样，身体部件可通过 world.toml 定义和模组扩展。默认世界提供以下 8 种基础类型：
+
+```toml
+# world.toml — 身体部件类型定义（可扩展）
+
+[[body_part_types]]
+name = "Move"
+description = "移动——每 part 每 tick 可消除 1 fatigue"
+action = "Move"
+range = 1
+cost = { Energy = 50 }
+
+[[body_part_types]]
+name = "Work"
+description = "工作——采集资源、建造建筑、维修"
+action = ["Harvest", "Build"]
+range = 1
+cost = { Energy = 100 }
+
+[[body_part_types]]
+name = "Carry"
+description = "运输——携带资源，容量 = parts × 50"
+action = ["Transfer", "Withdraw"]
+passive = { carry_capacity_per_part = 50 }
+cost = { Energy = 50 }
+
+[[body_part_types]]
+name = "Attack"
+description = "近战攻击——距离 1，每 part 30 伤害"
+action = "Attack"
+damage_type = "Kinetic"
+base_damage = 30
+range = 1
+age_modifier = -80
+cost = { Energy = 80 }
+
+[[body_part_types]]
+name = "RangedAttack"
+description = "远程攻击——距离 3，每 part 25 伤害"
+action = "RangedAttack"
+damage_type = "Kinetic"
+base_damage = 25
+range = 3
+age_modifier = -50
+cost = { Energy = 100 }
+
+[[body_part_types]]
+name = "Heal"
+description = "治疗——每 part 恢复 12 HP"
+action = "Heal"
+base_heal = 12
+range = 1
+age_modifier = -30
 cost = { Energy = 250 }
+
+[[body_part_types]]
+name = "Claim"
+description = "占领——夺取敌方建筑/Controller"
+action = "ClaimController"
+range = 1
+age_modifier = -50
+cost = { Energy = 600 }
+
+[[body_part_types]]
+name = "Tough"
+description = "韧性——被动 HP 加成，每 part +100 hits_max"
+passive = { hits_per_part = 100 }
+age_modifier = 100
+cost = { Energy = 10 }
+```
+
+**字段说明**：
+
+| 字段 | 类型 | 必需 | 说明 |
+|------|------|------|------|
+| `name` | string | ✅ | 唯一标识符 |
+| `description` | string | ✅ | 人类可读描述 |
+| `action` | string \| string[] | 条件 | 绑定的 CommandAction。`passive` 类型可省略。数组表示支持多种 action |
+| `passive` | map | 条件 | 被动效果配置（如 Tough 的 hits_per_part）。与 action 互斥 |
+| `damage_type` | string | 条件 | 攻击类型的伤害类型，引用 `[[damage_types]]` 中的 name |
+| `base_damage` | u32 | 条件 | 每 part 的基础伤害值。`damage_type` 存在时必需 |
+| `base_heal` | u32 | 条件 | 每 part 的基础治疗量。action=Heal 时必需 |
+| `range` | u32 | ✅ | 生效距离（被动类型填 0） |
+| `cost` | `{String: u32}` | ✅ | 生成该 body part 的资源消耗，key 为资源名 |
+| `age_modifier` | i32 | 否 | 对 drone age_max 的修改量（TOUGH +100 延寿、ATTACK -80 折寿）。默认 0 |
+
+**Body part → CommandAction 绑定规则**：
+- 一个 CommandAction 可被多个 body part 触发
+- 新 body part 绑定到**已有 CommandAction** 时，只需定义不同的 damage_type/base_damage/cost——引擎自动复用该 action 的校验和应用逻辑
+- 引入**新 CommandAction** 时（如 `Leech`），需在引擎中注册新的 `CommandAction` 变体 + 对应的 validate/apply handler + 在 IDL 中暴露给 SDK
 
 [[body_part_types]]
 name = "Claim"
