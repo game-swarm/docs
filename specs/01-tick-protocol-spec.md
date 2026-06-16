@@ -149,8 +149,13 @@ fn build_snapshot(player_id, tick) -> Snapshot:
 ```
 
 - 快照按房间序列化一次，再按玩家过滤——不是 O(P × E)
-- 超限时按距离排序截断（最近优先），保证近距离实体不丢失
-- `truncated=true` 时 WASM 模块收到标记，应降级策略（如放弃全量扫描）
+- 超限时按**分桶权重**截断：
+  1. **关键桶**（无条件保留）：Spawn、Controller、玩家拥有的 depot/storage
+  2. **高优先桶**（按距离排序）：己方 drone、己方建筑
+  3. **中优先桶**（按距离排序）：敌方可见实体、资源点
+  4. **低优先桶**（按距离排序）：友方实体、中立实体
+  同一桶内按距离优先（最近的先保留）。敌方无法通过堆廉价实体挤掉对方关键实体。
+- `truncated=true` 时 WASM 模块收到标记，应降级策略
 - `host_get_objects_in_range` 返回 `{items, truncated, total_visible_count?}`
 
 ### 2.4 WASM 模块部署

@@ -454,20 +454,44 @@ Drone 在 Phase 2b spawn_system 中创建——位于 death_mark（释放 room c
 - 每玩家每 tick：10 次
 - 结果以 `(from, to, 地形hash)` 缓存 — 地形不变不重算
 
-## 5. 拒绝响应
+## 5. 拒绝响应 — 可见性优先
 
-每次拒绝返回：
+**可见性优先原则**：所有涉及 `target_id`/`target_player` 的校验，**第一步必须是可见性检查**。不可见或不存在目标统一返回 opaque 错误，不得区分 ID 是否存在。
+
+### 5.1 拒绝码
+
+| 拒绝码 | 含义 | 使用场景 |
+|--------|------|---------|
+| `NotVisibleOrNotFound` | 目标不可见或不存在 | 替代 `ObjectNotFound` — 调用者对不可见目标执行任何操作时返回 |
+| `OutOfRange` | 超出有效范围 | 目标可见但距离超标 |
+| `FriendlyTarget` | 目标是友方 | 目标可见但为友方 |
+| `Fatigued` | drone 疲劳 | 自身状态 |
+| （其他） | 见各指令校验表 | |
+
+**admin trace**（管理员审计视图）保留完整 detail。**player trace**（玩家 TickTrace 视图）仅返回脱敏信息。
+
+### 5.2 玩家拒绝响应示例
 
 ```json
 {
   "command": { /* 原始 RawCommand */ },
-  "rejection": "OutOfRange",
-  "detail": "object_1001 at (5,3), target_1002 at (5,6) — distance 3, require ≤ 1",
+  "rejection": "NotVisibleOrNotFound",
   "tick": 4521
 }
 ```
 
-`detail` 字段是机器可读 JSON，含精确位置、距离和阈值。后续可基于此生成 UX 友好的解释（见 specs/06-mvp-feedback-loop）。
+玩家收到 `NotVisibleOrNotFound` 时无法区分"目标不存在"与"目标存在但你看不到"——这正是安全目标。
+
+### 5.3 Admin 完整审计
+
+```json
+{
+  "command": { "type": "Attack", "object_id": 1001, "target_id": 1002, "seq": 3 },
+  "rejection": "NotVisibleOrNotFound",
+  "detail": "target_id=1002, reason=not_visible_to_caller, caller_pos=(5,3), admin_only=true",
+  "tick": 4521
+}
+```
 
 ## 6. 硬性边界与限制
 
@@ -491,7 +515,7 @@ Drone 在 Phase 2b spawn_system 中创建——位于 death_mark（释放 room c
 
  Command | 所有权 (entity_id) | 范围 (in_range) | 数量 (u32) | 资源 (≤持有量) | 坐标 (房间边界内) | 特殊校验 |
 ---------|-------------------|----------------|-----------|---------------|------------------|---------|
- **Move** | `object_id.owner == player_id` | 目标格六邻可达 (range=1) | N/A | N/A | 目标格在房间内 | `drone.fatigue==0`, `drone.body` 含 `Move`, 非 spawning, 目标格可通行 |
+ | **Move** | `object_id.owner == player_id` | 目标格四邻可达 (range=1) | N/A | N/A | 目标格在房间内 | `drone.fatigue==0`, `drone.body` 含 `Move`, 非 spawning, 目标格可通行 |
  **Harvest** | `object_id.owner == player_id` | `object_id` 距 `target_id` ≤ 1 | N/A | `target.source.energy > 0` | N/A | `drone.body` 含 `Work`+`Carry`, `carry_used < carry_capacity`, `fatigue==0` |
  **Transfer** | `object_id.owner == player_id` | `object_id` 距 `target_id` ≤ 1 | `amount: u32`, 防溢出 (amount + target.current ≤ u32::MAX) | `drone.carry[res] ≥ amount` | N/A | `drone.body` 含 `Carry`, 目标有容量 (`TargetFull` 拒绝) |
  **Withdraw** | `object_id.owner == player_id` | `object_id` 距 `target_id` ≤ 1 | `amount: u32`, 防溢出 | `target.carry[res] ≥ amount` | N/A | `drone.body` 含 `Carry`, 自身有容量 |
