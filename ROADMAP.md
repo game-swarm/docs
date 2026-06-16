@@ -1,7 +1,7 @@
 # Swarm — 实现差距追踪
 
-> 审计日期: 2026-06-16。基于 DESIGN.md + specs/ + api/ 与 engine/sandbox/gateway/frontend 代码交叉验证。
-> 测试总数: 197 (engine:151, sandbox:10, sdk-rust:8, sdk-ts:11, gateway:9, frontend:8)
+> 审计日期: 2026-06-16。全量审计 + 验证通过。
+> 测试总数: 205 (engine:159, sandbox:14, sdk-rust:8, sdk-ts:11, gateway:9, frontend:13)
 
 ## 总览
 
