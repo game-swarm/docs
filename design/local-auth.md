@@ -237,12 +237,12 @@ auth/revocations/<signature>         → {revoked_at, reason}
 
 ```
 login_username     — 登录凭据，ASCII [a-zA-Z0-9_-]{3,32}，大小写不敏感，不可变
-display_name       — 显示名称，Unicode，≤32 字符，可修改（v1.1）
+display_name       — 显示名称，Unicode，≤32 字符，可直接修改
 player_id          — 引擎内标识，u64，确定性 hash(provider + ":" + subject)
 ```
 
-- `login_username` 是 subject（认证主体），用于登录和 `player_id` 推导
-- `display_name` 在 v1 默认等于 `login_username`，v1.1 支持修改
+- `login_username` 是 subject（认证主体），用于登录和 `player_id` 推导，不可变
+- `display_name` 默认为 `login_username`，可通过 `swarm_update_profile` 修改
 - `player_id` 推导：`blake3("local:" + login_username_lowercase) → 取低 64 bits → u64`
 - 碰撞概率：对于 10^6 用户约 2.7×10^-8，可接受
 - 碰撞处理：注册时检测 FDB `auth/identities/` 唯一索引冲突，返回 `username_taken`
@@ -257,7 +257,18 @@ player_id          — 引擎内标识，u64，确定性 hash(provider + ":" + s
 校验正则:    ^[a-zA-Z][a-zA-Z0-9_-]{2,31}$
 ```
 
-**用户名注册状态不公开**（D3 裁决）：客户端无法通过 login 错误信息区分"用户不存在"和"密码错误"。PoW 验证后无条件消费 challenge — 即使后续发现 username_taken。
+**用户名注册状态可见性由服务器配置决定**（D3 裁决）：通过 `auth.username_visibility` 配置项控制。
+
+```toml
+[auth]
+# "public": 注册前先检查用户名是否存在（可节省客户端 PoW 但暴露用户名占用状态）
+# "private": 先验证 PoW 再检查用户名（不暴露用户名状态，但 taken 时会浪费一次 PoW）
+username_visibility = "private"
+```
+
+- `"public"` 模式：`swarm_register` 先检查用户名 → 若 taken 则直接返回 `username_taken`（不消费 challenge）
+- `"private"` 模式：先验证 PoW → 消费 challenge → 再检查用户名。即使 taken 也消耗了 PoW，但不暴露信息
+- 无论何种模式，`swarm_login` 统一返回 `invalid_credentials`（不区分不存在/密码错误），并执行 dummy argon2id
 
 ---
 
@@ -358,11 +369,15 @@ if !verify_pow(&challenge.challenge, &params.nonce, challenge.difficulty_bits) {
     return Err("invalid_pow");
 }
 
-// 4. PoW 验证通过后，立即标记消费（原子性）
+// 4. PoW 验证通过后，标记消费（原子性）
 tx.set(challenge_key, challenge.with_consumed(true).serialize());
 
-// 5. 检查用户名 + 创建用户（若 username_taken 则回滚用户创建；
-//    但 challenge 已消费 — D3 裁决：用户名不公开，无条件消费）
+// 5. 检查用户名 + 创建用户
+//    消费策略取决于 auth.username_visibility：
+//    - "public": 先检查用户名 → taken 则返回 username_taken（challenge 不消费）
+//    - "private": challenge 已验证/消费 → 再检查用户名 → taken 则返回 username_taken
+//    （challenge 已消费，客户端需重新获取）
+//    实现: 在 PoW 验证之前或之后分支，但整个流程在同一 FDB 事务内
 ```
 
 ### 8.4 Login PoW（D2：可配置开关）
@@ -396,6 +411,7 @@ trigger_window_seconds = 300  # 失败计数的滑动窗口
 | `swarm_login_challenge` | (无) | `PoWChallenge` | 获取登录 PoW 挑战（仅触发时） |
 | `swarm_token_refresh` | `refresh_token`, `client_public_key` | `LoginResult` | 续签（已有，不变） |
 | `swarm_auth_revoke` | `refresh_token` 或 `certificate` | `RevokeResult` | 吊销（已有，不变） |
+| `swarm_update_profile` | `display_name` | `ProfileResult` | 修改显示名称 |
 
 > 注：`OAuth2LoginResult` 重命名为 `LoginResult`（方案 B 命名去 OAuth2 偏见）。
 
@@ -591,7 +607,6 @@ export type AuthProvider = 'github' | 'google' | 'local';
 
 - 密码重置（邮箱绑定后）
 - 密码修改（已登录状态）
-- `display_name` 修改
 - HttpOnly cookie + WebCrypto-bound token（替代 localStorage）
 - 身份合并
 
@@ -677,7 +692,14 @@ test register_rejects_duplicate_username
 test register_rejects_invalid_pow
 test register_rejects_expired_challenge
 test register_consumes_challenge_even_on_username_taken
+test register_username_visibility_public_skips_pow_on_taken
+test register_username_visibility_private_consumes_pow_on_taken
 test register_sets_display_name_from_username
+
+# Profile
+test update_profile_changes_display_name
+test update_profile_rejects_empty_display_name
+test update_profile_requires_authentication
 test password_hash_done_outside_fdb_transaction
 
 # Login
