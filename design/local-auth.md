@@ -133,7 +133,7 @@ AI agent (Claude/GPT/自主 agent) → MCP session
 
 错误恢复：
   - PoW 求解超时 → 自动重新获取 challenge + 重试
-  - 凭据丢失 → 无密码重置（v1），必须依赖持久化备份。设计明确标注此风险
+  - 凭据丢失 → 无密码重置，必须依赖持久化备份。密码重置依赖邮箱验证基础设施
   - username_taken → 自动重试新 username
 ```
 
@@ -519,10 +519,11 @@ POST /mcp (JSON-RPC)
 
 ### 10.3 浏览器存储策略
 
-- v1：`localStorage` 存储 `{refresh_token, certificate, client_public_key}`
-- 标注风险：XSS 可读取 localStorage → 迁移路线：HttpOnly cookie + WebCrypto-bound token（v1.1）
-- CSRF：非 cookie 方案无 CSRF 风险；若未来迁移到 cookie，需 `SameSite=Strict`
-- 传输：仅 HTTPS（生产部署）
+- 使用 `localStorage` 存储 `{refresh_token, certificate, client_public_key}`
+- 防护：严格 CSP 防止 XSS（`script-src 'self'` + nonce/hash）；`Trusted Types` 策略
+- CSRF：非 cookie 方案天然无 CSRF 风险
+- 传输：仅 HTTPS
+- 日志脱敏：`refresh_token` 不出现在 URL query、Referrer、服务端访问日志中
 
 ### 10.4 AI Agent 凭据存储
 
@@ -595,7 +596,7 @@ export type AuthProvider = 'github' | 'google' | 'local';
 | Chat log 泄露凭据 | Agent 代理注册返回一次性 handoff code，非裸 refresh_token |
 | 凭据丢失（无密码重置） | 注册 UI 显示 Confirm Password；显式警告"忘记密码=永久失去资产"；AI agent 需持久化备份 |
 
-### 12.2 不做的（v1）
+### 12.2 当前不实现的
 
 - ❌ 密码重置（需 email 基础设施）
 - ❌ 双因素认证
@@ -607,7 +608,6 @@ export type AuthProvider = 'github' | 'google' | 'local';
 
 - 密码重置（邮箱绑定后）
 - 密码修改（已登录状态）
-- HttpOnly cookie + WebCrypto-bound token（替代 localStorage）
 - 身份合并
 
 ---
