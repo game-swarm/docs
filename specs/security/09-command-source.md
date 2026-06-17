@@ -68,22 +68,22 @@
 吊销:  证书吊销 / public key 吊销 / Server Intermediate CA 吊销 / Auth Service epoch emergency bump
 ```
 
-**设计决策**：客户端持有 Ed25519 私钥，部署时对结构化载荷签名（非裸 WASM 字节）。`CodeSigningCertificate` 必须在部署提交时有效；部署成功后证书自然过期不影响已部署模块继续运行。此模型提供强审计链（可证明某玩家部署了某版本代码），同时通过 short-lived deploy_nonce 防重放。
+**设计决策**：客户端持有 Ed25519 私钥，部署时对结构化载荷签名（非裸 WASM 字节）。`CodeSigningCertificate` 必须在部署提交时有效；部署成功后证书自然过期不影响已部署模块继续运行。防重放通过 per-player/per-slot 单调递增 `version_counter` 实现——服务器拒绝 `version_counter ≤ current_version_counter`，相同 `(module_hash, metadata_hash)` 返回 `already_deployed`。
 
 ### 3.2 部署载荷结构
 
-客户端签名 payload（`DeployPayload`）至少包含以下必填字段：
+客户端签名 payload（`DeployPayload`）包含以下字段：
 
 ```json
 {
   "domain": "swarm-deploy",
   "module_hash": "blake3:abc123...",
+  "metadata_hash": "blake3:def456...",
   "player_id": 42,
   "world_id": "world_v1",
   "module_slot": "main",
-  "version_tag": "v1.2.3",
-  "deploy_nonce": "n_abc123...",
-  "expires_at": 1782000000,
+  "version_counter": 17,
+  "signed_at": 1781697600,
   "signature": "ed25519:sig..."
 }
 ```
@@ -92,28 +92,28 @@
 |------|------|
 | `domain` | 域分隔符 `"swarm-deploy"`，防跨协议重放 |
 | `module_hash` | `Blake3(WASM bytes)` |
+| `metadata_hash` | `Blake3(mod.toml)` |
 | `player_id` | 服务端分配的玩家 ID |
 | `world_id` | 目标世界 ID |
 | `module_slot` | 模块槽位（main/defense/worker/...） |
-| `version_tag` | 语义化版本号 |
-| `deploy_nonce` | **服务端签发**的临时 nonce，短 TTL（60s），单次消费。通过 MCP `swarm_deploy_challenge` 获取 |
-| `expires_at` | 部署过期时间（建议 ≤ 15 min from deploy_nonce issue） |
+| `version_counter` | per-player/per-slot 单调递增计数器 |
+| `signed_at` | 客户端签名时间戳（unix 秒） |
 | `signature` | 客户端 Ed25519 私钥对上述字段的签名 |
 
 ### 3.3 部署验证流程
 
-1. 客户端调用 MCP `swarm_deploy_challenge` → 服务端返回 `deploy_nonce`（单次，60s TTL）
-2. 客户端构建 `DeployPayload`，用 Ed25519 私钥签名
-3. 客户端发送 WASM bytes + DeployPayload + 证书
-4. 服务端验证：
+1. 客户端构建 `DeployPayload`，`version_counter` 比上次部署 +1，用 Ed25519 私钥签名
+2. 客户端发送 WASM bytes + `mod.toml` + DeployPayload + 证书
+3. 服务端验证：
    a. `CodeSigningCertificate` 链可追溯到本服 Server Root CA，usage=code_signing
    b. 证书在部署提交时未过期、未被吊销（CRL 查询）
    c. `player_id` 从证书提取，覆盖任何客户端自报 ID
-   d. `deploy_nonce` 有效且未消费（全局去重）
-   e. `expires_at ≥ now()` 且 `≤ issued_time + 15 min`
-   f. `module_hash == Blake3(收到的 WASM bytes)`
-   g. Ed25519 验签通过（证书中的公钥 + signature + payload）
-5. tick 执行时引擎验证 `module_hash` 匹配已部署模块；证书自然过期不终止已部署模块
+   d. `version_counter > current_version_counter`（防重放）
+   e. `module_hash == Blake3(收到的 WASM bytes)`
+   f. `metadata_hash == Blake3(收到的 mod.toml)`
+   g. 若 `(module_hash, metadata_hash)` 与已部署版本相同 → 返回 `already_deployed`
+   h. Ed25519 验签通过（证书中的公钥 + signature + payload）
+4. tick 执行时引擎验证 `module_hash` 匹配已部署模块；证书自然过期不终止已部署模块
 
 ### 3.4 证书生命周期
 
@@ -250,42 +250,40 @@ refund_credit 归属:
 每 tick 上限: MAX_FUEL × 10%
 ```
 
-### 7.3 Deploy Nonce 生命周期
+### 7.3 Version Counter 防重放
+
+Deploy 不使用服务端 nonce。防重放通过 per-player/per-slot 单调递增 `version_counter` 实现：
 
 ```
-1. 客户端调用 swarm_deploy_challenge → 服务端签发 nonce
-   nonce 属性:
-     - 128-bit 随机
-     - TTL: 60s
-     - audience: {player_id, world_id, wasm_slot}
-     - IP-bound（默认）: 签发 IP 与请求 IP 一致才接受
-     - single-use: 消费后立即作废
+1. 客户端维护 per-slot version_counter（初始 0，每次部署 +1）
 
-2. 客户端签名 payload（含 nonce）→ 提交部署
+2. 客户端构建 DeployPayload：
+   - version_counter = 上次部署的 counter + 1
+   - module_hash = Blake3(WASM bytes)
+   - metadata_hash = Blake3(mod.toml)
+   - signed_at = 客户端当前时间戳
+   - 用 CodeSigningCertificate 对应私钥签名
 
-3. 服务端验证:
-   a. nonce 存在且未被消费（全局去重）
-   b. nonce 未过期（≤ 60s from issue）
-   c. nonce audience 匹配请求（player/world/slot/IP）
-   d. Ed25519 验签通过
+3. 服务端验证：
+   a. version_counter > 该 slot 的 current_version_counter
+   b. 若 (module_hash, metadata_hash) 与已部署版本相同 → already_deployed
+   c. Ed25519 验签通过
+   d. 证书链 + CRL 检查
 
-4. 编译时间 > nonce TTL:
-   → 服务端创建 pending_deploy 状态
-   → 返回 deploy_token（30min TTL）
-   → 编译完成后用 deploy_token 提交
-   → 不延长裸 nonce（防重放窗口扩大）
+4. 拒绝条件：
+   - version_counter ≤ current_version_counter → stale_deploy
+   - 重复 (module_hash, metadata_hash) → already_deployed
 ```
 
 ### 7.4 状态转换表
 
 | 状态 | 触发 | 下一状态 |
 |------|------|---------|
-| idle | 客户端请求 nonce | nonce_issued |
-| nonce_issued | 客户端提交 signed payload + 验签通过 | compiling |
-| nonce_issued | nonce 过期（60s） | idle（nonce 作废） |
+| idle | 客户端提交 signed DeployPayload + 验签 + counter 通过 | compiling |
+| idle | version_counter ≤ current | rejected (stale_deploy) |
+| idle | 重复 (module_hash, metadata_hash) | already_deployed |
 | compiling | 编译成功 | deployed |
-| compiling | 编译失败 | idle（可重试，需新 nonce） |
-| compiling | deploy_token 过期（30min） | idle |
+| compiling | 编译失败 | idle（可重试，需递增 counter） |
 | deployed | tick 执行验证失败 | rejected |
 | deployed | tick 执行成功 | active |
 

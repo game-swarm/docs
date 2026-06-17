@@ -64,16 +64,34 @@ tick((snap: Snapshot): Command[] => {
 
 ## 4. 部署
 
+### 4.1 人类玩家（Web UI）
+
 通过 Web UI（`http://localhost:5173`）：
 1. 首次访问时确认服务器 Root CA fingerprint
 2. 生成本地设备密钥并提交 CSR
-3. 点击 **Deploy** → 代码编译为 WASM → 上传到引擎
-4. 下一个 tick 开始，你的 drone 就会自动采集
+3. 获得应用层证书 bundle（ClientAuthCertificate + CodeSigningCertificate）
+4. 点击 **Deploy** → 代码编译为 WASM → 签名 DeployPayload → 上传到引擎
+5. 下一个 tick 开始，你的 drone 就会自动采集
 
-通过 MCP（AI agent）：
+### 4.2 AI Agent（MCP）
+
+AI agent 通过 MCP 部署 WASM，与人类玩家走相同的证书路径：
+
 ```
-swarm_deploy(module_bytes, wasm_signature)
+1. swarm_get_server_trust    → 获取 server_id + Root CA fingerprint
+2. 生成 Ed25519 密钥对       → 本地生成，私钥不离开客户端
+3. swarm_register_challenge  → 获取 PoW challenge
+4. swarm_submit_csr          → 提交 CSR + PoW proof → 获得 CertificateBundle
+5. 编写/编译 WASM + mod.toml → TypeScript SDK 或 Rust SDK
+6. 构建 DeployPayload         → version_counter + module_hash + metadata_hash + signed_at
+7. 用 CodeSigningCertificate 私钥签名 DeployPayload
+8. swarm_deploy              → 提交 WASM bytes + mod.toml + DeployPayload + 证书链
+9. swarm_explain_last_tick   → 验证第一个 tick 执行结果
 ```
+
+不需要先请求 `swarm_deploy_challenge`——防重放由 `version_counter` 保证。
+
+**MCP 工具清单**见 [specs/reference/mcp-tools.md](specs/reference/mcp-tools.md)。
 
 ## 5. 调试
 

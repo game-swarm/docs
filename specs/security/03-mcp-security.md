@@ -48,7 +48,7 @@ Web UI (Monaco + PixiJS)          MCP Interface
   - public_key: Ed25519
   - usage: client_auth | code_signing | admin | federation
   - scopes: string[]
-  - audience: server_id + world_id + gateway_origin
+  - audience: "transport:server_id:world_id:player_id"
   - issued_at / expires_at
   - issuer_chain: Server Intermediate CA → Server Root CA fingerprint
 

@@ -110,7 +110,7 @@ issue_certificate_bundle(
     public_key: Ed25519PublicKey,
     usages: ["client_auth", "code_signing", ...],
     scopes: ["swarm:deploy", "swarm:read", ...],
-    audience: (server_id, world_id, gateway_origin),
+    audience: "transport:server_id:world_id:player_id",
     ttl_policy: CertificateTtlPolicy,
 ) → CertificateBundle
 ```
@@ -319,7 +319,7 @@ timestamp: <unix_ms>
 nonce: <nonce>
 certificate_id: <certificate_id>
 player_id: <player_id>
-audience: <world_id>@<gateway_origin>
+audience: "transport:server_id:world_id:player_id"
 ```
 
 验证顺序：
@@ -1013,7 +1013,7 @@ Swarm 认证系统的**唯一权威凭证是应用层证书链 + 用户私钥签
 
 **约束**：
 - JWT/access_token 不是独立的认证根——它必须由应用层证书或有效 `refresh_token` 兑换，不可单独用于身份证明
-- 应用层证书包含 `player_id, public_key, usage, scopes, audience(server_id + world_id + gateway_origin), issued_at, expires_at, issuer_chain`
+- 应用层证书包含 `player_id, public_key, usage, scopes, audience("transport:server_id:world_id:player_id"), issued_at, expires_at, issuer_chain`
 - MCP/HTTP/WebSocket 安全：请求必须携带 `Swarm-Certificate-Chain` 与 canonical request 签名；不依赖 mTLS 或 TLS client certificate
 - HTTP 不安全传输允许认证与完整性校验，但不提供机密性、流量隐藏或服务端域名真实性
 - Token `aud` 字段绑定 `{gateway_origin, world_id, client_type}` 三元组，防止跨环境 token 重放
