@@ -215,15 +215,15 @@ spec 05 定义了 fog_of_war, player_view (Drone/Full/Allied), spectate, replay_
 
 **结果**: engine 190→205 tests
 
-### Phase C: 文档对齐 (预计 2-4 小时)
+### Phase C: 文档对齐 ✅ 完成 (2026-06-17)
 
-| ID | 任务 | 仓库 | 预估 |
-|----|------|------|------|
-| S1 | 更新 spec 01 反映实际系统链 | docs | 编辑 |
-| S2 | 审计 RejectionReason 完整性 | engine+docs | 审计 |
-| S4 | commands.md ↔ CommandAction enum 对齐 | docs | 编辑 |
-| S5 | mcp-tools.md ↔ mcp_tool_infos() 对齐 | docs | 编辑 |
-| S3 | 可见性系统行为验证 | engine | 审计 |
+| ID | 任务 | 仓库 | 状态 |
+|----|------|------|:--:|
+| S1 | 更新 spec 01 系统链 (6→20 系统) | docs | ✅ |
+| S2 | RejectionReason 审计 — commands.md 36→51 种 | docs | ✅ |
+| S4 | commands.md ↔ CommandAction 对齐 (23→16+8Custom) | docs | ✅ |
+| S5 | mcp-tools.md 验证 (30=30) | docs | ✅ |
+| S3 | 可见性系统行为验证 — VisibilityConfig 已覆盖全部模式 | engine | ✅ |
 
 ### Phase D: Tier 2 扩展 (按需)
 
