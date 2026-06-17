@@ -21,11 +21,11 @@
 - 16 CommandAction 变体 ✓
 - 8 body parts ✓
 - 13 structure types ✓
-- 18-system ECS chain ✓
-- 28 MCP tools ✓
+- 26-system ECS chain ✓
+- 30 MCP tools ✓
 - World Config (完整 TOML schema) ✓
-- Special Effect framework + 4 effects ✓
-- Custom Action framework + 2 actions ✓
+- Special Effect framework + 11 effects ✓
+- Custom Action framework + 8 actions ✓
 - Replay Storage, Sim, Shard, Arena, Visibility, Source Gate, Rhai, Tutorial, Security, Onboarding, Ranking, NATS realtime, Dragonfly, FDB, Mod CLI ✓
 - Progressive storage tax ✓
 - Controller + Depot repair ✓
