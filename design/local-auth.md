@@ -245,7 +245,10 @@ player_id          — 引擎内标识，u64，确定性 hash(provider + ":" + s
 
 - `login_username` 是 subject（认证主体），用于登录和 `player_id` 推导，不可变
 - `display_name` 默认为 `login_username`，可通过 `swarm_update_profile` 修改
-- `player_id` 推导：`blake3("local:" + login_username_lowercase) → 取低 64 bits → u64`
+- `player_id` 推导：
+  - 本地：`blake3("local:" + login_username_lowercase) → 取低 64 bits → u64`
+  - OAuth2（已有）：`blake3(provider + ":" + subject) → u64`
+  - 联邦：`blake3("federated:" + world_id + ":" + original_player_id) → u64`
 - 碰撞概率：对于 10^6 用户约 2.7×10^-8，可接受
 - 碰撞处理：注册时检测 FDB `auth/identities/` 唯一索引冲突，返回 `username_taken`
 
@@ -419,6 +422,7 @@ trigger_window_seconds = 300  # 失败计数的滑动窗口
 | `swarm_confirm_password_reset` | `reset_token`, `new_password` | `LoginResult` | 确认重置 + 自动登录 |
 | `swarm_bind_email` | `email` | `SuccessResult` | 绑定/更换邮箱 |
 | `swarm_delete_account` | `password` | `SuccessResult` | 删除账号及关联资产 |
+| `swarm_federated_login` | `certificate` (外部签发) | `LoginResult` | 跨世界身份登录 |
 
 > 注：`OAuth2LoginResult` 重命名为 `LoginResult`。
 
@@ -658,9 +662,88 @@ POST /mcp (JSON-RPC)
 
 ---
 
-## 14. 前端变更
+## 14. 联邦身份
 
-### 14.1 `LoginButton.tsx` 扩展现有组件
+Swarm 的世界形成**联邦宇宙**——玩家在一个世界注册的身份可以被其他世界识别和接受，无需重复注册。
+
+### 18.1 信任模型
+
+每个世界有自己的 `CertificateIssuer` 密钥对。世界可以通过配置信任其他世界的 issuer 公钥：
+
+```toml
+# world.toml
+[auth.federation]
+# 信任的远程世界列表
+trusted_issuers = [
+  { world_id = "swarm-alpha",  issuer_public_key = "ed25519:base64..." },
+  { world_id = "swarm-beta",   issuer_public_key = "ed25519:base64..." },
+]
+```
+
+### 18.2 跨世界登录流程
+
+玩家持 World A 的证书来 World B：
+
+```
+1. 客户端发送 World A 的 PlayerCertificate（非本地世界签发）
+2. World B 查找证书中的 issuer_public_key 是否在 trusted_issuers 列表中
+3. 验证证书签名（用 World A 的 issuer 公钥）
+4. 验证证书未过期、未被撤销
+5. 映射身份：player_id_local = blake3("federated:" + world_id + ":" + original_player_id) → u64
+6. World B 用本地 CertificateIssuer 重新签发本地证书（绑定本地 player_id）
+7. 返回 LoginResult（包含本地证书 + session）
+```
+
+### 15.3 MCP 工具
+
+| Tool | 参数 | 返回 | 说明 |
+|------|------|------|------|
+| `swarm_federated_login` | `certificate` (外部签发) | `LoginResult` | 用外部世界证书登录本地世界 |
+
+```
+POST /mcp (JSON-RPC)
+{
+  "method": "swarm_federated_login",
+  "params": {
+    "certificate": {
+      "payload": { "player_id": 42, "audience": "swarm-wasm-deploy", ... },
+      "issuer_public_key": "ed25519:...",
+      "signature": "..."
+    }
+  }
+}
+
+Response: LoginResult { player_id (本地), session, certificate (本地重签) }
+```
+
+### 14.4 身份映射
+
+联邦身份的 `player_id` 按世界隔离：
+
+```
+本地注册:
+  "local" + ":" + username → blake3 → u64 → player_id (本地命名空间)
+
+OAuth2:
+  provider + ":" + subject → blake3 → u64 → player_id (OAuth2 命名空间)
+
+联邦:
+  "federated" + ":" + world_id + ":" + original_player_id → blake3 → u64 → player_id
+```
+
+不同世界的同一联邦玩家拥有**独立的本地 player_id 和资产**。联邦身份只用于认证——不共享游戏状态、不共享模块、不共享排名。这与 [Swarm 联邦宇宙哲学](README.md#11-核心理念) 一致：身份可跨世界，但游戏状态按世界隔离。
+
+### 14.5 撤销传播
+
+- 本地证书撤销仅影响本地世界
+- 外部证书撤销：World B 定期向 World A 查询吊销列表（`GET /auth/revocations?since=<timestamp>`），或在验证时实时查询
+- 若外部世界不可达：使用本地缓存的吊销列表（stale 视为有效——可用性优先）
+
+---
+
+## 15. 前端变更
+
+### 18.1 `LoginButton.tsx` 扩展现有组件
 
 ```
 ┌──────────────────────────────────────────┐
@@ -685,7 +768,7 @@ POST /mcp (JSON-RPC)
 └──────────────────────────────────────────┘
 ```
 
-### 14.2 PoW 前端实现
+### 18.2 PoW 前端实现
 
 - 必须运行在 **Web Worker** 中（禁止主线程 `while(true)` 阻塞）
 - 显示进度：`已尝试 N / 预计 M 次`（基于 difficulty_bits 计算期望值）
@@ -693,7 +776,7 @@ POST /mcp (JSON-RPC)
 - 取消后自动重新获取 challenge + 重试
 - `difficulty_bits` 从服务端 challenge 响应获取，不做客户端假设
 
-### 14.3 `provider` 字段扩展
+### 15.3 `provider` 字段扩展
 
 ```typescript
 export type AuthProvider = 'github' | 'google' | 'local';
@@ -701,9 +784,9 @@ export type AuthProvider = 'github' | 'google' | 'local';
 
 ---
 
-## 15. 安全考量
+## 16. 安全考量
 
-### 15.1 威胁模型
+### 18.1 威胁模型
 
 | 威胁 | 缓解措施 |
 |------|---------|
@@ -724,7 +807,7 @@ export type AuthProvider = 'github' | 'google' | 'local';
 | 账号删除误操作 | 密码确认 + 30 天 grace period 可恢复 |
 | 邮箱验证 token 劫持 | HTTPS + verification token 24h TTL + 一次性消费 |
 
-### 15.2 不做的
+### 18.2 不做的
 
 - ❌ 双因素认证（TOTP / WebAuthn）— 可作为后续安全升级
 - ❌ IP 黑名单
@@ -732,7 +815,7 @@ export type AuthProvider = 'github' | 'google' | 'local';
 
 ---
 
-## 16. 实现范围
+## 17. 实现范围
 
 ### 13.1 Phase 1
 
@@ -757,13 +840,13 @@ export type AuthProvider = 'github' | 'google' | 'local';
 
 ---
 
-## 17. 与 OAuth2 的互动
+## 18. 与 OAuth2 的互动
 
-### 14.1 共享的证书系统
+### 18.1 共享的证书系统
 
 本地认证和 OAuth2 认证使用完全相同的 `CertificateIssuer`、`PlayerCertificate`、`refresh_token` 模型。下游（WASM 部署、MCP 权限）不感知差异。
 
-### 14.2 `provider` 字段
+### 18.2 `provider` 字段
 
 | Provider | 含义 |
 |----------|------|
@@ -773,7 +856,7 @@ export type AuthProvider = 'github' | 'google' | 'local';
 
 ---
 
-## 18. 测试策略
+## 19. 测试策略
 
 ### 单元测试
 
@@ -850,6 +933,15 @@ test delete_account_revokes_sessions
 test delete_account_grace_period_allows_recovery
 test delete_account_permanent_after_grace_period
 test delete_account_releases_username_after_permanent
+
+# Federation
+test federated_login_accepts_trusted_issuer_certificate
+test federated_login_rejects_untrusted_issuer
+test federated_login_rejects_expired_foreign_certificate
+test federated_login_maps_deterministic_local_player_id
+test federated_login_reissues_local_certificate
+test federated_identity_isolated_assets_per_world
+test federation_revocation_propagation
 
 # Login
 test login_returns_certificate_on_success
