@@ -12,7 +12,7 @@
 | **游戏机制** | [`design/gameplay.md`](gameplay.md) | Vanilla Ruleset、身体部件、伤害类型、特殊攻击（8 种）、经济模型、Controller/建筑系统 |
 | **游戏模式** | [`design/modes.md`](modes.md) | World 持久世界 vs Arena 竞技场、PvE 生态层、Arena PvE Challenge |
 | **MCP 与 API** | [`design/interface.md`](interface.md) | MCP 接口架构、Game API deferred command model、SDK |
-| **用户认证** | [`design/local-auth.md`](local-auth.md) | 本地用户注册/登录、PoW 防滥用、AI agent 自注册、agent 代理注册 |
+| **用户认证** | [`design/auth.md`](auth.md) | 本地注册/登录、OAuth2 联合登录、联邦跨世界身份、密码管理、账号生命周期 |
 | **技术选型** | [`design/tech-choices.md`](tech-choices.md) | 各子系统技术栈对比与选型理由 |
 | **技术规范** | [`specs/`](../specs/) | 11 个技术规范，按域分 core/security/gameplay/future |
 | **API 参考** | [`specs/reference/`](../specs/reference/) | 面向开发者的接口文档 |

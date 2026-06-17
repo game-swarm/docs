@@ -1,6 +1,6 @@
-# Swarm 本地用户认证
+# Swarm 用户认证
 
-> 独立于 OAuth2 的本地用户名/密码注册与登录系统。允许玩家无需 GitHub/Google 账号即可创建 Swarm 身份。
+> 统一的用户认证系统：本地注册/登录、OAuth2 联合登录、联邦跨世界身份。
 > **AI agent 可通过 MCP 自注册，人类玩家可通过 agent 代理注册。**
 
 ## 1. 动机
@@ -155,6 +155,27 @@ AI agent (Claude/GPT/自主 agent) → MCP session
   - Agent 的聊天日志中不得出现长期有效的 refresh_token 或 certificate 私钥
   - 若使用「Agent 托管」模式（Agent 长期持有凭据代为操作），需人类显式授权
 ```
+
+### 4.4 OAuth2 联合登录（已有）
+
+与本地认证并列的 OAuth2 路径，支持 GitHub 和 Google：
+
+```
+人类 → 浏览器 → "GitHub Login" / "Google Login"
+  → Gateway /oauth2/{provider}/login → OAuth2 provider 授权
+  → Gateway /oauth2/{provider}/callback → 交换 code 获取 access_token
+  → Engine 签发 PlayerCertificate (24h TTL) + refresh_token (30d)
+  → 与本地认证返回完全相同的 LoginResult
+```
+
+OAuth2 用户与本地用户共享：
+- 同一 `CertificateIssuer`（Ed25519 签名）
+- 同一 `WebAuthSession` / `refresh_token` 模型
+- 同一 `swarm_token_refresh` / `swarm_auth_revoke`
+
+player_id 推导：`oauth_player_id(provider, subject)` — 与本地 `local_player_id(username)` 同模式。
+
+OAuth2 provider 通过环境变量配置：`OAUTH2_GITHUB_CLIENT_ID`、`OAUTH2_GITHUB_CLIENT_SECRET` 等。Gateway 实现参见 `swarm/gateway/oauth2.go`。
 
 ---
 
@@ -834,7 +855,7 @@ export type AuthProvider = 'github' | 'google' | 'local';
 
 ### 13.2 文档同步
 
-- `design/local-auth.md`（本文档）
+- `design/auth.md`（本文档）
 - `design/interface.md` MCP 工具表（已更新）
 - `specs/security/03-mcp-security.md` 补充 Auth domain 边界
 
