@@ -329,6 +329,31 @@ audience: "transport:server_id:world_id:player_id"
 4. timestamp 在允许窗口内，nonce 未使用
 5. scope 覆盖当前操作，audience/world_id 匹配
 
+#### Canonical 序列化规范
+
+签名 payload 在签名前按以下规则序列化为字节串：
+
+1. **行分隔**：每行以 `\n` (LF，0x0A) 结尾，不含 `\r`
+2. **字段顺序**：严格按 `method → path → body_hash → timestamp → nonce → certificate_id → player_id → audience` 排列
+3. **空 body_hash**：无 body 时 `body_hash` 为 `blake3("")` 的 hex 值
+4. **整数编码**：timestamp 为十进制字符串（非 hex），player_id 为十进制字符串
+5. **domain separator**：首行 `SWARM-REQUEST-V1` 为签名字节前缀
+6. **UTF-8**：所有字符串为 valid UTF-8，不包含 BOM
+
+```text
+签名输入 = "SWARM-REQUEST-V1\n" +
+           "method: <v>\n" +
+           "path: <v>\n" +
+           "body_hash: <v>\n" +
+           "timestamp: <v>\n" +
+           "nonce: <v>\n" +
+           "certificate_id: <v>\n" +
+           "player_id: <v>\n" +
+           "audience: <v>\n"
+```
+
+Ed25519 签名由此字节串产生。验签时按相同规则重建输入。
+
 ### 5.7 不安全传输语义
 
 应用层证书允许 HTTP、不可信反向代理或本地离线网络中的身份认证和请求完整性校验。首次访问 HTTP 服务器时，客户端必须展示 `server_id + Server Root CA fingerprint`，由用户人工确认并写入客户端证书存储（TOFU / explicit pinning）。完成 pinning 后，客户端不再依赖外部 TLS/WebPKI 判断该 Swarm 服务器身份，而是验证应用层证书链是否能追溯到已保存的 Server Root CA。
@@ -720,6 +745,98 @@ POST /mcp (JSON-RPC)
 CSR 提交不设 IP/username 限速 — PoW 本身就是速率控制。Challenge 申请设轻量 IP 限速防止存储 DoS。
 
 恢复凭据 per-IP 限流部署在 argon2id 验证之前：达到来源限流阈值时直接返回 `rate_limited`，不进入密码哈希，防止攻击者用大量随机 username 绕过 per-account lockout 将小请求放大为 19MiB argon2id 服务端成本。
+
+### 10.8 Auth 热路径性能合同
+
+#### Nonce 存储
+
+请求 nonce 防重放不写 FDB。使用 Dragonfly SETNX TTL 作为热路径权威存储：
+
+| 维度 | 决策 |
+|------|------|
+| 存储引擎 | Dragonfly SETNX TTL |
+| Key 格式 | `nonce:{account_id}:{nonce_value}` → `"1"` |
+| TTL | 300s（可配置），覆盖网络重传窗口 |
+| 清理 | TTL 自动过期，无后台任务 |
+| 崩溃语义 | TTL 窗口内可重放；窗口过后 nonce 过期 → 重放被拒绝 |
+| 分片 | Dragonfly cluster hash-slot 按 `{account_id}` 分片 |
+
+Deploy 不使用 nonce——防重放由 `version_counter` 保证（见 D2 裁决）。
+
+高价值操作（admin 证书签发、恢复流程）使用 challenge-response 模式，challenge 不存储——校验时重算 `Blake3(account_id || server_seed || timestamp)`。
+
+#### 证书链验证缓存
+
+| 维度 | 决策 |
+|------|------|
+| 缓存位置 | Engine 进程内 LRU（不跨请求走 Auth Service） |
+| 缓存键 | `Blake3(cert_fingerprint || intermediate_fingerprint)` |
+| 失效触发 | CRL 更新、证书吊销、Intermediate CA 轮换 |
+| 容量 | 10000 条，LRU 淘汰 |
+| 预热 | 服务启动时不预热，首次请求冷启动 |
+
+#### Auth 子系统缓存边界
+
+| 数据 | 权威存储 | 热路径缓存 | 允许延迟 |
+|------|---------|-----------|---------|
+| Nonce 新鲜度 | Dragonfly (TTL) | 无（直接查 Dragonfly） | 0 |
+| 证书吊销状态 (CRL) | FDB | Engine 内 LRU | 60s |
+| 证书链验证结果 | — | Engine 内 LRU | 0（即时失效） |
+| Server Root CA | FDB | Engine 启动时加载 | 0（重启生效） |
+| Intermediate CA | FDB | Engine 启动时加载 | 0（重启生效） |
+| 用户 session | Dragonfly (TTL) | 无 | 0 |
+| 账号状态（锁定/删除） | FDB | Dragonfly (30s TTL) | 30s |
+
+#### 未认证端点保护
+
+未认证端点（challenge 申请、CSR 提交）的速率限制：
+
+| 端点 | 限制 | 机制 |
+|------|------|------|
+| `swarm_register_challenge` | 10/min per IP | Dragonfly 计数器 |
+| `swarm_get_server_trust` | 60/min per IP | Dragonfly 计数器 |
+| CSR 提交 | PoW 自身限速 | 无额外 IP 限制 |
+| 恢复凭据校验 | 10/min per IP + 5 次失败锁 5min per username | Dragonfly + FDB |
+| Admin 恢复链接 | 需 AdminCertificate + signed request | 认证后无额外限制 |
+
+#### 安全 Epoch Bump 运维行为
+
+安全 epoch bump 按 D5 裁决的分级状态机执行。运维层面：
+
+- bump 命令需要 `AdminCertificate` 签名
+- bump 事件写入 FDB `auth/epoch_history`，记录 reason + timestamp + admin_id
+- 受影响模块列表写入 TickTrace，replay 使用记录事件
+- Engine 收到 bump 通知后立即更新 CRL 缓存（全量刷新）
+- 运行中模块按 reason 分级处理：`paused_security` 立即暂停，`needs_revalidation` 后台队列
+
+### 10.9 证书生命周期 UX
+
+#### 到期通知
+
+客户端可通过以下方式感知证书即将到期：
+
+| 渠道 | 内容 |
+|------|------|
+| MCP 响应头 | `Swarm-Cert-Expires-In: 86400`（秒） |
+| MCP 事件 | `certificate_expiring_soon` SSE 事件（距到期 ≤ 7 天时触发） |
+| Web UI | 设备列表显示每张证书的剩余有效期 |
+
+#### 设备管理
+
+Web UI 和 MCP 均提供设备证书管理：
+
+- `swarm_list_certificates` — 列出当前账号所有证书，含 `device_label`、`usage`、`issued_at`、`expires_at`、`last_used_at`
+- `swarm_revoke_certificate` — 吊销指定证书，立即生效（CRL 更新）
+- `swarm_renew_certificate` — 续签证书，需旧证书签名授权
+
+#### 恢复默认策略（D4 裁决）
+
+| 恢复场景 | 默认行为 |
+|----------|----------|
+| stolen-device | 吊销全部旧证书 |
+| all-certs-lost | 吊销全部旧证书 |
+| device-swap（旧设备仍可控） | 保留，用户可手动吊销 |
+| forgot-password（同设备） | 保留 |
 
 ---
 
