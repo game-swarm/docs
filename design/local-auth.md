@@ -133,7 +133,7 @@ AI agent (Claude/GPT/自主 agent) → MCP session
 
 错误恢复：
   - PoW 求解超时 → 自动重新获取 challenge + 重试
-  - 凭据丢失 → 无密码重置，必须依赖持久化备份。密码重置依赖邮箱验证基础设施
+  - 凭据丢失 → 通过绑定的邮箱执行密码重置；AI agent 必须将凭据写入持久化存储
   - username_taken → 自动重试新 username
 ```
 
@@ -214,12 +214,14 @@ fn verify_password(password: &str, hash: &str) -> Result<bool, McpError> {
 **Auth subspace（独立于游戏世界状态）**：
 
 ```
-auth/users/<login_username>         → {password_hash, player_id, display_name, created_at, schema_version: 1}
+auth/users/<login_username>         → {password_hash, player_id, display_name, email?, email_verified, created_at, deleted_at?, schema_version: 1}
 auth/identities/<provider>/<subject> → player_id  (唯一索引)
 auth/challenges/<challenge_id>       → {challenge, difficulty_bits, expires_at, consumed: bool, created_at}
 auth/sessions/<refresh_token_hash>   → {player_id, client_public_key, created_at, expires_at, rotated_from}
 auth/login_fail/<login_username>     → {fail_count, last_fail_at, locked_until}
 auth/revocations/<signature>         → {revoked_at, reason}
+auth/reset/<token_hash>              → {player_id, email, created_at, expires_at, consumed: bool}
+auth/email_verify/<token_hash>       → {player_id, email, created_at, expires_at, consumed: bool}
 ```
 
 所有 value 带 `schema_version` 字段便于未来迁移。
@@ -406,12 +408,17 @@ trigger_window_seconds = 300  # 失败计数的滑动窗口
 | Tool | 参数 | 返回 | 说明 |
 |------|------|------|------|
 | `swarm_register_challenge` | (无) | `PoWChallenge` | 获取注册 PoW 挑战 |
-| `swarm_register` | `username`, `password`, `challenge_id`, `nonce`, `client_public_key` | `LoginResult` | 完成 PoW + 注册并登录 |
+| `swarm_register` | `username`, `password`, `email?`, `challenge_id`, `nonce`, `client_public_key` | `LoginResult` | 完成 PoW + 注册并登录 |
 | `swarm_login` | `username`, `password`, `client_public_key` | `LoginResult` | 登录已有账号 |
 | `swarm_login_challenge` | (无) | `PoWChallenge` | 获取登录 PoW 挑战（仅触发时） |
-| `swarm_token_refresh` | `refresh_token`, `client_public_key` | `LoginResult` | 续签（已有，不变） |
-| `swarm_auth_revoke` | `refresh_token` 或 `certificate` | `RevokeResult` | 吊销（已有，不变） |
+| `swarm_token_refresh` | `refresh_token`, `client_public_key` | `LoginResult` | 续签 |
+| `swarm_auth_revoke` | `refresh_token` 或 `certificate` | `RevokeResult` | 吊销 session/certificate |
 | `swarm_update_profile` | `display_name` | `ProfileResult` | 修改显示名称 |
+| `swarm_change_password` | `old_password`, `new_password` | `SuccessResult` | 修改密码（已登录） |
+| `swarm_request_password_reset` | `email` | `ResetRequestResult` | 请求密码重置（发送邮件） |
+| `swarm_confirm_password_reset` | `reset_token`, `new_password` | `LoginResult` | 确认重置 + 自动登录 |
+| `swarm_bind_email` | `email` | `SuccessResult` | 绑定/更换邮箱 |
+| `swarm_delete_account` | `password` | `SuccessResult` | 删除账号及关联资产 |
 
 > 注：`OAuth2LoginResult` 重命名为 `LoginResult`。
 
@@ -497,9 +504,127 @@ POST /mcp (JSON-RPC)
 
 ---
 
-## 10. Token 与会话安全
+## 10. 密码管理
 
-### 10.1 Token 生命周期
+### 10.1 密码修改（已登录）
+
+已登录用户提供旧密码验证身份后设置新密码：
+
+```
+POST /mcp (JSON-RPC)
+{
+  "method": "swarm_change_password",
+  "params": {
+    "old_password": "correct-horse-battery-staple",
+    "new_password": "new-correct-horse-battery-staple"
+  }
+}
+```
+
+- 需要有效的 session/证书（与 `swarm_token_refresh` 同等权限）
+- 验证旧密码 → argon2id hash 新密码 → 更新 FDB
+- 修改成功后不强制重新登录（现有 session 保持有效）
+- 新密码必须通过 §7 密码规则校验
+
+### 10.2 密码重置（邮箱验证）
+
+两步流程：请求 → 邮件 → 确认。
+
+**Step 1: 请求重置**
+
+```
+POST /mcp (JSON-RPC)
+{
+  "method": "swarm_request_password_reset",
+  "params": { "email": "user@example.com" }
+}
+```
+
+- 无论邮箱是否存在，统一返回成功（防邮箱枚举）
+- 若邮箱匹配到用户：生成 `reset_token`（blake3 随机 32 字节，有效期 15 分钟），存储到 `auth/reset/<token_hash>`
+- 通过邮件服务发送重置链接：`https://<host>/auth/reset?token=<reset_token>`
+- 限速：每邮箱 1 次/5 分钟
+
+**Step 2: 确认重置**
+
+```
+POST /mcp (JSON-RPC) 或 GET /auth/reset?token=xxx 浏览器
+{
+  "method": "swarm_confirm_password_reset",
+  "params": {
+    "reset_token": "abc123...",
+    "new_password": "new-password-here"
+  }
+}
+```
+
+- 验证 token：未过期、未使用、匹配 FDB `auth/reset/` 记录
+- argon2id hash 新密码 → 更新 FDB → 标记 token 已消费
+- 自动登录：返回 `LoginResult`（无需用户再次输入用户名密码）
+- 同时吊销该用户所有现有 refresh token（安全措施）
+
+---
+
+## 11. 邮箱绑定
+
+邮箱是可选的，但绑定后解锁密码重置功能。
+
+```
+POST /mcp (JSON-RPC)
+{
+  "method": "swarm_bind_email",
+  "params": { "email": "user@example.com" }
+}
+```
+
+- 需要已登录（session/certificate）
+- 发送验证邮件到目标邮箱（含 verification token，24h 有效）
+- 用户点击链接验证后，FDB `auth/users/<username>` 更新 `email_verified` + `email`
+- 更换邮箱：重复上述流程，新邮箱验证通过后替换旧邮箱
+- 一个邮箱可被多个账号绑定（不要求唯一）
+- `email` 不用于登录——登录始终用 `login_username`
+
+注册时可选的 `email`：
+
+```
+swarm_register 参数新增 email?: string
+若提供 email，注册成功后自动发送验证邮件
+未验证的 email 不能用于密码重置
+```
+
+---
+
+## 12. 账号删除
+
+```
+POST /mcp (JSON-RPC)
+{
+  "method": "swarm_delete_account",
+  "params": { "password": "current-password" }
+}
+```
+
+- 验证密码（与登录同等）
+- 确认后执行：
+
+```
+1. 标记 FDB auth/users/<username>.deleted_at = now
+2. 吊销所有 refresh token + certificate
+3. 玩家资产处置策略（参见 world.toml 配置）：
+   - "abandon":  所有 drone/建筑/资源留在世界中，无人控制
+   - "recycle":  按比例退还资源到最近 Spawn（默认 50%）
+   - "transfer": 转移到指定 player_id（需该玩家确认）
+4. 世界状态变更在下一 tick 生效（引擎侧处理）
+```
+
+- 删除后 30 天内可恢复（grace period），30 天后永久清除
+- `login_username` 在永久清除后释放（可被重新注册）
+
+---
+
+## 13. Token 与会话安全
+
+### 13.1 Token 生命周期
 
 | Token | TTL | Rotation | 存储位置 |
 |-------|-----|----------|---------|
@@ -533,9 +658,9 @@ POST /mcp (JSON-RPC)
 
 ---
 
-## 11. 前端变更
+## 14. 前端变更
 
-### 11.1 `LoginButton.tsx` 扩展现有组件
+### 14.1 `LoginButton.tsx` 扩展现有组件
 
 ```
 ┌──────────────────────────────────────────┐
@@ -560,7 +685,7 @@ POST /mcp (JSON-RPC)
 └──────────────────────────────────────────┘
 ```
 
-### 11.2 PoW 前端实现
+### 14.2 PoW 前端实现
 
 - 必须运行在 **Web Worker** 中（禁止主线程 `while(true)` 阻塞）
 - 显示进度：`已尝试 N / 预计 M 次`（基于 difficulty_bits 计算期望值）
@@ -568,7 +693,7 @@ POST /mcp (JSON-RPC)
 - 取消后自动重新获取 challenge + 重试
 - `difficulty_bits` 从服务端 challenge 响应获取，不做客户端假设
 
-### 11.3 `provider` 字段扩展
+### 14.3 `provider` 字段扩展
 
 ```typescript
 export type AuthProvider = 'github' | 'google' | 'local';
@@ -576,9 +701,9 @@ export type AuthProvider = 'github' | 'google' | 'local';
 
 ---
 
-## 12. 安全考量
+## 15. 安全考量
 
-### 12.1 威胁模型
+### 15.1 威胁模型
 
 | 威胁 | 缓解措施 |
 |------|---------|
@@ -594,34 +719,30 @@ export type AuthProvider = 'github' | 'google' | 'local';
 | FDB 泄露 | 密码仅存储 argon2id hash；所有 value 带 schema_version |
 | 时序攻击 | `verify_password` 使用 argon2 crate 的常量时间比较 |
 | Chat log 泄露凭据 | Agent 代理注册返回一次性 handoff code，非裸 refresh_token |
-| 凭据丢失（无密码重置） | 注册 UI 显示 Confirm Password；显式警告"忘记密码=永久失去资产"；AI agent 需持久化备份 |
+| 凭据丢失 | 邮箱密码重置 + 注册 UI 显示 Confirm Password + AI agent 持久化备份 |
+| 密码重置 token 泄露 | reset_token 15min TTL + 一次性消费 + 吊销所有现有 session |
+| 账号删除误操作 | 密码确认 + 30 天 grace period 可恢复 |
+| 邮箱验证 token 劫持 | HTTPS + verification token 24h TTL + 一次性消费 |
 
-### 12.2 当前不实现的
+### 15.2 不做的
 
-- ❌ 密码重置（需 email 基础设施）
-- ❌ 双因素认证
-- ❌ WebAuthn / Passkeys
+- ❌ 双因素认证（TOTP / WebAuthn）— 可作为后续安全升级
 - ❌ IP 黑名单
 - ❌ 密码明文日志
 
-### 12.3 后续版本
-
-- 密码重置（邮箱绑定后）
-- 密码修改（已登录状态）
-- 身份合并
-
 ---
 
-## 13. 实现范围
+## 16. 实现范围
 
 ### 13.1 Phase 1
 
 | 组件 | 文件 | 变更 |
 |------|------|------|
-| Engine Auth | `src/auth/mod.rs` (新) | challenge 生成/验证、注册、登录、argon2id、FDB 读写 |
+| Engine Auth | `src/auth/mod.rs` (新) | challenge 生成/验证、注册、登录、密码修改、密码重置、账号删除、argon2id、FDB 读写 |
 | Engine Auth | `src/auth/challenge.rs` (新) | PoW 生成与验证 |
 | Engine Auth | `src/auth/session.rs` (新) | refresh token rotation、session 管理 |
 | Engine Auth | `src/auth/identity.rs` (新) | IdentityKey → PlayerId、三层身份模型 |
+| Engine Auth | `src/auth/email.rs` (新) | 邮箱验证 token、密码重置 token、邮件发送
 | Engine | `src/tick.rs` / `src/mcp.rs` | 注册 auth MCP tools（转发到 auth domain） |
 | Engine | `Cargo.toml` | 添加 `argon2` 依赖 |
 | Gateway | `local_auth.go` (新) | REST 端点代理 |
@@ -636,7 +757,7 @@ export type AuthProvider = 'github' | 'google' | 'local';
 
 ---
 
-## 14. 与 OAuth2 的互动
+## 17. 与 OAuth2 的互动
 
 ### 14.1 共享的证书系统
 
@@ -652,7 +773,7 @@ export type AuthProvider = 'github' | 'google' | 'local';
 
 ---
 
-## 15. 测试策略
+## 18. 测试策略
 
 ### 单元测试
 
@@ -701,6 +822,34 @@ test update_profile_changes_display_name
 test update_profile_rejects_empty_display_name
 test update_profile_requires_authentication
 test password_hash_done_outside_fdb_transaction
+
+# Password management
+test change_password_succeeds_with_correct_old_password
+test change_password_rejects_wrong_old_password
+test change_password_enforces_policy_on_new_password
+test change_password_does_not_invalidate_existing_session
+test request_password_reset_always_returns_success
+test request_password_reset_rate_limited_per_email
+test confirm_password_reset_with_valid_token
+test confirm_password_reset_rejects_expired_token
+test confirm_password_reset_rejects_consumed_token
+test confirm_password_reset_revokes_existing_sessions
+test confirm_password_reset_returns_login_result
+
+# Email
+test bind_email_sends_verification
+test bind_email_verification_updates_user_record
+test bind_email_replaces_old_email
+test register_with_email_creates_unverified_email
+test unverified_email_cannot_reset_password
+
+# Account deletion
+test delete_account_verifies_password
+test delete_account_marks_deleted_at
+test delete_account_revokes_sessions
+test delete_account_grace_period_allows_recovery
+test delete_account_permanent_after_grace_period
+test delete_account_releases_username_after_permanent
 
 # Login
 test login_returns_certificate_on_success
@@ -758,6 +907,21 @@ fn local_auth_full_lifecycle() {
 
     // Revoke
     auth.revoke(RevokeParams { refresh_token: Some(refreshed.session.refresh_token), .. }).unwrap();
+
+    // Password change
+    auth.change_password("testuser", "hunter2pass", "newHunter3pass", &pubkey)
+        .expect("password change");
+    let login2 = auth.login("testuser", "newHunter3pass", &pubkey).expect("login with new password");
+
+    // Email + password reset
+    auth.bind_email("testuser", "user@example.com", &pubkey).expect("bind email");
+    let reset = auth.request_password_reset("user@example.com").expect("request reset");
+    let recovered = auth.confirm_password_reset(&reset.token, "recoveredPass1", &pubkey)
+        .expect("reset + auto-login");
+
+    // Account deletion
+    auth.delete_account("testuser", "recoveredPass1", &pubkey).expect("delete");
+    assert!(auth.is_deleted("testuser"));
 }
 ```
 
