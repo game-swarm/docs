@@ -95,6 +95,27 @@ Auth 是独立控制面，不属于游戏模拟的一部分：
 | Engine | CertificateIssuer 密钥对, revoked_certificates | 密码, PoW challenge state, login 计数 |
 | Gateway | 无状态代理, 路由 | 认证状态 |
 
+### 3.1 证书签发接口
+
+Auth Service 不持有 `CertificateIssuer` 私钥（Engine 持有），但注册/登录需要返回 `PlayerCertificate`。签发通过以下内部接口完成：
+
+```
+issue_certificate(
+    player_id: u64,
+    client_public_key: Ed25519PublicKey,
+    scopes: [\"swarm:deploy\", \"swarm:read\", ...],
+    audience: (world_id, gateway_origin),
+    ttl_seconds: u32,
+) → PlayerCertificate
+```
+
+**接口合同**：
+- Auth 可位于 Engine 进程内（模块调用）或独立服务（内部 RPC），但签发接口保持最小化
+- 调用者必须持有有效的认证结果（注册成功 / 登录成功 / OAuth2 callback），不允许无认证调用
+- 失败恢复：证书签发失败时 Auth 不创建 session，整体事务回滚——不出现「session 存在但无证书」的半状态
+- 审计：每次签发写入 FDB `auth/cert_audit/<certificate_id>`，记录 `player_id, issued_at, issuer, scopes, ttl`
+- `CertificateIssuer` 密钥对仅在 Engine 进程内可访问，Auth 模块不持有私钥引用——仅通过此接口请求签发
+
 ---
 
 ## 4. 使用场景
@@ -130,6 +151,12 @@ AI agent (Claude/GPT/自主 agent) → MCP session
     立即写入持久化存储（文件 / secret store / 环境变量）
   - 建议 username 使用可恢复种子生成（而非纯随机），便于凭据丢失后重建
   - refresh_token 过期后用 swarm_login 重新获取（而非仅依赖 token_refresh）
+
+MCP 资源指引（AI agent onboarding）：
+  - `docs/auth/onboarding-ai` — AI agent 首次注册完整流程（含 PoW 求解、凭据持久化、联邦登录）
+  - `docs/auth/errors` — 错误码含义与恢复策略
+  - `schema/auth-tools` — auth MCP 工具的 JSON Schema（供 agent function calling）
+  - `docs/auth/human-agent-handoff` — 人类通过 agent 代理注册的 handoff 协议
 
 错误恢复：
   - PoW 求解超时 → 自动重新获取 challenge + 重试
@@ -312,7 +339,14 @@ fn verify_password(password: &str, hash: &str) -> Result<bool, McpError> {
     if parsed.version != Some(Version::V0x13) {
         return Err(McpError::internal_error("unsupported argon2 version"));
     }
-    Ok(Argon2::default()
+    let params = Params::new(
+        ARGON2_MEMORY_KIB,
+        ARGON2_ITERATIONS,
+        ARGON2_PARALLELISM,
+        Some(Params::DEFAULT_OUTPUT_LEN),
+    ).map_err(|e| McpError::internal_error(format!("argon2 params: {e}")))?;
+    let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
+    Ok(argon2
         .verify_password(password.as_bytes(), &parsed)
         .is_ok())
 }
@@ -561,6 +595,7 @@ POST /mcp (JSON-RPC)
   "params": {
     "username": "kagurazaka",
     "password": "correct-horse-battery-staple",
+    "email": "user@example.com",                    // 可选
     "challenge_id": "a1b2c3d4e5f6a7b8",
     "nonce": "1784501234",
     "client_public_key": "ed25519:base64..."
@@ -590,6 +625,26 @@ POST /mcp (JSON-RPC)
 - 无论用户是否存在，均执行 dummy argon2id 验证（防时序枚举）
 - 连续失败 5 次后触发 login PoW（若 `auth.login_pow.enabled = true`）
 - 不存在用户返回统一 `invalid_credentials`
+- 登录 per-IP 限流在 argon2id 之前执行
+
+**Login PoW 触发后的请求**：
+
+当 `login_pow_required` 返回后，客户端需先调用 `swarm_login_challenge` 获取 PoW 挑战，求解 nonce 后重新提交 `swarm_login`：
+
+```
+{
+  "method": "swarm_login",
+  "params": {
+    "username": "kagurazaka",
+    "password": "correct-horse-battery-staple",
+    "challenge_id": "a1b2c3d4e5f6a7b8",       // 仅在 login_pow_required 后
+    "nonce": "1784501234",                      // 仅在 login_pow_required 后
+    "client_public_key": "ed25519:base64..."
+  }
+}
+```
+
+与注册 PoW 同理：服务端从 FDB 读取权威 challenge+difficulty，客户端不得提交 challenge 内容或 difficulty_bits。
 
 ### 9.5 错误码体系
 
@@ -597,6 +652,7 @@ POST /mcp (JSON-RPC)
 |------|------|------|--------|
 | `invalid_credentials` | 401 | 用户名或密码错误（不区分不存在/错误） | ✅ |
 | `username_taken` | 409 | 用户名已被注册 | 换用户名 |
+| `identity_conflict` | 409 | OAuth2/federation identity 与已有账号冲突 | 联系支持 |
 | `weak_password` | 422 | 密码不满足强度要求 | ✅ |
 | `invalid_pow` | 422 | PoW 验证失败 | ✅（重新获取 challenge） |
 | `challenge_expired` | 422 | Challenge 已过期 | ✅（重新获取） |
@@ -611,11 +667,13 @@ POST /mcp (JSON-RPC)
 
 | 维度 | 注册 | 登录 | challenge 申请 |
 |------|------|------|---------------|
-| Per IP | — | — | 10/min |
+| Per IP | — | 10/min | 10/min |
 | Per username | — | 10/min, 5 次失败锁 5min | — |
 | 全局 | 受 PoW 保护 | 1000/min | 100/min |
 
 注册不设 IP/username 限速 — PoW 本身就是速率控制。Challenge 申请设轻量 IP 限速防止存储 DoS。
+
+登录 per-IP 限流部署在 argon2id 验证之前：达到来源限流阈值时直接返回 `rate_limited`，不进入密码哈希，防止攻击者用大量随机 username 绕过 per-account lockout 将小请求放大为 19MiB argon2id 服务端成本。
 
 ---
 
@@ -657,6 +715,7 @@ POST /mcp (JSON-RPC)
 
 - 无论邮箱是否存在，统一返回成功（防邮箱枚举）
 - 若邮箱匹配到用户：生成 `reset_token`（blake3 随机 32 字节，有效期 15 分钟），存储到 `auth/reset/<token_hash>`
+- 若邮箱不匹配任何用户：同样生成随机 token 并立即 discard（常量时间，防邮箱枚举时序差）
 - 通过邮件服务发送重置链接：`https://<host>/auth/reset?token=<reset_token>`
 - 限速：每邮箱 1 次/5 分钟
 
@@ -698,6 +757,7 @@ POST /mcp (JSON-RPC)
 - 更换邮箱：重复上述流程，新邮箱验证通过后替换旧邮箱
 - 一个邮箱可被多个账号绑定（不要求唯一）
 - `email` 不用于登录——登录始终用 `login_username`
+- 多账号绑定同一邮箱时，密码重置邮件列出所有关联账号的 `display_name` / `login_username`，每个账号独立的 reset 链接
 
 注册时可选的 `email`：
 
@@ -709,7 +769,9 @@ swarm_register 参数新增 email?: string
 
 ---
 
-## 12. 账号删除
+## 12. 账号删除与恢复
+
+### 12.1 删除流程
 
 ```
 POST /mcp (JSON-RPC)
@@ -728,12 +790,70 @@ POST /mcp (JSON-RPC)
 3. 玩家资产处置策略（参见 world.toml 配置）：
    - "abandon":  所有 drone/建筑/资源留在世界中，无人控制
    - "recycle":  按比例退还资源到最近 Spawn（默认 50%）
-   - "transfer": 转移到指定 player_id（需该玩家确认）
+   - "transfer": 转移到指定 player_id（需该玩家 Ed25519 签名确认）
 4. 世界状态变更在下一 tick 生效（引擎侧处理）
 ```
 
 - 删除后 30 天内可恢复（grace period），30 天后永久清除
 - `login_username` 在永久清除后释放（可被重新注册）
+
+### 12.2 Grace Period 状态机
+
+删除后账号进入 `deleted(grace)` 状态，行为如下：
+
+| 操作 | deleted(grace) 行为 |
+|------|--------------------|
+| `swarm_login` | 拒绝，返回 `account_deleted`（提示可恢复） |
+| `swarm_token_refresh` | 拒绝 |
+| 邮箱密码重置 | 拒绝（账号标记删除） |
+| `swarm_restore_account` | 接受 → 清除 deleted_at → 恢复登录 |
+| `swarm_cancel_account_deletion` | 同 restore（别名） |
+| 30 天后 | `deleted_at` 满 30 天 → 永久清除 FDB 记录 + 释放 username |
+
+### 12.3 恢复账号
+
+```
+POST /mcp (JSON-RPC)
+{
+  "method": "swarm_restore_account",
+  "params": {
+    "username": "kagurazaka",
+    "password": "current-password"
+  }
+}
+```
+
+- 验证密码（与删除时同等）→ 清除 `deleted_at` → 账号恢复
+- 恢复后需重新登录（旧 session/certificate 已在删除时吊销）
+- 返回 `LoginResult`（自动登录，与密码重置同理）
+- 邮件恢复：若账号绑定了已验证邮箱，可发送恢复链接到邮箱；人类用户点击链接后在浏览器中完成恢复
+
+### 12.4 Transfer 资产处置
+
+当 `asset_disposition = "transfer"` 时：
+
+```
+POST /mcp (JSON-RPC)
+{
+  "method": "swarm_delete_account",
+  "params": {
+    "password": "current-password",
+    "transfer_target": 42,                          // 接收方 player_id
+    "transfer_acceptance": {                        // 接收方 Ed25519 签名确认
+      "signer_player_id": 42,
+      "deleting_player_id": "<derived from auth>",
+      "asset_summary": "12 drones, 5 buildings, 3500 resources",
+      "timestamp": 1718000000,
+      "signature": "ed25519:base64..."
+    }
+  }
+}
+```
+
+- 接收方必须在删除操作前提供 Ed25519 签名确认（包含删除者 player_id + 资产摘要 + 时间戳）
+- 服务端验证签名、检查接收方 player_id 存在且未删除、检查时间戳在 5 分钟内
+- Transfer 一旦执行不可逆——接收方获得全部资产
+- 若接收方拒绝确认、签名无效或超时：删除失败，返回 `transfer_rejected`
 
 ---
 
@@ -751,13 +871,15 @@ POST /mcp (JSON-RPC)
 ```
 使用 refresh_token → 旧 token 标记 rotated → 签发新 token → 返回新 token
 旧 token 在 rotation 后 5min 内仍可被接受一次（grace period，防竞态）
+grace 使用必须原子消费：FDB 中设置 grace_consumed_at，避免重复使用
+异常 IP/UA 使用 grace 时触发 session family revoke（该用户所有 session 吊销）
 ```
 
-### 10.2 会话绑定
+### 13.2 会话绑定
 
 每个 session 绑定 `(player_id, client_public_key)`。`swarm_token_refresh` / `swarm_auth_revoke` 需要匹配的 `client_public_key`。
 
-### 10.3 浏览器存储策略
+### 13.3 浏览器存储策略
 
 - 使用 `localStorage` 存储 `{refresh_token, certificate, client_public_key}`
 - 防护：严格 CSP 防止 XSS（`script-src 'self'` + nonce/hash）；`Trusted Types` 策略
@@ -765,11 +887,28 @@ POST /mcp (JSON-RPC)
 - 传输：仅 HTTPS
 - 日志脱敏：`refresh_token` 不出现在 URL query、Referrer、服务端访问日志中
 
-### 10.4 AI Agent 凭据存储
+### 13.4 AI Agent 凭据存储
 
 - 推荐：文件（0600 权限）、secret store、环境变量
 - 禁止：硬编码在代码仓库、公开日志、聊天上下文
 - refresh_token 过期后必须用 `swarm_login` 重新获取（不能仅依赖 token_refresh 无限续）
+
+### 13.5 Token 权威模型
+
+Swarm 认证系统的**唯一权威凭证是 `PlayerCertificate`**（Ed25519 签发，24h TTL）。所有其他 token 格式均为传输层实现细节，不构成独立的信任根：
+
+| 凭证 | 角色 | 权威来源 |
+|------|------|---------|
+| `PlayerCertificate` | **唯一权威身份凭证** | Engine CertificateIssuer Ed25519 签名 |
+| `refresh_token` | 续签证书的短期 bearer token | 服务端随机生成，FDB 存储，每次使用后旋转 |
+| JWT (`access_token`) | MCP/HTTP 传输层 token 格式 | 由 `refresh_token` 兑换，15min TTL，仅供 Gateway↔MCP 间传递 |
+| `session_token` | 浏览器 session 标识 | 等同于 `refresh_token` 的浏览器呈现形式 |
+
+**约束**：
+- JWT/access_token 不是独立的认证根——它必须由有效的 `refresh_token` 兑换，不可单独用于身份证明
+- `PlayerCertificate.payload` 包含 `player_id, client_public_key, scopes, audience(world_id + gateway_origin), issued_at, expires_at, issuer_sig`
+- MCP transport 安全：浏览器环境依赖 HTTPS + Origin/CSRF + cookie；非浏览器 AI agent 环境依赖 **mTLS 或 Ed25519 签名请求**（详见 `specs/security/03-mcp-security.md` §2）
+- Token `aud` 字段绑定 `{gateway_origin, world_id, client_type}` 三元组，防止跨环境 token 重放
 
 ---
 
@@ -777,7 +916,7 @@ POST /mcp (JSON-RPC)
 
 Swarm 的世界形成**联邦宇宙**——玩家在一个世界注册的身份可以被其他世界识别和接受，无需重复注册。
 
-### 18.1 信任模型
+### 14.1 信任模型
 
 每个世界有自己的 `CertificateIssuer` 密钥对。世界可以通过配置信任其他世界的 issuer 公钥：
 
@@ -791,7 +930,7 @@ trusted_issuers = [
 ]
 ```
 
-### 18.2 跨世界登录流程
+### 14.2 跨世界登录流程
 
 玩家持 World A 的证书来 World B：
 
@@ -805,7 +944,7 @@ trusted_issuers = [
 7. 返回 LoginResult（包含本地证书 + session）
 ```
 
-### 15.3 MCP 工具
+### 14.3 MCP 工具
 
 | Tool | 参数 | 返回 | 说明 |
 |------|------|------|------|
@@ -848,7 +987,10 @@ OAuth2:
 
 - 本地证书撤销仅影响本地世界
 - 外部证书撤销：World B 定期向 World A 查询吊销列表（`GET /auth/revocations?since=<timestamp>`），或在验证时实时查询
-- 若外部世界不可达：使用本地缓存的吊销列表（stale 视为有效——可用性优先）
+- 若外部世界不可达：使用本地缓存的吊销列表，在 `revocation_cache_stale_seconds`（默认 3600 秒）内视为有效；超过 stale 上限后行为由 `federation.revocation_fallback` 配置：
+  - `"accept"`（默认）：可用性优先，接受证书（运维告警触发）
+  - `"reject"`：安全优先，拒绝证书直至远端恢复
+- 运维告警：stale 超时后记录 WARN 日志，触发监控告警
 
 ---
 
@@ -879,7 +1021,7 @@ OAuth2:
 └──────────────────────────────────────────┘
 ```
 
-### 18.2 PoW 前端实现
+### 15.2 PoW 前端实现
 
 - 必须运行在 **Web Worker** 中（禁止主线程 `while(true)` 阻塞）
 - 显示进度：`已尝试 N / 预计 M 次`（基于 difficulty_bits 计算期望值）
@@ -897,7 +1039,7 @@ export type AuthProvider = 'github' | 'google' | 'local';
 
 ## 16. 安全考量
 
-### 18.1 威胁模型
+### 16.1 威胁模型
 
 | 威胁 | 缓解措施 |
 |------|---------|
@@ -907,6 +1049,7 @@ export type AuthProvider = 'github' | 'google' | 'local';
 | PoW challenge DoS | challenge 申请 IP 限速 10/min；FDB 存储 TTL 自动清理 |
 | 密码暴力破解 | argon2id (19MiB, 2 iters) + per-account 失败计数 + 递增延迟 + 短期锁定 |
 | 分布式低速密码爆破 | per-account 失败计数（跨 IP）；可选 login PoW 触发 |
+| Dummy argon2id DoS 放大 | 登录 per-IP 限流在 argon2id 之前拦截；per-account lockout |
 | 用户名枚举 | 登录失败统一 `invalid_credentials`；不存在用户执行 dummy argon2id；用户名注册状态不公开 |
 | 响应时间侧信道 | dummy argon2id 消除存在/不存在用户的时间差 |
 | 密码传输 | HTTPS（生产部署） |
@@ -918,7 +1061,7 @@ export type AuthProvider = 'github' | 'google' | 'local';
 | 账号删除误操作 | 密码确认 + 30 天 grace period 可恢复 |
 | 邮箱验证 token 劫持 | HTTPS + verification token 24h TTL + 一次性消费 |
 
-### 18.2 不做的
+### 16.2 不做的
 
 - ❌ 双因素认证（TOTP / WebAuthn）— 可作为后续安全升级
 - ❌ IP 黑名单
@@ -928,7 +1071,7 @@ export type AuthProvider = 'github' | 'google' | 'local';
 
 ## 17. 实现范围
 
-### 13.1 Phase 1
+### 17.1 Phase 1
 
 | 组件 | 文件 | 变更 |
 |------|------|------|
@@ -943,7 +1086,7 @@ export type AuthProvider = 'github' | 'google' | 'local';
 | Gateway | `server.go` | 注册路由 |
 | Frontend | `LoginButton.tsx` | Local Register/Login UI + Web Worker PoW |
 
-### 13.2 文档同步
+### 17.2 文档同步
 
 - `design/auth.md`（本文档）
 - `design/interface.md` MCP 工具表（已更新）
@@ -1208,6 +1351,9 @@ self.onmessage = (e) => {
 
 ```toml
 [auth]
+# 用户名可见性
+username_visibility = "private"     # "public" 或 "private"
+
 # PoW 难度（注册专用，登录 PoW 见 login_pow）
 register_pow_difficulty_bits = 24
 

@@ -109,6 +109,7 @@ AI Agent / CLI
 - Agent 端点必须使用 mTLS 或 Ed25519 签名（不上依赖 Origin header）
 - Token `aud` field 绑定 `{gateway_origin, world_id, "cli"}`
 - 拒绝任何携带 browser-style Origin/CSRF header 的 agent 端点请求（防跨协议混淆）
+- 凭据存储：AI agent 必须将证书/私钥存储于 HSM > secret manager > encrypted file (0600) > env var，禁止日志泄露（详见 design/auth.md §13.4）
 
 ### 2.3 DNS Rebinding 防御
 
@@ -147,9 +148,13 @@ AI Agent / CLI
 
 ## 3. 认证
 
+> **权威凭证模型**：Swarm 的唯一权威身份凭证是 `PlayerCertificate`（Ed25519 签发，24h TTL）。
+> JWT/access_token 是 MCP/HTTP 传输层格式，由 `refresh_token` 兑换，不是独立的信任根。
+> 完整 Token 模型见 [design/auth.md](../../design/auth.md) §13.5 Token 权威模型。
+
 ### 3.1 Token 格式
 
-JWT，由网关 OAuth2 签发：
+MCP 传输层使用 JWT 格式的 `access_token`（由 `refresh_token` 兑换，15min TTL）：
 
 ```json
 {

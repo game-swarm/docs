@@ -41,11 +41,14 @@ AI：  MCP 看世界 → 生成 WASM → 部署 ───┘
 | | `swarm_register_challenge` | 获取注册 PoW 挑战 |
 | | `swarm_register` | 本地注册（用户名+密码+PoW） |
 | | `swarm_login` | 本地登录（用户名+密码） |
+| | `swarm_login_challenge` | 获取登录 PoW 挑战（仅触发时） |
 | | `swarm_change_password` | 修改密码 |
 | | `swarm_request_password_reset` | 请求密码重置 |
 | | `swarm_confirm_password_reset` | 确认密码重置 |
 | | `swarm_bind_email` | 绑定邮箱 |
 | | `swarm_delete_account` | 删除账号 |
+| | `swarm_restore_account` | 恢复已删除账号（grace period 内） |
+| | `swarm_cancel_account_deletion` | 取消账号删除（同 restore） |
 | | `swarm_federated_login` | 跨世界身份登录 |
 | | `swarm_update_profile` | 修改显示名称 |
 | **锦标赛** | `swarm_tournament_precommit` | 锁定 WASM 模块 |
