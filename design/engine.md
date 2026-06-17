@@ -245,7 +245,7 @@ Swarm:     Move = Action  → 每 tick 移动 OR 采集 OR 攻击 OR 建造
 | **手感差异** | 新玩家会觉得 drone "迟钝"——移动一格后下一 tick 才能采集。这是**设计意图**：drone 不是即时代理，玩家需通过代码预判和批量调度来弥补单 drone 的动作延迟 |
 
 此设计在 playtest 阶段可能被挑战——如果证据表明玩家普遍因 Move 占用 action slot 而流失，可重新评估。当前作为有意的设计选择冻结。
-| **Phase 2b (Deferred)** | ECS Systems `.chain()` + `.before()/.after()` | death_mark, spawn, spawning_grace, combat, status_advance（主线 `.chain()`）；regeneration, decay（并行，仅需 before death_cleanup） | **被动系统**——对有依赖关系的系统串行执行（保证正确性），无数据竞争的系统利用 Bevy 并行调度。不接收玩家命令，响应 2a 产生的状态变化 |
+| **Phase 2b (Deferred)** | ECS Systems `.chain()` + `.before()/.after()` | death_mark, spawn, spawning_grace, combat, status_advance, aging（主线 `.chain()`）；regeneration, decay（并行，仅需 before death_cleanup） | **被动系统**——对有依赖关系的系统串行执行（保证正确性），无数据竞争的系统利用 Bevy 并行调度。不接收玩家命令，响应 2a 产生的状态变化 |
 
 **Attack 与 combat_system 的职责分离**：
 - **Phase 2a Attack/RangedAttack 命令**：直接应用 damage（含抗性/伤害类型计算），立即反映到目标 HP
@@ -256,7 +256,7 @@ Swarm:     Move = Action  → 每 tick 移动 OR 采集 OR 攻击 OR 建造
 
 **Spawn 时序说明**：spawn_system 在 death_mark 之后（room cap 槽位已释放）运行，紧接着 `spawning_grace_system` 为新生 drone 附加 1 tick 的无敌帧，然后进入 combat/decay。新生 drone 获得 `SpawningGrace { remaining: 1 }` 组件——在本 tick 内免疫所有伤害（含特殊攻击和衰减），下一 tick 恢复正常参与战斗。此机制防止"出生即斩"——对手在 Spawn 旁部署 RangedAttack drone 无法秒杀新生 drone。
 
-**Phase 2b 并行策略**：regeneration（资源点再生）和 decay（疲劳/冷却递减）只操作各自独立的数据，与主线 death_mark→spawn→spawning_grace→combat→status_advance→death_cleanup 无数据竞争。利用 Bevy 的 `.before()/.after()` 将这两个系统与主线并行调度——Bevy 在幕后自动分配线程，无需手动管理。约束：两者必须在 `death_cleanup` 之前完成（防止操作已 despawn 的 entity），其他无顺序要求。正确性由数据独立 + Bevy 依赖图保证，确定性不依赖并行度（同 input 同 output）。
+**Phase 2b 并行策略**：regeneration（资源点再生）和 decay（疲劳/冷却递减）只操作各自独立的数据，与主线 death_mark→spawn→spawning_grace→combat→status_advance→aging→death_cleanup 无数据竞争。利用 Bevy 的 `.before()/.after()` 将这两个系统与主线并行调度——Bevy 在幕后自动分配线程，无需手动管理。约束：两者必须在 `death_cleanup` 之前完成（防止操作已 despawn 的 entity），其他无顺序要求。正确性由数据独立 + Bevy 依赖图保证，确定性不依赖并行度（同 input 同 output）。
 
 **两阶段快照架构**：阶段一不再为每个玩家独立序列化世界状态。改为：(1) tick 开始时一次性构建完整世界快照，按房间分片；(2) 每个玩家根据其 drone 所在位置，拼接可见房间的分片（默认 ≤9 个）。复杂度从 `O(玩家数 × 实体数)` 降为 `O(实体数 + 玩家数 × 可见房间数)`，消除每玩家重复序列化开销。快照构建在玩家 WASM 执行前完成，与玩家顺序无关，天然确定。
 

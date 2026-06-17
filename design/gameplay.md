@@ -729,23 +729,7 @@ cost = { Energy = 10 }
 - 新 body part 绑定到**已有 CommandAction** 时，只需定义不同的 damage_type/base_damage/cost——引擎自动复用该 action 的校验和应用逻辑
 - 引入**新 CommandAction** 时（如 `Leech`），需在引擎中注册新的 `CommandAction` 变体 + 对应的 validate/apply handler + 在 IDL 中暴露给 SDK
 
-[[body_part_types]]
-name = "Claim"
-description = "占领——夺取敌方建筑/Controller"
-action = "ClaimController"
-range = 1
-age_modifier = -50
-cost = { Energy = 600 }
-
-[[body_part_types]]
-name = "Tough"
-description = "韧性——被动 HP 加成，每 part +100 hits_max"
-passive = { hits_per_part = 100 }
-age_modifier = 100
-cost = { Energy = 10 }
-```
-
-**字段说明**：
+**模组扩展**：Rhai 模组可通过以下 API 注册新 body part：
 
 | 字段 | 类型 | 必需 | 说明 |
 |------|------|------|------|

@@ -369,6 +369,7 @@ app.add_systems(Update, (
     spawning_grace_system,      // 为新生 drone 附加 SpawningGrace(1) 无敌帧
     combat_system,              // 战斗结算（damage 先 → heal 后，同 tick 内结算）
     status_advance_system,      // 特殊攻击状态推进（Hack stage、Overload 恢复、Debuff 递减）
+    aging_system,               // drone age 递增 + Controller/Depot 维修 age 回退
 ).chain());
 
 // 以下无数据竞争，与主线并行调度（Bevy 自动管理线程）
@@ -382,7 +383,7 @@ app.add_systems(Update, (
 ));
 ```
 
-**主线 `.chain()` 顺序**：`death_mark → spawn → spawning_grace → combat → status_advance`。combat 在 regeneration 之前执行——确保战斗结算基于本轮状态，再生在战斗后补充资源。status_advance 在 combat 之后——特殊攻击状态推进基于最新 HP/状态。
+**主线 `.chain()` 顺序**：`death_mark → spawn → spawning_grace → combat → status_advance → aging`。combat 在 regeneration 之前执行——确保战斗结算基于本轮状态。status_advance 在 combat 之后——特殊攻击状态推进基于最新 HP/状态。aging 在 status_advance 之后——age 递增可能触发 death_mark（下 tick），故在 death_cleanup 之前完成。
 
 **主线和并行调度关系**：`regeneration` 和 `decay` 与主线无数据竞争（各操作独立数据），通过 `.before(death_cleanup_system)` 约束必须在 `death_cleanup` 前完成。
 

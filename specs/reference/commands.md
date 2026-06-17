@@ -171,13 +171,13 @@ WASM 模块通过 `tick(snapshot) → CommandIntent[]` JSON 返回指令。
 - 冷却：50 tick | 消耗：200 Energy/tick | 抗性：EMP | special_effect: `drain`
 
 ### Overload
-消耗目标 fuel budget。
+消耗目标 fuel budget。必须满足可见性约束——仅可攻击可见玩家。
 ```json
 { "sequence": 20, "action": { "type": "Overload", "object_id": "d1", "target_id": 42 } }
 ```
-- 校验：drone 有 RANGED_ATTACK body part，目标玩家 fuel > MAX_FUEL×0.2，fatigue = 0
-- 效果：target fuel -500k，下限 MAX_FUEL×0.2。无 range 限制（逻辑攻击）
-- 冷却：200 tick | 消耗：300 Energy | 抗性：EMP | special_effect: `overload`
+- 校验：drone 有 RANGED_ATTACK body part，目标玩家可见（`is_visible_to`），fatigue = 0
+- 效果：target fuel -500k，下限 MAX_FUEL×0.2。全局冷却：同一目标每 50 tick 最多被 Overload 一次（不限攻击者数量）。**静默结果**——攻击者无法从返回码推断目标 fuel 状态
+- 冷却：200 tick（per drone） | 消耗：300 Energy | 抗性：EMP | special_effect: `overload`
 
 ### Debilitate
 给目标附加易伤状态。
@@ -245,8 +245,7 @@ WASM 模块通过 `tick(snapshot) → CommandIntent[]` JSON 返回指令。
 | `AlreadyHacked` | 目标已被其他玩家 Hack 中 |
 | `InvalidDamageType` | damage_type 不在注册的 DamageType 枚举中 |
 | `AlreadyDebilitated` | 目标已有同类型 Debilitate 效果（含 damage_type） |
-| `PlayerNotFound` | Overload 的 target_id 不是有效玩家 |
-| `TargetFuelTooLow` | Overload 目标 fuel budget 低于下限 |
+| `NotVisibleOrNotFound` | 目标不可见或不存在——替代 `PlayerNotFound`。Overload 等使用等价拒绝类 |
 
 > **管线级拒绝**（在 Command 校验之前触发，不计入 IDL 的 RejectionReason enum）：
 > `InvalidJson`、`SchemaViolation`、`UnknownAction`、`SourceNotAllowed`。

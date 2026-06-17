@@ -20,7 +20,7 @@ Gateway 是无状态服务，可水平扩展。所有 Gateway 实例共享同一
 
 | Transport | 协议 | 端口 | 用途 | 认证方式 |
 |-----------|------|------|------|---------|
-| **Browser** | WebSocket | 8082 | 人类玩家 Web UI | JWT (`ws` audience) + `?token=<jwt>` |
+| **Browser** | WebSocket | 8082 | 人类玩家 Web UI | JWT (`ws` audience) + `Sec-WebSocket-Protocol` header |
 | **REST** | HTTP/1.1 | 8082 | CLI / 外部工具 | JWT (`rest` audience) + `Authorization: Bearer` |
 | **Agent** | MCP (HTTP/SSE) | 8082 | AI agent MCP 连接 | JWT (`mcp` audience) + `X-Swarm-Transport: mcp` |
 | **Replay Viewer** | HTTP/1.1 | 8082 | 回放查看器（公开） | JWT (`replay` audience) 或匿名（public replay） |
@@ -35,7 +35,8 @@ Gateway 是无状态服务，可水平扩展。所有 Gateway 实例共享同一
 ### 3.1 连接
 
 ```
-Client → Gateway:  wss://<host>/ws?token=<jwt>
+Client → Gateway:  wss://<host>/ws
+  Upgrade request includes `Sec-WebSocket-Protocol: swarm-jwt.<token>` header
 Gateway → Client:  {"type": "connected", "player_id": 42, "world_id": "world_v1", "tick": 4521}
 ```
 
@@ -157,13 +158,13 @@ MCP 工具清单见 `specs/reference/mcp-tools.md`。
 
 | Transport | JWT `aud` | Header | mTLS | Origin/CSRF | 失败码 |
 |-----------|----------|--------|:--:|------------|--------|
-| Browser WS | `ws:{world}:{player}` | `?token=<jwt>` + `X-Swarm-Transport: ws` | 否 | Origin check（Web UI domain） | 401 / 403 |
+| Browser WS | `ws:{world}:{player}` | `Sec-WebSocket-Protocol: swarm-jwt.<token>` + `X-Swarm-Transport: ws` | 否 | Origin check（Web UI domain） | 401 / 403 |
 | REST | `rest:{world}:{player}` | `Authorization: Bearer <jwt>` + `X-Swarm-Transport: rest` | 否 | CORS allowed origins | 401 / 403 |
 | MCP Agent | `mcp:{world}:{player}` | `Authorization: Bearer <jwt>` + `X-Swarm-Transport: mcp` | 生产建议 | N/A（非浏览器） | 401 / 403 |
 | Replay Viewer | `replay:{world}:{match}` | `X-Swarm-Transport: replay` | 否 | 公开回放可匿名 | 401 |
 | Admin | `admin:{world}:{admin_id}` | `Authorization: Bearer <jwt>` + `X-Swarm-Transport: rest` | ✅ 强制 | N/A | 401 / 403 |
 
 **禁止项**：
-- Browser WS token **不得**出现在 URL query string（`?token=`）中——nginx access log 会记录。使用 WebSocket 首帧 `Sec-WebSocket-Protocol` 或 short-lived one-time upgrade token。
+- Browser WS token 通过 `Sec-WebSocket-Protocol` header 传递——**不得**出现在 URL query string 中（nginx access log 会记录）
 - MCP token **不得**用于 Browser/REST transport（audience 不匹配）。
 - 生产环境 Admin 端点**必须** mTLS。
