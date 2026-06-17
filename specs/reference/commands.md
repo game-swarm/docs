@@ -213,9 +213,21 @@ WASM 模块通过 `tick(snapshot) → CommandIntent[]` JSON 返回指令。
 - 校验：drone 有对应 body part，敌方 drone，1 格内
 - 冷却：500 tick | 消耗：2000 Energy + 500 Matter | special_effect: `fabricate`
 
-## 拒绝原因（51 种）
+### 附加效果（无默认 CustomAction，通过 `world.toml` 配置绑定）
 
-> `CommandAction` enum 共 51 个 `RejectionReason` 变体。以下为主管线校验拒绝原因。
+以下 3 个 special_effect handler 已在引擎中注册，可通过 `[[custom_actions]]` + `[[special_effects]]` 配置绑定到自定义动作：
+
+| 效果 | 说明 | 目标 | 抗性 |
+|------|------|------|------|
+| `heal_self` | 攻击者回复造成伤害的配置比例 | enemy_any | — |
+| `scramble_commands` | 随机化目标下一条指令顺序 | enemy_drone | — |
+| `convert_to_structure` | 将目标 drone 转化为己方建筑 | enemy_drone | Psionic |
+
+（共 11 个 special_effect handler：8 个绑定默认 CustomAction + 3 个附加）
+
+## 拒绝原因（45 种）
+
+> `RejectionReason` enum 共 45 个变体。以下为主管线校验拒绝原因。
 
 | 拒绝原因 | 说明 |
 |----------|------|
