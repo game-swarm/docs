@@ -225,14 +225,16 @@ spec 05 定义了 fog_of_war, player_view (Drone/Full/Allied), spectate, replay_
 | S5 | mcp-tools.md 验证 (30=30) | docs | ✅ |
 | S3 | 可见性系统行为验证 — VisibilityConfig 已覆盖全部模式 | engine | ✅ |
 
-### Phase D: Tier 2 扩展 (按需)
+### Phase D: Tier 2 扩展 ✅ 完成 (2026-06-17)
 
-| ID | 任务 | 仓库 | 预估 |
-|----|------|------|------|
-| G2b | Leech + Fabricate SpecialEffect | engine | 100 行 |
-| G3b | Leech + Fabricate CustomAction | engine | 40 行 |
-| G12 | ClickHouse 集成 | engine | 300 行 |
-| G10 | Room 出口物理实现 | engine | 200+ 行 |
+| ID | 任务 | 仓库 | 状态 | 备注 |
+|----|------|------|:--:|------|
+| G2b | Leech + Fabricate SpecialEffect | engine | ✅ | handler + SpecialEffectDef 已注册 |
+| G3b | Leech + Fabricate CustomAction | engine | ✅ | CustomActionDef 已注册（含 cost/cooldown/body part） |
+| G12 | ClickHouse 集成 | engine | ✅ | Writer + Row + SQL + 测试完整实现 |
+| G10 | Room 出口物理实现 | engine | ✅ | 跨房间移动已实现（RoomId::adjacent + Move room_dx/dy）。显式 Exit 实体需按设计扩展 |
+
+**结果**: 全部已实现——在前序 Phase 中已包含
 
 ---
 
