@@ -31,7 +31,7 @@
 
 ---
 
-## 3. Auth 控制面架构（D1：方案 B）
+## 3. Auth 控制面架构
 
 Auth 是独立控制面，不属于游戏模拟的一部分：
 
@@ -231,7 +231,7 @@ auth/revocations/<signature>         → {revoked_at, reason}
 
 ---
 
-## 6. Identity 模型（D4：方案 B）
+## 6. Identity 模型
 
 ### 6.1 三层身份
 
@@ -257,7 +257,7 @@ player_id          — 引擎内标识，u64，确定性 hash(provider + ":" + s
 校验正则:    ^[a-zA-Z][a-zA-Z0-9_-]{2,31}$
 ```
 
-**用户名注册状态可见性由服务器配置决定**（D3 裁决）：通过 `auth.username_visibility` 配置项控制。
+**用户名注册状态可见性由服务器配置决定**：通过 `auth.username_visibility` 配置项控制。
 
 ```toml
 [auth]
@@ -336,7 +336,7 @@ fn verify_pow(challenge: &str, nonce: &str, difficulty_bits: u8) -> bool {
 
 > 以上为单核保守估算。实际性能受硬件、JIT/WASM 引擎、浏览器节流影响。默认 `difficulty_bits = 24`。
 
-### 8.3 服务端绑定（C1 修正）
+### 8.3 服务端绑定
 
 **`swarm_register` 请求仅提交 `challenge_id + nonce`**，不包含客户端回传的 challenge 或 difficulty：
 
@@ -380,7 +380,7 @@ tx.set(challenge_key, challenge.with_consumed(true).serialize());
 //    实现: 在 PoW 验证之前或之后分支，但整个流程在同一 FDB 事务内
 ```
 
-### 8.4 Login PoW（D2：可配置开关）
+### 8.4 Login PoW
 
 Login PoW 通过 `auth.login_pow` 配置项控制：
 
@@ -392,7 +392,7 @@ trigger_fail_count = 5   # 连续失败 N 次后触发
 trigger_window_seconds = 300  # 失败计数的滑动窗口
 ```
 
-- 默认关闭：login 不使用 PoW（方案 A），依赖 per-account 限速 + dummy argon2id
+- 默认关闭：login 不使用 PoW，依赖 per-account 限速 + dummy argon2id
 - 触发后：该 username 的 login 请求在 `trigger_window_seconds` 内要求 PoW
 - 服务端动态判断：检查 `auth/login_fail/<username>` 的 fail_count
 - 支持运行时开关，无需重启
@@ -413,7 +413,7 @@ trigger_window_seconds = 300  # 失败计数的滑动窗口
 | `swarm_auth_revoke` | `refresh_token` 或 `certificate` | `RevokeResult` | 吊销（已有，不变） |
 | `swarm_update_profile` | `display_name` | `ProfileResult` | 修改显示名称 |
 
-> 注：`OAuth2LoginResult` 重命名为 `LoginResult`（方案 B 命名去 OAuth2 偏见）。
+> 注：`OAuth2LoginResult` 重命名为 `LoginResult`。
 
 ### 9.2 `swarm_register_challenge`
 
@@ -603,7 +603,7 @@ export type AuthProvider = 'github' | 'google' | 'local';
 - ❌ IP 黑名单
 - ❌ 密码明文日志
 
-### 12.3 后续版本（v1.1+）
+### 12.3 后续版本
 
 - 密码重置（邮箱绑定后）
 - 密码修改（已登录状态）
@@ -630,7 +630,7 @@ export type AuthProvider = 'github' | 'google' | 'local';
 
 ### 13.2 文档同步
 
-- `design/local-auth.md`（本文档，R2 修正后）
+- `design/local-auth.md`（本文档）
 - `design/interface.md` MCP 工具表（已更新）
 - `specs/security/03-mcp-security.md` 补充 Auth domain 边界
 
