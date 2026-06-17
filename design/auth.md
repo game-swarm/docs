@@ -116,11 +116,12 @@ issue_certificate_bundle(
 ```
 
 **接口合同**：
-- Auth 可位于 Engine 进程内（模块调用）或独立服务（内部 RPC），但签发接口保持最小化
+- Auth Service 是独立进程。所有签名和认证操作在独立进程中完成，不与 Engine 共享内存。Engine 内部仅做信任链验证（证书链、CRL 状态），不持有签名私钥
 - 调用者必须持有有效的 CSR 验证结果、external bootstrap proof 或恢复流程授权，不允许无证明调用
 - 失败恢复：证书签发失败时 Auth 不创建 session，整体事务回滚——不出现「user 存在但无证书」的半状态
 - 审计：每次签发写入 FDB `auth/cert_audit/<certificate_id>`，记录 `player_id, public_key_id, usage, issued_at, issuer, scopes, ttl`
 - `Server Root CA` 不在线；`Server Intermediate CA` 定期轮换并可被 Root CA 吊销
+- Server Intermediate CA 私钥应存储于 HSM/KMS 或等效安全环境；最低要求为 `0600` 权限的独立文件系统，Engine 进程无读取权限
 - Swarm CA 只用于应用层证书，不得作为系统/浏览器 TLS trust anchor
 
 ---
@@ -934,6 +935,7 @@ Response:
 - 每次生成写入 `auth/admin_audit/<event_id>`：`admin_id, target_player_id, action, reason, created_at, expires_at`
 - 管理员不得直接设置用户密码、生成用户私钥或代替用户签署 CSR；最终 `new_csr` 必须由持有新私钥的一方提交
 - 对 `deleted(grace)` 账号拒绝生成恢复链接；应使用账号恢复流程
+- **双人授权**：生成恢复链接属于敏感管理操作，需要两个不同 admin 的确认——第一个 admin 发起请求，第二个 admin 在 5 分钟内确认。单 admin 无法独立完成恢复链接生成。审计日志记录双方 admin_id
 
 ### 11.4 Passkey 恢复
 
@@ -1183,6 +1185,29 @@ revocation_fallback = "reject_for_code"
 8. 若 trust=login+code 且本地策略允许，用户可提交 CSR 申请本地 CodeSigningCertificate
 9. 返回 CertificateBundle（包含本地证书链 + Web session 兼容材料）
 ```
+
+### 15.2a 联邦 CRL 同步
+
+每个信任的远程世界定期同步其 CRL：
+
+| 维度 | 决策 |
+|------|------|
+| 同步间隔 | 60s（可配置） |
+| 获取端点 | `GET https://<remote_host>/auth/crl/delta?since=<timestamp>` |
+| 本地缓存 | Engine 内 LRU，与本地 CRL 共用缓存空间 |
+| 获取失败 | 使用上次成功同步的 CRL 快照；`revocation_fallback` 策略生效 |
+| 首次同步 | 启动时全量获取，阻塞至成功或超时（30s） |
+| 增量更新 | `since` 参数返回该时间点之后的新吊销项 |
+
+`revocation_fallback` 策略：
+
+| 值 | 行为 |
+|----|------|
+| `reject_for_code` | 若 CRL 超过 2× 同步间隔未更新，拒绝该远程世界的 `CodeSigningCertificate`；仍允许 login |
+| `reject_all` | CRL 过期则拒绝该远程世界的所有证书 |
+| `allow_with_warning` | 允许但有审计日志告警（仅用于低风险世界） |
+
+联邦 CRL 同步独立于本地 Engine tick 循环，不阻塞热路径。
 
 ### 15.3 MCP 工具
 
