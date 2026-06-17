@@ -17,7 +17,7 @@
 | 学习贡献约定 | [`AGENTS.md`](AGENTS.md) |
 | 运维部署 | [`RUNBOOK.md`](RUNBOOK.md) |
 | 5 分钟快速上手 | [`GETTING-STARTED.md`](GETTING-STARTED.md) |
-| 实施进度追踪 | [`ROADMAP.md`](ROADMAP.md) — 代码 vs 文档对齐路线图 |
+
 
 ## 目录结构
 
@@ -38,7 +38,6 @@ docs/
 │   ├── reference/         API 参考 (commands/host-functions/mcp-tools)
 │   └── 12-gateway-protocol.md  Gateway 协议
 ├── AGENTS.md              AI agent 约定
-├── ROADMAP.md             实施进度追踪
 ├── RUNBOOK.md             运维手册
 ├── GETTING-STARTED.md     入门指南
 └── README.md              本文件
