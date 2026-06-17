@@ -41,25 +41,19 @@ Web UI (Monaco + PixiJS)          MCP Interface
 
 ### 1.1 认证流程
 
-```
-┌────────────┐     OAuth2       ┌──────────┐   签发证书    ┌──────────┐
-│  玩家/AI   │ ──────────────→ │  Auth     │ ───────────→ │  玩家    │
-│  浏览器    │ ←────────────── │  Service  │ ←─────────── │  客户端  │
-└────────────┘   session token └──────────┘  短期证书     └──────────┘
-                                                       (24h 默认)
+> 完整的认证设计（OAuth2、本地注册/登录、联邦身份、证书模型）见 **[design/auth.md](../../design/auth.md)**。
 
-证书内容:
-  - player_id: u32          # 服务端分配的唯一 ID
-  - public_key: Ed25519     # 服务端生成的临时密钥对
+证书内容：
+  - player_id: u64          # 确定性 hash(provider + ":" + subject)
+  - client_public_key: Ed25519  # 客户端公钥
   - issued_at: timestamp
   - expires_at: timestamp   # 24h 后自动过期
-  - issuer_sig: Ed25519     # 服务端私钥签名
+  - issuer_sig: Ed25519     # 服务端 CertificateIssuer 私钥签名
 
 部署 WASM:
   1. 客户端附带证书 + 私钥签名(Blake3(WASM bytes))
   2. 服务端验证证书未过期 + 签名匹配
   3. player_id 从证书提取，不可自报
-```
 
 ## 2. 网络架构 — Transport 拆分
 

@@ -156,26 +156,116 @@ AI agent (Claude/GPT/自主 agent) → MCP session
   - 若使用「Agent 托管」模式（Agent 长期持有凭据代为操作），需人类显式授权
 ```
 
-### 4.4 OAuth2 联合登录（已有）
+### 4.4 OAuth2 联合登录
 
-与本地认证并列的 OAuth2 路径，支持 GitHub 和 Google：
+与本地认证并列的 OAuth2 路径，支持 GitHub 和 Google。OAuth2 用户与本地用户共享完全相同的证书模型和 session 系统。
+
+#### OAuth2 流程
 
 ```
-人类 → 浏览器 → "GitHub Login" / "Google Login"
-  → Gateway /oauth2/{provider}/login → OAuth2 provider 授权
-  → Gateway /oauth2/{provider}/callback → 交换 code 获取 access_token
-  → Engine 签发 PlayerCertificate (24h TTL) + refresh_token (30d)
-  → 与本地认证返回完全相同的 LoginResult
+┌──────────┐                ┌──────────────┐           ┌───────────────┐
+│  浏览器    │                │  Gateway      │           │ OAuth2 Provider│
+│ (或 AI)   │                │  /oauth2/*    │           │ (GitHub/Google)│
+└─────┬─────┘                └──────┬───────┘           └───────┬───────┘
+      │                             │                           │
+      │ GET /oauth2/github/login     │                           │
+      │────────────────────────────→│                           │
+      │                              │ 302 → GitHub Auth URL     │
+      │←────────────────────────────│  (state=random24)         │
+      │                              │                           │
+      │ 用户授权 GitHub                                            │
+      │─────────────────────────────────────────────────────────→│
+      │                              │                           │
+      │ GitHub 302 → /oauth2/github/callback?code=xxx&state=yyy  │
+      │─────────────────────────────→│                           │
+      │                              │ POST code → GitHub        │
+      │                              │──────────────────────────→│
+      │                              │←──── access_token ────────│
+      │                              │                           │
+      │                              │ GET /user (Bearer token)  │
+      │                              │──────────────────────────→│
+      │                              │←── {id, email, name, ...}─│
+      │                              │                           │
+      │                              │ 签发 PlayerCertificate    │
+      │                              │ (Ed25519, 24h TTL)        │
+      │                              │ + refresh_token (30d)     │
+      │                              │                           │
+      │  {session_token, certificate, expires_in, provider,      │
+      │   subject, email, name, avatar_url}                      │
+      │←─────────────────────────────│                           │
 ```
 
-OAuth2 用户与本地用户共享：
-- 同一 `CertificateIssuer`（Ed25519 签名）
-- 同一 `WebAuthSession` / `refresh_token` 模型
-- 同一 `swarm_token_refresh` / `swarm_auth_revoke`
+#### Provider 配置
 
-player_id 推导：`oauth_player_id(provider, subject)` — 与本地 `local_player_id(username)` 同模式。
+通过环境变量配置 OAuth2 provider：
 
-OAuth2 provider 通过环境变量配置：`OAUTH2_GITHUB_CLIENT_ID`、`OAUTH2_GITHUB_CLIENT_SECRET` 等。Gateway 实现参见 `swarm/gateway/oauth2.go`。
+```bash
+# GitHub
+OAUTH2_GITHUB_CLIENT_ID=xxx
+OAUTH2_GITHUB_CLIENT_SECRET=xxx
+
+# Google
+OAUTH2_GOOGLE_CLIENT_ID=xxx
+OAUTH2_GOOGLE_CLIENT_SECRET=xxx
+
+# OAuth2 回调基础 URL (可选，默认从请求 Host 推导)
+OAUTH2_REDIRECT_BASE=https://swarm.example.com
+```
+
+未配置的 provider 自动禁用（返回 503）。
+
+#### 签发证书
+
+OAuth2 登录成功后，Gateway 调用 Engine 签发 `PlayerCertificate`：
+
+```go
+// Gateway oauth2.go — 回调成功后
+created := session{
+    Token:       "swarm_" + randomHex(32),
+    Provider:    "github",           // 或 "google"
+    Subject:     user.Subject,       // GitHub user ID / Google sub
+    Email:       user.Email,
+    Name:        user.Name,
+    AvatarURL:   user.AvatarURL,
+    Scope:       "swarm:deploy swarm:read swarm:debug",
+    CreatedAt:   now,
+    ExpiresAt:   now.Add(24 * time.Hour),
+}
+created.Certificate = s.signCertificate(ctx, created)
+s.storeSession(created)
+```
+
+签发后的证书与本地认证返回的 `LoginResult` 结构完全一致——下游消费者不感知 provider 差异。
+
+#### player_id 推导
+
+```rust
+fn oauth_player_id(provider: &str, subject: &str) -> PlayerId {
+    // blake3("github:12345") → u64
+    // blake3("google:67890") → u64
+    blake3_hash_to_player_id(format!("{}:{}", provider, subject))
+}
+```
+
+与本地 `local_player_id(username)` 同模式：确定性、可离线推导、不依赖数据库查询。
+
+#### Provider 字段
+
+| Provider | 含义 | player_id 命名空间 |
+|----------|------|-------------------|
+| `github` | GitHub OAuth2 | `github:<user_id>` |
+| `google` | Google OAuth2 | `google:<sub>` |
+| `local` | 本地用户名/密码 | `local:<username>` |
+
+#### Gateway 端点
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| `GET` | `/oauth2/{provider}/login` | 发起 OAuth2 授权 |
+| `GET` | `/oauth2/{provider}/callback` | OAuth2 回调处理 |
+| `GET` | `/oauth2/session` | 获取当前 session（Bearer auth） |
+
+Gateway 实现参见 `swarm/gateway/oauth2.go`。
 
 ---
 
