@@ -38,6 +38,9 @@ AI：  MCP 看世界 → 生成 WASM → 部署 ───┘
 | | `swarm_oauth2_callback` | OAuth2 回调 |
 | | `swarm_token_refresh` | 刷新 token |
 | | `swarm_auth_revoke` | 吊销证书 |
+| | `swarm_register_challenge` | 获取注册 PoW 挑战 |
+| | `swarm_register` | 本地注册（用户名+密码+PoW） |
+| | `swarm_login` | 本地登录（用户名+密码） |
 | **锦标赛** | `swarm_tournament_precommit` | 锁定 WASM 模块 |
 | | `swarm_tournament_create` | 创建 bracket |
 | | `swarm_tournament_status` | 查询状态 |
