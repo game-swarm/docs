@@ -10,12 +10,12 @@
 
 | 仓库 | Tests | 状态 |
 |------|-------|------|
-| engine | 177 ✓ | 核心引擎功能完善 |
+| engine | 190 ✓ | 核心引擎功能完善 (+13 Phase A) |
 | sandbox | 14 ✓ | WASM 沙箱完整 |
 | sdk-rust | 8 ✓ | Rust SDK |
 | sdk-ts | 11 ✓ | TypeScript SDK |
 | gateway | 16 ✓ | Go 网关 (NATS relay + WS) |
-| frontend | 10/13 (3 fail) | React 测试需修复 |
+| frontend | 13 ✓ | React 测试全部修复 |
 
 **已实现的 Tier 1 核心**:
 - 16 CommandAction 变体 ✓
@@ -57,7 +57,7 @@
 
 ---
 
-### 🔴 G2: Special Effects 不完整 — 4/8
+### 🔴 G2: Special Effects 不完整 — 6/8 ✅
 
 **DESIGN 要求**: `design/gameplay.md` + `design/engine.md` Tier Entry Gate 表
 
@@ -67,18 +67,16 @@
 | Drain | Tier 1 ✅ | ✅ 已实现 |
 | Overload | Tier 1 ✅ | ✅ 已实现 |
 | Debilitate | Tier 1 ✅ | ✅ 已实现 |
-| **Disrupt** | **Tier 1 ✅** | ❌ **缺失** |
-| **Fortify** | **Tier 1 ✅** | ❌ **缺失** (仅在 CustomAction 中存在) |
+| **Disrupt** | **Tier 1 ✅** | ✅ **已实现 (Phase A)** |
+| **Fortify** | **Tier 1 ✅** | ✅ **已实现 (Phase A)** |
 | Leech | Tier 2 | ❌ 缺失 |
 | Fabricate | Tier 2 | ❌ 缺失 |
 
-**影响**: Disrupt 和 Fortify 是 Tier 1 冻结项，应在 MVP 中可用。
-
-**预估工作量**: 小。Disrupt + Fortify 各约 40-60 行 handler。
+**状态**: Tier 1 Special Effects 全部完成。Tier 2 (Leech, Fabricate) 延后至 Phase D。
 
 ---
 
-### 🔴 G3: Custom Actions 不完整 — 2/6 Tier 1
+### 🟢 G3: Custom Actions — 6/6 Tier 1 ✅
 
 **DESIGN 要求**: Tier Entry Gate 表说 Tier 1 冻结 6 种特殊攻击
 
@@ -86,88 +84,50 @@
 |--------|------|---------|
 | Debilitate | Tier 1 ✅ | ✅ CustomActionDef |
 | Fortify | Tier 1 ✅ | ✅ CustomActionDef |
-| **Disrupt** | **Tier 1 ✅** | ❌ 缺失 |
-| **Hack** | **Tier 1 ✅** | ❌ 缺失 |
-| **Drain** | **Tier 1 ✅** | ❌ 缺失 |
-| **Overload** | **Tier 1 ✅** | ❌ 缺失 |
+| **Disrupt** | **Tier 1 ✅** | ✅ **已实现 (Phase A)** |
+| **Hack** | **Tier 1 ✅** | ✅ **已实现 (Phase A)** |
+| **Drain** | **Tier 1 ✅** | ✅ **已实现 (Phase A)** |
+| **Overload** | **Tier 1 ✅** | ✅ **已实现 (Phase A)** |
 | Leech | Tier 2 | ❌ 缺失 |
 | Fabricate | Tier 2 | ❌ 缺失 |
 
-注: Hack/Drain/Overload 作为 SpecialEffect 已实现，但未注册为 CustomAction（玩家可通过 `CommandAction::Custom` 调用的独立入口）。
-
-**影响**: 玩家无法通过 `CommandAction::Custom("Hack")` 等调用这些特殊攻击。
-
-**预估工作量**: 小。4 个 CustomActionDef 注册，每个约 20 行。
+**状态**: Tier 1 Custom Actions 全部完成。Tier 2 延后至 Phase D。
 
 ---
 
-### 🟡 G4: SpawningGrace 系统缺失
+### 🟢 G4: SpawningGrace 系统 ✅
 
-**DESIGN 要求**: `design/engine.md` 明确列出 `spawning_grace_system` 在 Phase 2b ECS chain 中，位于 spawn_system 之后、combat 之前，为新 drone 附加 1 tick 无敌帧。
-
-**代码现状**: `grep SpawningGrace\|spawning_grace` → **0 匹配**。ECS chain 中无此系统。
-
-**影响**: 新 drone 可被对手在出生 tick 秒杀（"出生即斩"）。DESIGN 明确将此列为 anti-frustration 机制。
-
-**预估工作量**: 小。约 60-80 行（SpawningGrace 组件 + system + 注册到 chain 的 spawn_system 之后）。
+**状态**: 已实现 (Phase A, `de6ffdc`)。`spawning_grace_system` 在 ECS chain 中，spawn_system 之后，附 1 tick 无敌帧。
 
 ---
 
-### 🟡 G5: active_aging / idle_aging 未区分
+### 🟢 G5: active_aging / idle_aging ✅
 
-**DESIGN 要求**: `design/gameplay.md` §8.2 — idle drone 100% 衰老，active drone 110% 衰老（防止挂机囤兵）。
-
-**代码现状**: `decay_system` 对全部 drone 同速率加 age。无 active/idle 区分逻辑。
-
-**影响**: 玩家可挂机囤兵无惩罚。
-
-**预估工作量**: 小。需在 Drone 组件添加 `last_action_tick` 字段，decay_system 中判断。
+**状态**: 已实现 (Phase A, `108d6c3`)。decay_system 区分 active/idle drone，idle 无人机加速衰老。
 
 ---
 
-### 🟡 G6: Controller age 恢复硬上限
+### 🟢 G6: Controller age 恢复硬上限 ✅
 
-**DESIGN 要求**: `design/gameplay.md` §8.2 — "Controller 续期硬上限：无论拥有多少个 Controller，每 tick 总 age 回退不超过自然增长（+1/tick）的 50%"
-
-**代码现状**: `controller_repair_system` 存在，但需验证是否实现了 50% 硬上限。`repair_per_drone` 字段存在，但未见跨 Controller 的全局 age 回退上限逻辑。
-
-**影响**: 玩家可通过堆叠多个 Controller 实现永久 drone，削弱 lifespan 核心约束。
-
-**预估工作量**: 小。在 controller_repair_system 或 decay_system 中添加全局计数器。
+**状态**: 已实现 (Phase A, `507ca20`)。跨 Controller 全局 age 回退不超过 +1/tick 的 50%。
 
 ---
 
-### 🟡 G7: MIN_LIFESPAN 未实现
+### 🟢 G7: MIN_LIFESPAN ✅
 
-**DESIGN 要求**: `design/gameplay.md` §8.2 — `age_max = max(MIN_LIFESPAN, BASE_AGE + sum(age_modifier))`，MIN_LIFESPAN 默认 100 tick，world.toml 可配置。
-
-**代码现状**: `Drone.lifespan` 字段存在，body part `age_modifier` 字段存在，但无 `MIN_LIFESPAN` 常量和下限保护。
-
-**影响**: body part 配置可能产生负数 lifespan 的 drone。
-
-**预估工作量**: 极小。添加常量 + spawn 时 clamp。
+**状态**: 已实现 (Phase A, `e6bc032`)。`age_max = max(MIN_LIFESPAN, BASE_AGE + sum(age_modifier))`，world.toml 可配置。
 
 ---
 
-### 🟡 G8: DamageType 系统不完整
+### 🟢 G8: DamageType 系统 ✅
 
-**DESIGN 要求**: `design/gameplay.md` 提到 `[[damage_types]]` 可配置，含 attribute_multipliers 和 component_multipliers。
-
-**代码现状**: 只有 3 种: Kinetic, Thermal, EMP。`DamageTypeDef` 结构有 `attribute_multipliers` 字段但无 `component_multipliers`。
-
-**影响**: 无法配置完整的伤害类型矩阵。
-
-**预估工作量**: 小。扩展 DamageTypeDef，添加默认类型（Corrosive, Psionic, etc.）。
+**状态**: 已实现 (Phase A, `5588f47`)。DamageTypeDef 含 component_multipliers，默认类型完善。
 
 ---
 
-### 🟡 G9: Recycle 退还比例
+### 🟢 G9: Recycle 退还比例 ✅
 
-**DESIGN 要求**: `design/gameplay.md` §8.2 — 标准世界 50% 退还，Tutorial 世界 100% 退还。
-
-**代码现状**: Recycle 命令存在但需验证退还比例是否正确实现。
-
-**预估工作量**: 极小。常量 + 条件分支。
+**状态**: 已实现 (Phase A, `130a7b6`)。标准世界 50%，Tutorial 世界 100%。
 
 ---
 
@@ -181,11 +141,9 @@
 
 ---
 
-### 🟠 G11: Frontend 测试修复
+### 🟢 G11: Frontend 测试修复 ✅
 
-**现状**: 3 个 React 测试失败（`render` 和 `waitFor` 相关）。
-
-**预估工作量**: 小。React 测试配置修复。
+**状态**: 已修复 (Phase A)。13/13 tests 全部通过。
 
 ---
 
@@ -227,19 +185,21 @@ spec 05 定义了 fog_of_war, player_view (Drone/Full/Allied), spectate, replay_
 
 按优先级排列的下一阶段任务：
 
-### Phase A: 核心缺口修复 (预计 4-6 小时)
+### Phase A: 核心缺口修复 ✅ 完成 (2026-06-17)
 
-| ID | 任务 | 仓库 | 预估 |
-|----|------|------|------|
-| G4 | SpawningGrace 系统 | engine | 60-80 行 |
-| G7 | MIN_LIFESPAN 下限保护 | engine | 10 行 |
-| G5 | active_aging / idle_aging 区分 | engine | 50 行 |
-| G6 | Controller age 恢复 50% 硬上限 | engine | 40 行 |
-| G9 | Recycle 退还比例 | engine | 20 行 |
-| G2a | Disrupt + Fortify SpecialEffect handlers | engine | 100 行 |
-| G3a | Hack/Drain/Overload/Disrupt CustomAction 注册 | engine | 80 行 |
-| G8 | DamageType 扩展 (component_multipliers) | engine | 60 行 |
-| G11 | Frontend 测试修复 | frontend | 30 行 |
+| ID | 任务 | 仓库 | 状态 | Commit |
+|----|------|------|:--:|--------|
+| G4 | SpawningGrace 系统 | engine | ✅ | `de6ffdc` |
+| G7 | MIN_LIFESPAN 下限保护 | engine | ✅ | `e6bc032` |
+| G5 | active_aging / idle_aging 区分 | engine | ✅ | `108d6c3` |
+| G6 | Controller age 恢复 50% 硬上限 | engine | ✅ | `507ca20` |
+| G9 | Recycle 退还比例 | engine | ✅ | `130a7b6` |
+| G2a | Disrupt + Fortify SpecialEffect handlers | engine | ✅ | `33fb9c8` |
+| G3a | Hack/Drain/Overload/Disrupt CustomAction 注册 | engine | ✅ | `db814d0` |
+| G8 | DamageType 扩展 (component_multipliers) | engine | ✅ | `5588f47` |
+| G11 | Frontend 测试修复 | frontend | ✅ | 13/13 通过 |
+
+**结果**: engine 177→190 tests, frontend 10/13→13/13
 
 ### Phase B: PvE 生态层 (预计 12-20 小时)
 
