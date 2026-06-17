@@ -419,7 +419,7 @@ Swarm 是一个**可配置的游戏引擎平台**——每个世界实例（worl
 | **身体部件** | 8 种标准件：`MOVE`, `CARRY`, `WORK`, `ATTACK`, `RANGED_ATTACK`, `HEAL`, `CLAIM`, `TOUGH` | 每种部件的 cost/age_modifier/能力 见 `[[body_part_types]]` 默认定义 |
 | **伤害类型** | 6 种：`Kinetic`, `Thermal`, `EMP`, `Sonic`, `Corrosive`, `Psionic` | 默认抗性均为 1.0，详见 §8 伤害与武器类型定义 |
 | **物流模式** | **模式 B（轻物流）** | 全局传输 1% 损耗，本地建造 5% 损耗。模式 A（无损耗）和模式 C（重物流）为可选项 |
-| **特殊攻击** | 分层解锁：Tutorial/Novice 默认禁用全部 8 种特殊攻击（`Hack`, `Drain`, `Overload`, `Debilitate`, `Disrupt`, `Fortify`, `Leech`, `Fabricate`）。Standard+ 全部可用 | 冷却时间与资源消耗见 §8 特殊攻击方式表格。层级配置: world.toml `vanilla.tier = \"Tutorial\" | \"Novice\" | \"Standard\" | \"Advanced\"` |
+| **特殊攻击** | Tier 1 包含 6 种：`Hack`, `Drain`, `Overload`, `Debilitate`, `Disrupt`, `Fortify`。`Leech` 和 `Fabricate` 为 Tier 2+ 能力（通过 `[[custom_actions]]` 注册）。Tutorial/Novice 默认禁用全部 6 种，Standard+ 全部可用 | 冷却时间与资源消耗见 §8 特殊攻击方式表格。层级配置: world.toml `vanilla.tier = \"Tutorial\" | \"Novice\" | \"Standard\" | \"Advanced\"` |
 | **Controller 维修** | 硬上限：每 tick 总 age 回退 ≤ 自然增长的 50% | 详见 §3.1 Controller 结构定义 |
 | **可见性** | `fog_of_war = true`，`player_view = drone`，`public_spectate = false` | 玩家仅可见自己 drone 视野内的内容；公开观战默认关闭 |
 | **核心数值** | Work harvest: 1 unit/tick；Spawn cooldown: 5 tick；Tower attack: 50 dmg/10 tick cooldown/range 5；Source capacity: 3000/tick regen 300 | 编码前必需的最小默认值，确保 MVP feedback loop 可平衡 |
@@ -619,8 +619,8 @@ Corrosive = 1.5        # 建筑怕腐蚀
 | **Debilitate** | Work | 给目标附加易伤状态。指定伤害类型抗性 ×2，持续 50 tick | 150 tick | 200 Energy | 目标 `Corrosive` 抗性 |
 | **Disrupt** | Attack | 打断目标当前动作（Drain/Hack 等持续动作立即终止）。不造成 HP 伤害 | 50 tick | 100 Energy | 目标 `Sonic` 抗性 |
 | **Fortify** | Tough | 自身/友方获得护盾（所有抗性 ×0.5）。**同时清除目标所有负面状态**（Debilitate/Drain/Overload/Hack控制锁），持续 100 tick | 300 tick | 400 Energy | 无——增益+净化 |
-| **Leech** | Attack | 吸血攻击——造成 Corrosive 15 dmg，伤害的 50% 治疗自身 | 0（即时） | 300 Energy | 目标 `Corrosive` 抗性 |
-| **Fabricate** | Work | 将敌方 drone 转化为己方建筑 | 500 tick | 2000 Energy + 500 Matter | 目标 `Psionic` 抗性 |
+| **Leech** | Attack | 🔮 Tier 2+ — 吸血攻击。通过 `[[custom_actions]]` 注册 | — | — | — |
+| **Fabricate** | Work | 🔮 Tier 2+ — drone→建筑转化。通过 `[[custom_actions]]` 注册 | — | — | — |
 
 **通用规则**：
 - 特殊攻击与 HP 伤害互斥——同一 body part 在同一 tick 只能执行一种

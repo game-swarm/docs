@@ -150,3 +150,20 @@ MCP 工具清单见 `specs/reference/mcp-tools.md`。
 | CORS | 仅允许配置的 origin（Web UI domain） |
 | Rate limiting | 按 player + transport 独立限流（见 specs/security/03 §5） |
 | WSS | 生产环境强制 wss://，禁止 ws:// |
+
+## 9. Transport Auth Matrix（唯一权威表）
+
+以下为所有 transport 的认证要求——`specs/security/03` 和 `specs/security/09` 均引用此表。
+
+| Transport | JWT `aud` | Header | mTLS | Origin/CSRF | 失败码 |
+|-----------|----------|--------|:--:|------------|--------|
+| Browser WS | `ws:{world}:{player}` | `?token=<jwt>` + `X-Swarm-Transport: ws` | 否 | Origin check（Web UI domain） | 401 / 403 |
+| REST | `rest:{world}:{player}` | `Authorization: Bearer <jwt>` + `X-Swarm-Transport: rest` | 否 | CORS allowed origins | 401 / 403 |
+| MCP Agent | `mcp:{world}:{player}` | `Authorization: Bearer <jwt>` + `X-Swarm-Transport: mcp` | 生产建议 | N/A（非浏览器） | 401 / 403 |
+| Replay Viewer | `replay:{world}:{match}` | `X-Swarm-Transport: replay` | 否 | 公开回放可匿名 | 401 |
+| Admin | `admin:{world}:{admin_id}` | `Authorization: Bearer <jwt>` + `X-Swarm-Transport: rest` | ✅ 强制 | N/A | 401 / 403 |
+
+**禁止项**：
+- Browser WS token **不得**出现在 URL query string（`?token=`）中——nginx access log 会记录。使用 WebSocket 首帧 `Sec-WebSocket-Protocol` 或 short-lived one-time upgrade token。
+- MCP token **不得**用于 Browser/REST transport（audience 不匹配）。
+- 生产环境 Admin 端点**必须** mTLS。
