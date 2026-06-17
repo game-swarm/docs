@@ -34,22 +34,25 @@ AI：  MCP 看世界 → 生成 WASM → 部署 ───┘
 | | `swarm_get_schema` | 游戏 API JSON Schema |
 | | `swarm_get_available_actions` | 当前可用的 API 函数 |
 | | `swarm_simulate` | 离线模拟：给定快照预测未来 N tick |
-| **认证** | `swarm_oauth2_login` | OAuth2 登录（详见 design/auth.md） |
-| | `swarm_oauth2_callback` | OAuth2 回调 |
-| | `swarm_token_refresh` | 刷新 token |
-| | `swarm_auth_revoke` | 吊销证书 |
-| | `swarm_register_challenge` | 获取注册 PoW 挑战 |
-| | `swarm_register` | 本地注册（用户名+密码+PoW） |
-| | `swarm_login` | 本地登录（用户名+密码） |
-| | `swarm_login_challenge` | 获取登录 PoW 挑战（仅触发时） |
-| | `swarm_change_password` | 修改密码 |
-| | `swarm_request_password_reset` | 请求密码重置 |
-| | `swarm_confirm_password_reset` | 确认密码重置 |
+| **认证** | `swarm_get_server_trust` | 获取 server_id 与 Swarm CA fingerprint |
+| | `swarm_register_challenge` | 获取注册/CSR PoW 挑战 |
+| | `swarm_submit_csr` | 提交 CSR 并按设备 profile 签发应用层证书 |
+| | `swarm_renew_certificate` | 续签应用层证书 |
+| | `swarm_list_certificates` | 列出当前账号证书 |
+| | `swarm_revoke_certificate` | 吊销证书 |
+| | `swarm_token_refresh` | 刷新 Web session 兼容 token |
+| | `swarm_auth_revoke` | 吊销 session/certificate/key |
+| | `swarm_change_password` | 修改 recovery password |
+| | `swarm_request_password_reset` | 请求恢复链接 |
+| | `swarm_admin_create_password_reset` | 管理员生成恢复链接 |
+| | `swarm_confirm_password_reset` | 确认恢复并签发新证书 |
+| | `swarm_register_passkey` | 绑定 passkey 恢复因子 |
+| | `swarm_recover_with_passkey` | 使用 passkey 恢复并签发新证书 |
 | | `swarm_bind_email` | 绑定邮箱 |
 | | `swarm_delete_account` | 删除账号 |
 | | `swarm_restore_account` | 恢复已删除账号（grace period 内） |
 | | `swarm_cancel_account_deletion` | 取消账号删除（同 restore） |
-| | `swarm_federated_login` | 跨世界身份登录 |
+| | `swarm_federated_login` | 外部证书 bootstrap，本地重签证书 |
 | | `swarm_update_profile` | 修改显示名称 |
 | **锦标赛** | `swarm_tournament_precommit` | 锁定 WASM 模块 |
 | | `swarm_tournament_create` | 创建 bracket |

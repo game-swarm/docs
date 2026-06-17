@@ -41,19 +41,23 @@ Web UI (Monaco + PixiJS)          MCP Interface
 
 ### 1.1 认证流程
 
-> 完整的认证设计（OAuth2、本地注册/登录、联邦身份、证书模型）见 **[design/auth.md](../../design/auth.md)**。
+> 完整的认证设计（CSR、应用层证书、恢复、联邦身份）见 **[design/auth.md](../../design/auth.md)**。
 
 证书内容：
-  - player_id: u64          # 确定性 hash(provider + ":" + subject)
-  - client_public_key: Ed25519  # 客户端公钥
-  - issued_at: timestamp
-  - expires_at: timestamp   # 24h 后自动过期
-  - issuer_sig: Ed25519     # 服务端 CertificateIssuer 私钥签名
+  - player_id: u64
+  - public_key: Ed25519
+  - usage: client_auth | code_signing | admin | federation
+  - scopes: string[]
+  - audience: server_id + world_id + gateway_origin
+  - issued_at / expires_at
+  - issuer_chain: Server Intermediate CA → Server Root CA fingerprint
 
 部署 WASM:
-  1. 客户端附带证书 + 私钥签名(Blake3(WASM bytes))
-  2. 服务端验证证书未过期 + 签名匹配
+  1. 客户端附带 CodeSigningCertificate + 私钥签名(module_hash + metadata)
+  2. 服务端验证证书链、usage=code_signing、scope、提交时未过期、未撤销、签名匹配
   3. player_id 从证书提取，不可自报
+  4. 部署成功后 module_hash 进入世界状态；证书自然过期不影响已部署模块继续运行
+  5. 证书吊销是安全事件，服务器按 revocation reason 冻结、回滚或继续允许既有模块运行
 
 ## 2. 网络架构 — Transport 拆分
 
@@ -90,26 +94,28 @@ Browser (Web UI)
 
 ```
 AI Agent / CLI
-    │ HTTPS + mTLS（客户端证书）或 signed request
+    │ HTTP/HTTPS + Swarm application certificate + signed request
     │ (不依赖 Origin — 原生 HTTP 客户端无浏览器安全上下文)
     ▼
 ┌──────────────────┐
-│  nginx / 网关     │  ← mTLS 验证 / Ed25519 signed request
-│                   │     拒绝缺少 mTLS 或签名的 AI endpoint 请求
+│  nginx / 网关     │  ← 验证 Swarm-Certificate-Chain + canonical request signature
+│                   │     拒绝缺少应用层证书或签名的 AI endpoint 请求
 └────────┬─────────┘
          │
          ▼
 ┌──────────────────┐
 │  Gateway/MCP      │  ← Agent endpoint（独立端口或路径）
-│  (mTLS / signed)  │     Token audience: gateway_origin + world_id + cli
+│  (app-cert signed)│     Certificate audience: server_id + world_id + cli
 └──────────────────┘
 ```
 
 **Agent/CLI 特有安全要求**：
-- Agent 端点必须使用 mTLS 或 Ed25519 签名（不上依赖 Origin header）
-- Token `aud` field 绑定 `{gateway_origin, world_id, "cli"}`
+- Agent 端点必须验证 `Swarm-Certificate-Chain` 与 canonical request signature，不依赖 Origin header
+- Certificate `audience` 绑定 `{server_id, world_id, "cli"}`
+- Swarm CA 只用于应用层证书，不得安装到系统/浏览器 trust store
+- HTTP 不安全传输可用于身份认证和完整性校验；首次访问需人工确认并 pin Server Root CA fingerprint，pin 后服务器身份不依赖外部 TLS
 - 拒绝任何携带 browser-style Origin/CSRF header 的 agent 端点请求（防跨协议混淆）
-- 凭据存储：AI agent 必须将证书/私钥存储于 HSM > secret manager > encrypted file (0600) > env var，禁止日志泄露（详见 design/auth.md §13.4）
+- 凭据存储：AI agent 必须将证书链/私钥存储于 HSM > secret manager > encrypted file (0600) > env var，禁止日志泄露（详见 design/auth.md §13.4）
 
 ### 2.3 DNS Rebinding 防御
 
@@ -135,7 +141,7 @@ AI Agent / CLI
              ┌───────▼──┐   ┌───▼────────┐
              │ Browser  │   │ AI/CLI     │
              │ endpoint │   │ endpoint   │
-             │ (Origin  │   │ (mTLS/     │
+             │ (Origin  │   │ (app-cert  │
              │  + CSRF) │   │  signed)   │
              └────┬─────┘   └───┬────────┘
                   │             │
@@ -148,31 +154,35 @@ AI Agent / CLI
 
 ## 3. 认证
 
-> **权威凭证模型**：Swarm 的唯一权威身份凭证是 `PlayerCertificate`（Ed25519 签发，24h TTL）。
-> JWT/access_token 是 MCP/HTTP 传输层格式，由 `refresh_token` 兑换，不是独立的信任根。
-> 完整 Token 模型见 [design/auth.md](../../design/auth.md) §13.5 Token 权威模型。
+> **权威凭证模型**：Swarm 的唯一权威身份凭证是应用层证书链 + 用户私钥签名。
+> JWT/access_token 是 Web session 兼容格式，不是独立的信任根。
+> 完整证书模型见 [design/auth.md](../../design/auth.md) §13.5 应用层证书权威模型。
 
-### 3.1 Token 格式
+### 3.1 应用层证书请求格式
 
-MCP 传输层使用 JWT 格式的 `access_token`（由 `refresh_token` 兑换，15min TTL）：
+MCP/Agent 主路径使用应用层证书链和 canonical request signature：
 
-```json
-{
-  "sub": "player:42",
-  "scope": "swarm:deploy swarm:read swarm:debug",
-  "iat": 1680700000,
-  "exp": 1680700900,
-  "jti": "唯一令牌ID"
-}
+```text
+Swarm-Certificate-Chain: <base64 leaf + intermediate>
+Swarm-Cert-Id: <certificate_id>
+Swarm-Timestamp: <unix_ms>
+Swarm-Nonce: <random 128-bit>
+Swarm-Signature: <ed25519 signature>
 ```
 
-| 声明 | 含义 |
+证书包含：
+
+| 字段 | 含义 |
 |------|------|
-| `sub` | `player:{id}` — 已认证玩家 |
+| `player_id` | 已认证玩家 |
+| `public_key` | 用户/设备公钥 |
+| `usage` | `client_auth` / `code_signing` / `admin` / `federation` |
 | `scope` | 空格分隔的权限 |
-| `iat` | 签发时间（epoch 秒） |
-| `exp` | 过期时间（exp = iat + 900） |
-| `jti` | 唯一令牌 ID，用于撤销 |
+| `audience` | `server_id + world_id + transport` |
+| `expires_at` | 证书过期时间 |
+| `issuer_chain` | Server Intermediate CA → Server Root CA fingerprint |
+
+JWT/access_token 仅是 Web session 兼容格式，可由 `refresh_token` 兑换，不用于 MCP/Agent 主认证路径。
 
 ### 3.2 Scope
 

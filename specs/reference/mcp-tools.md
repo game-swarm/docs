@@ -48,10 +48,26 @@
 
 | 工具 | 说明 |
 |------|------|
-| `swarm_oauth2_login` | 发起 OAuth2 登录 |
-| `swarm_oauth2_callback` | OAuth2 回调处理 |
-| `swarm_token_refresh` | 刷新 access token |
-| `swarm_auth_revoke` | 吊销证书 |
+| `swarm_get_server_trust` | 获取 server_id、Swarm CA fingerprint、Intermediate chain |
+| `swarm_register_challenge` | 获取注册/CSR PoW 挑战 |
+| `swarm_submit_csr` | 提交 CSR 并签发应用层证书 |
+| `swarm_renew_certificate` | 续签应用层证书 |
+| `swarm_list_certificates` | 列出当前账号证书 |
+| `swarm_revoke_certificate` | 吊销证书 |
+| `swarm_token_refresh` | 刷新 Web session 兼容 token |
+| `swarm_auth_revoke` | 吊销 session、certificate 或 public key |
+| `swarm_update_profile` | 修改显示名称 |
+| `swarm_change_password` | 修改 recovery password |
+| `swarm_request_password_reset` | 请求恢复链接 |
+| `swarm_admin_create_password_reset` | 管理员生成恢复链接 |
+| `swarm_confirm_password_reset` | 确认恢复并签发新证书 |
+| `swarm_register_passkey` | 绑定 passkey 恢复因子 |
+| `swarm_recover_with_passkey` | 使用 passkey 恢复并签发新证书 |
+| `swarm_bind_email` | 绑定邮箱 |
+| `swarm_delete_account` | 删除账号 |
+| `swarm_restore_account` | 恢复已删除账号 |
+| `swarm_cancel_account_deletion` | 取消账号删除 |
+| `swarm_federated_login` | 外部证书作为 bootstrap proof，本地重签证书 |
 
 ### 锦标赛
 
@@ -72,12 +88,14 @@
 ## 认证模型
 
 ```
-OAuth2 Provider (GitHub/Google)
-  → 授权码 → Gateway → 交换 token
-    → Engine MCP 签发 Ed25519 证书（24h TTL）
-      → 所有 MCP 调用携带证书
-        → rate limiter 检查（12 种来源分级）
+Client generates private key locally
+  → submits CSR + PoW challenge proof
+    → Server Intermediate CA signs application-layer certificates
+      → MCP/HTTP/WebSocket requests carry Swarm-Certificate-Chain + request signature
+        → Gateway/Engine verifies chain, usage, scope, nonce, signature
 ```
+
+Swarm CA 只用于应用层证书，不安装到系统/浏览器 trust store。HTTP 等不安全传输可以完成身份认证与完整性校验；首次访问需人工确认并 pin 服务器 Root CA fingerprint，之后服务器身份由客户端证书存储中的 Root CA pin 验证，不依赖外部 TLS。
 
 ## Rate Limiter（12 来源分级）
 

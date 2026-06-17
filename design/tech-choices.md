@@ -175,7 +175,7 @@ tick delta 的特点：(1) 每 3s 推一次，数据量小；(2) 错过可以回
 
 ### 选择: Ed25519
 
-证书签发是低频操作（24h 一次），但验证是高频（每次部署都验证）。Ed25519 的验证速度 ~30k/s，小签名 64B，纯 Rust `ed25519-dalek` 实现成熟。短期证书（24h）+ 服务端签发 + 吊销列表，形成完整的信任链。
+证书链、CSR、请求签名和代码签名统一使用 Ed25519。用户/agent 在客户端持有 Ed25519 私钥，服务器通过 Server Root CA / Server Intermediate CA 签发应用层证书；请求和部署使用 canonical payload 签名。Ed25519 的验证速度 ~30k/s，小签名 64B，纯 Rust `ed25519-dalek` 实现成熟。用途隔离证书（`ClientAuthCertificate` / `CodeSigningCertificate` / `AdminCertificate`）+ 设备级吊销 + Root fingerprint pinning 形成完整信任链。
 
 ---
 

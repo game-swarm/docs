@@ -335,7 +335,7 @@ TickTrace 中存储的审计日志受以下大小限制，防止磁盘 DoS：
 | 编译超时 | 30s | 独立超时进程 |
 | 编译内存 | 512 MB | cgroup |
 | 编译进程 | 每次部署独立 fork | 不缓存编译中间产物 |
-| 模块缓存 | 按 `Blake3(module_hash || wasmtime_build_commit || wasmparser_version || validation_policy_version || target_arch || security_epoch)` 缓存 | 每次 tick 执行前校验 player 证书未过期未吊销——过期/吊销立即终止 WASM 执行。security_epoch 或 validation policy 变更 → 全量失效。编译仅跳过，验证不跳过。 |
+| 模块缓存 | 按 `Blake3(module_hash || wasmtime_build_commit || wasmparser_version || validation_policy_version || target_arch || security_epoch)` 缓存 | 部署提交时验证 `CodeSigningCertificate` 未过期未吊销；部署成功后证书自然过期不终止 WASM 执行。证书吊销按 revocation reason 冻结/回滚/继续允许既有模块。security_epoch 或 validation policy 变更 → 全量失效。编译仅跳过，验证不跳过。 |
 | 并发编译 | 最多 5 个 | 防止编译阶段 DoS |
 | module validation | 10ms | wasmparser 解析超时 |
 

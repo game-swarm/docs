@@ -20,15 +20,15 @@ Gateway 是无状态服务，可水平扩展。所有 Gateway 实例共享同一
 
 | Transport | 协议 | 端口 | 用途 | 认证方式 |
 |-----------|------|------|------|---------|
-| **Browser** | WebSocket | 8082 | 人类玩家 Web UI | JWT (`ws` audience) + `Sec-WebSocket-Protocol` header |
-| **REST** | HTTP/1.1 | 8082 | CLI / 外部工具 | JWT (`rest` audience) + `Authorization: Bearer` |
-| **Agent** | MCP (HTTP/SSE) | 8082 | AI agent MCP 连接 | JWT (`mcp` audience) + `X-Swarm-Transport: mcp` |
-| **Replay Viewer** | HTTP/1.1 | 8082 | 回放查看器（公开） | JWT (`replay` audience) 或匿名（public replay） |
+| **Browser** | WebSocket | 8082 | 人类玩家 Web UI | Web session token 或 `Swarm-Certificate-Chain` + signed request |
+| **REST** | HTTP/1.1 | 8082 | CLI / 外部工具 | Application certificate + signed request；Web session token 仅兼容路径 |
+| **Agent** | MCP (HTTP/SSE) | 8082 | AI agent MCP 连接 | Application certificate + signed request |
+| **Replay Viewer** | HTTP/1.1 | 8082 | 回放查看器（公开） | Application certificate 或匿名（public replay） |
 
 **判定规则**（specs/security/09 §7.0）：
 - 缺少 `X-Swarm-Transport` header → 拒绝 (`401 MissingTransportHeader`)
-- `aud` 不匹配请求 transport → 拒绝 (`403 AudienceMismatch`)
-- MCP token 不得用于 WebSocket（Agent ↔ Browser 不可互换）
+- 应用层证书 `audience` 不匹配请求 transport → 拒绝 (`403 AudienceMismatch`)
+- MCP application certificate 不得用于 WebSocket（Agent ↔ Browser 不可互换）
 
 ## 3. WebSocket 协议
 
@@ -156,15 +156,16 @@ MCP 工具清单见 `specs/reference/mcp-tools.md`。
 
 以下为所有 transport 的认证要求——`specs/security/03` 和 `specs/security/09` 均引用此表。
 
-| Transport | JWT `aud` | Header | mTLS | Origin/CSRF | 失败码 |
-|-----------|----------|--------|:--:|------------|--------|
-| Browser WS | `ws:{world}:{player}` | `Sec-WebSocket-Protocol: swarm-jwt.<token>` + `X-Swarm-Transport: ws` | 否 | Origin check（Web UI domain） | 401 / 403 |
-| REST | `rest:{world}:{player}` | `Authorization: Bearer <jwt>` + `X-Swarm-Transport: rest` | 否 | CORS allowed origins | 401 / 403 |
-| MCP Agent | `mcp:{world}:{player}` | `Authorization: Bearer <jwt>` + `X-Swarm-Transport: mcp` | 生产建议 | N/A（非浏览器） | 401 / 403 |
-| Replay Viewer | `replay:{world}:{match}` | `X-Swarm-Transport: replay` | 否 | 公开回放可匿名 | 401 |
-| Admin | `admin:{world}:{admin_id}` | `Authorization: Bearer <jwt>` + `X-Swarm-Transport: rest` | ✅ 强制 | N/A | 401 / 403 |
+| Transport | Auth material | Header | Origin/CSRF | 失败码 |
+|-----------|---------------|--------|-------------|--------|
+| Browser WS | Web session token 或 application certificate | `Sec-WebSocket-Protocol: swarm-jwt.<token>` 或 `Swarm-Certificate-Chain` + `X-Swarm-Transport: ws` | Origin check（Web UI domain） | 401 / 403 |
+| REST | Web session token 或 application certificate | Bearer token 或 `Swarm-Certificate-Chain` + `X-Swarm-Transport: rest` | CORS allowed origins | 401 / 403 |
+| MCP Agent | Application certificate + signed request | `Swarm-Certificate-Chain` + `Swarm-Signature` + `X-Swarm-Transport: mcp` | N/A（非浏览器） | 401 / 403 |
+| Replay Viewer | 无或 application certificate | `X-Swarm-Transport: replay` | 公开回放可匿名 | 401 |
+| Admin | AdminCertificate + signed request | `Swarm-Certificate-Chain` + `Swarm-Signature` + `X-Swarm-Transport: rest` | N/A | 401 / 403 |
 
 **禁止项**：
 - Browser WS token 通过 `Sec-WebSocket-Protocol` header 传递——**不得**出现在 URL query string 中（nginx access log 会记录）
 - MCP token **不得**用于 Browser/REST transport（audience 不匹配）。
-- 生产环境 Admin 端点**必须** mTLS。
+- Swarm CA **不得**安装到系统/浏览器 trust store；它只用于应用层证书链验证。
+- Admin 端点必须使用 `AdminCertificate` + signed request；不以传输层 mTLS 作为默认身份根。

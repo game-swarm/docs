@@ -65,8 +65,8 @@ tick((snap: Snapshot): Command[] => {
 ## 4. 部署
 
 通过 Web UI（`http://localhost:5173`）：
-1. 用 GitHub 登录
-2. 在 Monaco 编辑器中粘贴代码
+1. 首次访问时确认服务器 Root CA fingerprint
+2. 生成本地设备密钥并提交 CSR
 3. 点击 **Deploy** → 代码编译为 WASM → 上传到引擎
 4. 下一个 tick 开始，你的 drone 就会自动采集
 

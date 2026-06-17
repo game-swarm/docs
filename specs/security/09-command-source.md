@@ -15,9 +15,9 @@
 | Source | 描述 | auth_context | gameplay | audit | rate_limit | visibility | budget |
 |--------|------|-------------|----------|-------|------------|------------|--------|
 | `WASM` | drone tick() 输出 | player_id (server-injected) | ✅ 是 | 完整 | fuel budget | 快照范围 | 10M fuel/tick |
-| `MCP_Deploy` | AI 部署 WASM 代码 | player_id + token scope | ❌ 否 | 完整 | 10/h | N/A | N/A |
-| `MCP_Query` | AI 查询世界/调试 | player_id + token scope | ❌ 否 | 完整 | 50/tick | 快照范围 | N/A |
-| `Admin` | 管理操作 | admin_id + token scope | ❌ 否 | 完整 | 无限制 | 全局 | N/A |
+| `MCP_Deploy` | AI 部署 WASM 代码 | CodeSigningCertificate + signed DeployPayload | ❌ 否 | 完整 | 10/h | N/A | N/A |
+| `MCP_Query` | AI 查询世界/调试 | ClientAuthCertificate + signed request | ❌ 否 | 完整 | 50/tick | 快照范围 | N/A |
+| `Admin` | 管理操作 | AdminCertificate + signed request | ❌ 否 | 完整 | 无限制 | 全局 | N/A |
 | `Replay` | 回放重放 | system (no player) | ❌ 否 | 完整 | N/A | 回放历史 | N/A |
 | `TestHarness` | 自动化测试 | test_context | ❌ 否 | 完整 | N/A | 测试世界 | N/A |
 | `Tutorial` | 教程引导 | tutorial_session + world_id | ⚠️ 仅教程世界 | 完整 | 10/tick | 教程房间 | N/A |
@@ -60,15 +60,15 @@
 
 ### 3.1 身份模型
 
-采用**客户端 Ed25519 密钥对 + 服务端签发证书**模式：
+采用**客户端 Ed25519 私钥 + Server CA 签发应用层证书**模式：
 
 ```
-注册:  客户端生成 Ed25519 密钥对 → 提交公钥 → 服务端签发证书（公钥+player_id+有效期，服务端 Ed25519 签名）
-签名:  部署 WASM 时客户端用私钥签名部署载荷 → 服务端验签
-吊销:  证书过期（默认 90 天）/ CRL / Auth Service epoch emergency bump
+注册:  客户端生成 Ed25519 密钥对 → 提交 CSR → Server Intermediate CA 签发用途隔离证书
+签名:  部署 WASM 时客户端用 CodeSigningCertificate 对 module_hash + metadata 签名 → 服务端验签
+吊销:  证书吊销 / public key 吊销 / Server Intermediate CA 吊销 / Auth Service epoch emergency bump
 ```
 
-**设计决策**（R2 用户裁决）：客户端持有 Ed25519 私钥，部署时对结构化载荷签名（非裸 WASM 字节）。此模型提供强审计链（可证明某玩家部署了某版本代码），同时通过 short-lived deploy_nonce 防重放。
+**设计决策**：客户端持有 Ed25519 私钥，部署时对结构化载荷签名（非裸 WASM 字节）。`CodeSigningCertificate` 必须在部署提交时有效；部署成功后证书自然过期不影响已部署模块继续运行。此模型提供强审计链（可证明某玩家部署了某版本代码），同时通过 short-lived deploy_nonce 防重放。
 
 ### 3.2 部署载荷结构
 
@@ -106,23 +106,26 @@
 2. 客户端构建 `DeployPayload`，用 Ed25519 私钥签名
 3. 客户端发送 WASM bytes + DeployPayload + 证书
 4. 服务端验证：
-   a. 证书未过期、未被吊销（CRL 查询）
-   b. `player_id` 从证书提取，覆盖任何客户端自报 ID
-   c. `deploy_nonce` 有效且未消费（全局去重）
-   d. `expires_at ≥ now()` 且 `≤ issued_time + 15 min`
-   e. `module_hash == Blake3(收到的 WASM bytes)`
-   f. Ed25519 验签通过（证书中的公钥 + signature + payload）
-5. tick 执行时引擎验证 `module_hash` 匹配已部署模块
+   a. `CodeSigningCertificate` 链可追溯到本服 Server Root CA，usage=code_signing
+   b. 证书在部署提交时未过期、未被吊销（CRL 查询）
+   c. `player_id` 从证书提取，覆盖任何客户端自报 ID
+   d. `deploy_nonce` 有效且未消费（全局去重）
+   e. `expires_at ≥ now()` 且 `≤ issued_time + 15 min`
+   f. `module_hash == Blake3(收到的 WASM bytes)`
+   g. Ed25519 验签通过（证书中的公钥 + signature + payload）
+5. tick 执行时引擎验证 `module_hash` 匹配已部署模块；证书自然过期不终止已部署模块
 
 ### 3.4 证书生命周期
 
-- **有效期**：默认 90 天，可配置（`cert.validity_days`）
+- **有效期**：按证书 profile 配置；常用设备可 30–180 天，临时设备 15min–24h，管理员证书 15min–1h
 - **CRL 吊销点**：
-  - deploy 时（校验证书是否在 CRL 中）
-  - 每 tick 开始前（扫描活跃玩家的证书状态）
-  - module cache validation 时（缓存 miss 时验证来源证书）
+  - deploy 提交时（校验证书是否在 CRL 中）
+  - certificate renewal / CSR recovery 时（校验旧证书和 public key 状态）
+  - revocation cache miss 时向 Auth Service 查询
+- **CRL 保留窗口**：在线 CRL 只需保留尚未过期证书和最近过期证书。保留期为 `max_certificate_ttl + max_clock_skew + federation_revocation_cache_ttl + operational_grace`。超过窗口的吊销项可从在线认证路径清理。
+- **过期 vs 吊销**：证书自然过期不影响已部署模块继续运行；证书吊销是安全事件，服务器按 revocation reason 冻结、回滚或继续允许既有模块。
 - **Auth Service epoch**：全局单调递增整数。emergency bump 后所有旧 epoch 证书立即失效，强制全量重新认证
-- **紧急轮换 runbook**：Auth Service 私钥泄露 → bump epoch → 所有客户端重新签发证书 → 旧证书 CRL 加入永久条目
+- **紧急轮换 runbook**：Server Intermediate CA 泄露 → bump epoch → 所有客户端重新签发证书 → 当前有效窗口内旧证书加入 CRL
 
 ### 3.5 编译缓存键
 
@@ -132,7 +135,7 @@
 blake3(wasmparser_version || validation_policy_version || wasmtime_build_commit || target_arch || security_epoch)
 ```
 
-缓存仅跳过编译，不跳过验证——每次 tick 启动时对缓存条目重新执行证书/CRL 检查。
+缓存仅跳过编译，不跳过部署时验证；已部署模块运行时只校验 `module_hash` 与当前 validation/security epoch。证书自然过期不触发缓存失效；吊销导致的冻结/回滚由 revocation reason 策略处理。
 
 ## 4. 校验管线
 
@@ -181,36 +184,36 @@ RawCommand (携带 auth context)
 
 ### 7.0 Transport Audience 与 Browser/Agent 判定
 
-JWT Token 的 `aud`（audience）字段用于绑定 token 到特定 transport，防止跨 transport 重放：
+应用层证书的 `audience` 字段绑定证书到特定 transport，防止跨 transport 重放。JWT `aud` 仅用于 Web session 兼容路径：
 
-| Transport | `aud` 值 | 判定方式 |
-|-----------|---------|---------|
-| MCP (Agent) | `mcp:{world_id}:{player_id}` | HTTP header `X-Swarm-Transport: mcp` + `Authorization: Bearer *** |
-| WebSocket (Browser) | `ws:{world_id}:{player_id}` | WebSocket 升级请求中 `X-Swarm-Transport: ws` header + `?token=<jwt>` query param |
-| REST (Browser/CLI) | `rest:{world_id}:{player_id}` | HTTP header `X-Swarm-Transport: rest` + `Authorization: Bearer *** |
-| Replay (Viewer) | `replay:{world_id}:{match_id}` | HTTP header `X-Swarm-Transport: replay` |
+| Transport | 应用层证书 audience | 判定方式 |
+|-----------|---------------------|---------|
+| MCP (Agent) | `mcp:{server_id}:{world_id}:{player_id}` | HTTP header `X-Swarm-Transport: mcp` + `Swarm-Certificate-Chain` + `Swarm-Signature` |
+| WebSocket (Browser) | `ws:{server_id}:{world_id}:{player_id}` | WebSocket 升级请求中 `X-Swarm-Transport: ws` + Web session token 或 application certificate |
+| REST (Browser/CLI) | `rest:{server_id}:{world_id}:{player_id}` | HTTP header `X-Swarm-Transport: rest` + application certificate；Bearer token 仅 Web 兼容 |
+| Replay (Viewer) | `replay:{server_id}:{world_id}:{match_id}` | HTTP header `X-Swarm-Transport: replay` |
 
 **判定规则**：
 - 缺少 `X-Swarm-Transport` header → 拒绝（`401 MissingTransportHeader`）
-- `aud` 不匹配请求 transport → 拒绝（`403 AudienceMismatch`）
-- MCP token **不得**用于 WebSocket 连接（Agent transport 与 Browser transport 不可互换）
+- 证书 `audience` 不匹配请求 transport → 拒绝（`403 AudienceMismatch`）
+- MCP application certificate **不得**用于 WebSocket 连接（Agent transport 与 Browser transport 不可互换）
 - Deploy nonce 的 `audience` 字段同上规则
 
 **Server-issued Certificate 所有权模型**：
 
 ```
 证书层级:
-  玩家 Ed25519 密钥对（客户端生成，私钥不离开客户端）
+  用户 Ed25519 密钥对（客户端生成，私钥不离开客户端）
     │
-    └─→ 服务端签发 Certificate { player_id, public_key, validity, epoch }
+    └─→ Server Intermediate CA 签发 CodeSigningCertificate { player_id, public_key, usage, validity }
          │
-         └─→ 部署时客户端用私钥签名 DeployPayload
+         └─→ 部署提交时客户端用私钥签名 DeployPayload
                │
                └─→ 服务端用证书中的公钥验签
 
 所有权: 玩家 = 私钥持有者 = 证书主体。证书不可跨玩家转移。
-CRL: 吊销证书 → 该密钥对的所有部署立即失效 → player 需重新注册
-Epoch: 全局 bump → 所有证书失效 → 全量重新认证
+CRL: 吊销证书是安全事件；按 reason 冻结、回滚或继续允许既有模块。自然过期不影响已部署模块。
+Epoch: 全局 bump → 所有当前有效证书失效 → 全量重新认证
 ```
 
 ### 7.1 Session 生命周期

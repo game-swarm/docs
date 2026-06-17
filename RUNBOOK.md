@@ -90,17 +90,25 @@ python3 -c "import secrets; print(secrets.token_hex(32))"
 # 更新 world.toml 中的 world_seed
 ```
 
-### JWT 签名密钥
+### Swarm CA 与应用层证书
 ```bash
-openssl genpkey -algorithm Ed25519 -out jwt_private.pem
-openssl pkey -in jwt_private.pem -pubout -out jwt_public.pem
+# 生成离线 Server Root CA（仅示例；生产应放入离线介质/HSM）
+swarm ca root init --out /secure/swarm-root-ca
+
+# 生成在线 Server Intermediate CA
+swarm ca intermediate issue --root /secure/swarm-root-ca --out /etc/swarm/intermediate
+
+# 查看服务器 trust fingerprint，供客户端首次 pinning
+swarm ca fingerprint --root /secure/swarm-root-ca
 ```
 
-### 证书
-Ed25519 证书 24h 自动过期。手动吊销：
+手动吊销证书或设备 public key：
 ```bash
-swarm cert revoke --player-id <ID>
+swarm cert revoke --certificate-id <CERT_ID> --reason <lost_device|key_compromise|admin_action>
+swarm key revoke --player-id <ID> --public-key-id <KEY_ID> --reason lost_device
 ```
+
+在线 CRL 仅保留未过期和最近过期窗口内的吊销项；自然过期证书不需要长期保留在在线认证路径。
 
 ### FDB credential
 ```bash
