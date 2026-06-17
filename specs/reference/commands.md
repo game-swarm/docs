@@ -15,9 +15,9 @@ WASM 模块通过 `tick(snapshot) → CommandIntent[]` JSON 返回指令。
 
 `player_id`、`source`、`tick` 由服务端 Source Gate 注入后形成 RawCommand（见 `specs/core/02-command-validation` §2）。
 
-## 指令列表（16 Core + 8 Special Attacks）
+## 指令列表（15 Core + 1 Custom + 8 Special Attacks）
 
-以下 16 种指令对应 `CommandAction` enum 的核心变体。Disrupt、Fortify、Hack、Drain、Overload、Debilitate、Leech、Fabricate 这 8 种特殊攻击通过 `CommandAction::Custom(type)` + `CustomActionRegistry` 路由——见下方「特殊攻击」节。
+以下 15 种指令对应 `CommandAction` enum 的 15 个具体变体。第 16 个变体 `CommandAction::Custom(type)` 通过 `CustomActionRegistry` 路由到 8 种特殊攻击——见下方「特殊攻击」节。
 
 ### Move
 移动 drone 到目标方向。
@@ -267,8 +267,10 @@ WASM 模块通过 `tick(snapshot) → CommandIntent[]` JSON 返回指令。
 | `AlreadyDebilitated` | 目标已有同类型 Debilitate 效果（含 damage_type） |
 | `NotVisibleOrNotFound` | 目标不可见或不存在——替代 `PlayerNotFound`。Overload 等使用等价拒绝类 |
 
-> **管线级拒绝**（在 Command 校验之前触发，不计入 IDL 的 RejectionReason enum）：
-> `InvalidJson`、`SchemaViolation`、`UnknownAction`、`SourceNotAllowed`。
+> **管线级拒绝**（在 Command 校验之前触发，不计入 `RejectionReason` enum 的仅有）：
+> `InvalidJson`、`SchemaViolation`。
+>
+> 注：`SourceNotAllowed` 和 `UnknownAction` **在** `RejectionReason` enum 内——它们在上表已列出，当在管线早期触发时同属管线级拒绝。
 
 > **子系统拒绝**（由各自模块独立校验，非 Command 校验管线）：`GlobalStorageDisabled`、`TransferInProgress`、`OrderNotFound`、`TerminalRequired`。MCP 层另有 `RateLimited`。
 
