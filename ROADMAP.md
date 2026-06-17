@@ -10,7 +10,7 @@
 
 | 仓库 | Tests | 状态 |
 |------|-------|------|
-| engine | 190 ✓ | 核心引擎功能完善 (+13 Phase A) |
+| engine | 205 ✓ | 核心引擎功能完善 (+Phase B) |
 | sandbox | 14 ✓ | WASM 沙箱完整 |
 | sdk-rust | 8 ✓ | Rust SDK |
 | sdk-ts | 11 ✓ | TypeScript SDK |
@@ -201,17 +201,19 @@ spec 05 定义了 fog_of_war, player_view (Drone/Full/Allied), spectate, replay_
 
 **结果**: engine 177→190 tests, frontend 10/13→13/13
 
-### Phase B: PvE 生态层 (预计 12-20 小时)
+### Phase B: PvE 生态层 ✅ 完成 (2026-06-17)
 
-| ID | 任务 | 仓库 | 预估 |
-|----|------|------|------|
-| G1a | NPC 组件 + ECS entities (Creep, Guardian, Merchant, Swarmling) | engine | 300 行 |
-| G1b | NPC AI 行为系统 (巡逻/驻守/跨房间移动) | engine | 300 行 |
-| G1c | 资源据点生成 + 守卫配置 | engine | 200 行 |
-| G1d | 世界事件系统 (概率触发 + 确定性 seed) | engine | 250 行 |
-| G1e | NPC 掉落经济 + 蓝图系统 | engine | 200 行 |
-| G1f | 难度梯度 (Zone 1-4 按距离分布 NPC) | engine | 100 行 |
-| G1g | PvE 经济约束 (max_pve_output_per_tick) | engine | 50 行 |
+| ID | 任务 | 仓库 | 状态 | Commit |
+|----|------|------|:--:|--------|
+| G1a | NPC 组件 + ECS entities (Creep, Guardian, Merchant, Swarmling) | engine | ✅ | `3f3351c` |
+| G1b | NPC AI 行为系统 (巡逻/驻守/跨房间移动) | engine | ✅ | `3f3351c` |
+| G1c | 资源据点生成 + 守卫配置 | engine | ✅ | `3f3351c` |
+| G1d | 世界事件系统 (概率触发 + 确定性 seed) | engine | ✅ | `aa4973a` |
+| G1e | NPC 掉落经济 + 蓝图系统 | engine | ✅ | `f20354d` |
+| G1f | 难度梯度 (Zone 1-4 按距离分布 NPC) | engine | ✅ | `06107a9` |
+| G1g | PvE 经济约束 (max_pve_output_per_tick) | engine | ✅ | `141c27f` |
+
+**结果**: engine 190→205 tests
 
 ### Phase C: 文档对齐 (预计 2-4 小时)
 
