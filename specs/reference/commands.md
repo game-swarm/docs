@@ -15,7 +15,9 @@ WASM 模块通过 `tick(snapshot) → CommandIntent[]` JSON 返回指令。
 
 `player_id`、`source`、`tick` 由服务端 Source Gate 注入后形成 RawCommand（见 `specs/core/02-command-validation` §2）。
 
-## 指令列表（23 种）
+## 指令列表（16 Core + 8 Special Attacks）
+
+以下 16 种指令对应 `CommandAction` enum 的核心变体。Disrupt、Fortify、Hack、Drain、Overload、Debilitate、Leech、Fabricate 这 8 种特殊攻击通过 `CommandAction::Custom(type)` + `CustomActionRegistry` 路由——见下方「特殊攻击」节。
 
 ### Move
 移动 drone 到目标方向。
@@ -72,7 +74,7 @@ WASM 模块通过 `tick(snapshot) → CommandIntent[]` JSON 返回指令。
 - 校验：drone 有 HEAL body part，target 为友方，3 格内，未满血
 - 治疗量：`HEAL parts × 12`
 
-### Spawn
+### SpawnDrone
 创建新 drone。
 ```json
 { "sequence": 8, "action": { "type": "Spawn", "spawn_id": "s1", "body": ["MOVE", "WORK", "CARRY"] } }
@@ -135,6 +137,12 @@ WASM 模块通过 `tick(snapshot) → CommandIntent[]` JSON 返回指令。
 - 校验：drone 有 CLAIM body part，target 是 Controller，1 格内
 - 每 CLAIM part → 1 占领进度
 
+---
+
+## 特殊攻击（via `CommandAction::Custom`）
+
+以下 8 种特殊攻击通过 `CommandAction::Custom(type)` 路由至 `CustomActionRegistry`，配置于 `world.toml` 的 `[[custom_actions]]` 段。每个关联一个同名的 `[[special_effects]]` handler。
+
 ### Disrupt
 打断目标持续动作，不造成 HP 伤害。
 ```json
@@ -188,7 +196,7 @@ WASM 模块通过 `tick(snapshot) → CommandIntent[]` JSON 返回指令。
 - 效果：指定伤害类型抗性×2，持续 50 tick
 - 冷却：150 tick | 消耗：200 Energy | 抗性：Corrosive | special_effect: `debilitate`
 
-### Leech
+### Leech ⏳ Tier 2
 吸血攻击——伤害的 50% 治疗自身。
 ```json
 { "sequence": 22, "action": { "type": "Leech", "object_id": "d1", "target_id": "e5" } }
@@ -197,7 +205,7 @@ WASM 模块通过 `tick(snapshot) → CommandIntent[]` JSON 返回指令。
 - 伤害：Corrosive 15 dmg，治疗自身 50%
 - 消耗：300 Energy | 抗性：Corrosive | special_effect: `leech`
 
-### Fabricate
+### Fabricate ⏳ Tier 2
 将敌方 drone 转化为己方建筑。
 ```json
 { "sequence": 23, "action": { "type": "Fabricate", "object_id": "d1", "target_id": "e5" } }
@@ -205,9 +213,9 @@ WASM 模块通过 `tick(snapshot) → CommandIntent[]` JSON 返回指令。
 - 校验：drone 有对应 body part，敌方 drone，1 格内
 - 冷却：500 tick | 消耗：2000 Energy + 500 Matter | special_effect: `fabricate`
 
-## 拒绝原因（36 种）
+## 拒绝原因（51 种）
 
-> IDL 定义见 `specs/gameplay/08-game-api-idl` §RejectionReason。
+> `CommandAction` enum 共 51 个 `RejectionReason` 变体。以下为主管线校验拒绝原因。
 
 | 拒绝原因 | 说明 |
 |----------|------|

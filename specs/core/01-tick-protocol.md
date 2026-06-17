@@ -358,34 +358,45 @@ Source E1: energy = 5
 
 非法指令 → 拒绝，记录 RejectionReason，写入 TickTrace。
 
-### 3.4 ECS 系统执行顺序（Bevy — 部分并行）
-
-Phase 2b 采用主线串行 + 无冲突系统并行的策略，与 design/engine.md 保持一致：
+### 3.4 ECS 系统执行顺序（Bevy — 20 系统链）
 
 ```rust
+// 条件系统
+app.add_systems(Update, code_propagation_system.before(spawn_system));
+
+// 独立调度系统（与主线无数据竞争）
+app.add_systems(Update, spawning_grace_system.after(spawn_system).before(npc_combat_system));
+app.add_systems(Update, spawning_grace_expiry_system.after(combat_system).before(decay_system));
+app.add_systems(Update, (world_event_system, event_effect_system).chain().after(spawn_system).before(regeneration_system));
+app.add_systems(Update, stronghold_spawn_system.after(pvp_block_system).before(npc_spawn_system));
+app.add_systems(Update, stronghold_production_system.after(spawn_system).before(regeneration_system));
+app.add_systems(Update, npc_ai_system.after(room_state_system).before(npc_combat_system));
+app.add_systems(Update, npc_combat_system.after(npc_ai_system).before(combat_system));
+app.add_systems(Update, npc_spawn_system.after(pvp_block_system).before(spawn_system));
+
+// 主线 .chain() 串行
 app.add_systems(Update, (
-    death_mark_system,          // 标记待死亡 entity，释放 room cap 槽位
-    spawn_system,               // 统一创建 Phase 2a 校验通过的 drone
-    spawning_grace_system,      // 为新生 drone 附加 SpawningGrace(1) 无敌帧
-    combat_system,              // 战斗结算（damage 先 → heal 后，同 tick 内结算）
-    status_advance_system,      // 特殊攻击状态推进（Hack stage、Overload 恢复、Debuff 递减）
-    aging_system,               // drone age 递增 + Controller/Depot 维修 age 回退
+    rhai_rule_module_tick_start_system,
+    death_mark_system,
+    pvp_block_system,
+    spawn_system,
+    regeneration_system,
+    seed_rotation_system,
+    cargo_in_transit_system,
+    global_storage_system,
+    controller_system,
+    controller_repair_system,
+    depot_repair_system,
+    room_state_system,
+    combat_system,
+    decay_system,
+    memory_upkeep_system,
+    drone_env_var_system,
+    rhai_rule_module_tick_end_system,
+    death_cleanup_system,
+    onboarding_system,
 ).chain());
-
-// 以下无数据竞争，与主线并行调度（Bevy 自动管理线程）
-app.add_systems(Update, (
-    regeneration_system,     // 资源点再生
-    decay_system,            // 疲劳/冷却递减
-).before(death_cleanup_system));
-
-app.add_systems(Update, (
-    death_cleanup_system,    // 实际 despawn 已标记 entity（等全部完成）
-));
 ```
-
-**主线 `.chain()` 顺序**：`death_mark → spawn → spawning_grace → combat → status_advance → aging`。combat 在 regeneration 之前执行——确保战斗结算基于本轮状态。status_advance 在 combat 之后——特殊攻击状态推进基于最新 HP/状态。aging 在 status_advance 之后——age 递增可能触发 death_mark（下 tick），故在 death_cleanup 之前完成。
-
-**主线和并行调度关系**：`regeneration` 和 `decay` 与主线无数据竞争（各操作独立数据），通过 `.before(death_cleanup_system)` 约束必须在 `death_cleanup` 前完成。
 
 #### Component/Resource 读写矩阵
 
