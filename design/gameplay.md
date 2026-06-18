@@ -1892,6 +1892,8 @@ if (rules.get("empire-upkeep").config.onshortfall.value === "damage") {
 想维持巨帝国？你的 drone 物流必须极致优化。
 ```
 
+> **默认参数校准说明**：Vanilla 默认值（`drone_cost=2, room_base=10, room_superlinear=1`，其中 `fixed<u32,4>` 即 0.0001）在 1-50 房间范围内产生近乎线性的维护费曲线——超线性项的贡献在默认值下极小（50 房间时仅贡献 0.25 Energy/tick）。这是有意为之：MVP 新手友好不应被帝国维护费压倒。服主期望更强反雪球效果时，调整 `room_superlinear` 到 100-10000（0.01-1.0）区间——例如 `room_superlinear=10000` 时 50 房间的维护费约 3000/tick，与 §8.7 文档声称值一致。详见 Vanilla Economy Balance Sheet（待 B6 闭合时产出）。
+
 ### 8.8 Determinism Contract — 确定性合同
 
 #### 固定算法
@@ -1901,10 +1903,10 @@ if (rules.get("empire-upkeep").config.onshortfall.value === "damage") {
 | PRNG | **Blake3 XOF** | 确定种子 + offset → 随机流。与哈希同原语，消除 ChaCha 依赖，纯软件 ~6 GB/s。XOF 模式：`blake3::Hasher::update_with_seek(seed, offset)` |
 | 种子 | world_seed = Blake3(32随机字节) | 32 字节熵（256-bit），编码为 hex 字符串。不可从 tick_number 推导。**每 10,000 tick 自动轮换**（Blake3(旧种子, 当前tick)），防止长期观察推断种子空间 |
 | Hash | **Blake3** | 固定实现。不用 std::hash / SipHash（跨版本可变）。 |
-| 种子洗牌 | Blake3(tick_number \\|\\| world_seed) | 每 tick 确定但不可预测的玩家顺序。**不是手速/运气**——玩家无法通过加快操作影响排序位置。公平随机：所有玩家同等不可预测，相同种子=相同顺序，可回放验证 |
+| 种子洗牌 | `Blake3("shuffle" \\|\\| world_seed \\|\\| tick.to_le_bytes())` | 每 tick 确定但不可预测的玩家顺序。shuffle 后 TickTrace 记录 seed epoch + 活跃玩家集快照以支持回放。域名分离前缀 `"shuffle"` 防止与其他 Blake3 用途碰撞 |
 | ECS 顺序 | `.chain()` + `.before()/.after()` | 有数据依赖的串行（death→spawn→combat→death_cleanup），无依赖的并行（regeneration, decay）。Bevy 依赖图保证偏序不变，确定性不依赖并行度 |
 | 数值 | 整数 + 定点数 | 禁 f64（跨平台/编译器非确定）。游戏引擎数值用 `i64 × 精度因子`。**Rhai 模组脚本同样禁用浮点**——所有模组参数必须声明为 `u32`/`i64`/`fixed<u32,N>` 定点类型，Rhai 引擎侧关闭浮点运算能力。 |
-| 排序 | (shuffle_order, player_id, cmd_seq) | 相同种子 + 相同指令 → 相同顺序 |
+| 排序 | `(priority_class, shuffle_index, sequence, source)` | 分层排序键——相同 seed + 相同玩家集 + 相同指令 → 相同顺序。详见 `01-tick-protocol.md` §9.1 |
 | HashMap 顺序 | `indexmap` | 不用 std::HashMap（迭代顺序非确定） |
 
 #### 回放保证

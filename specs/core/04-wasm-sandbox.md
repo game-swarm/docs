@@ -34,11 +34,15 @@
 │  │  │  - 无 WASI 文件/网络/时钟     │  │  │
 │  │  └──────────────────────────────┘  │  │
 │  └────────────────────────────────────┘  │
-│  生命周期: 每 tick fork → 执行 → kill     │
+│  生命周期: worker pool + per-tick Store reset     │
 └──────────────────────────────────────────┘
 ```
 
-**生命周期**: sandbox worker 进程每 tick 新 fork，执行一个玩家，返回指令，然后 kill。tick 之间无状态保留。防止跨 tick 内存泄漏、长运行进程资源累积、受感染模块持久化。
+**生命周期**: Sandbox 采用 **long-lived worker pool** 模型。WASM 模块在部署时预编译并缓存——`Blake3(module_hash || wasmtime_build_commit || wasmparser_version || validation_policy_version || target_arch || security_epoch)` 作为缓存键。每 tick：worker 从池中取出 → 重置 Wasmtime Store（清空线性内存、重置 fuel counter、重建 Instance） → 执行单一玩家的 `tick()` → 返回结果 → 返回池中。
+
+**设计理由**: fork-per-tick 的隔离性更强，但以 500 活跃玩家计算，fork + seccomp + cgroup 初始化仅进程创建就需 2.5-5s，直接超出整个 tick 预算（3s）。Worker pool 配合严格 Store reset（清空 WASM 线性内存、重置 fuel counter、epoch deadline）和 cgroup/seccomp 持久绑定，在性能与隔离间取得平衡。防止跨 tick 资源累积的机制：Store reset 清空所有 WASM 可变状态；epoch deadline 保证单次 tick 时间上限；OOM killer + memory.max 处理内存泄漏。
+
+**统一 ABI 结果**: trap（如 unreachable）/ OOM / timeout / partial-output 均 → 丢弃该玩家当 tick 全部指令输出，记录到 TickTrace（`output_discarded` 原因码），不产生 command。下一 tick 正常重新执行。
 
 ## 2. Wasmtime 配置
 
@@ -87,8 +91,8 @@ config.cranelift_opt_level(wasmtime::OptLevel::Speed);  // 生产: Speed
 
 // === 线程 ===
 config.wasm_threads(false);                    // 禁用多线程
-config.wasm_simd(true);                        // 允许 SIMD（性能）
-config.wasm_relaxed_simd(false);               // 不允许 relaxed SIMD
+config.wasm_simd(world_config.simd_enabled);       // SIMD 由 world.toml 控制：World 默认 true（性能），Arena 默认 false（确定性/公平）
+config.wasm_relaxed_simd(false);                    // 不允许 relaxed SIMD
 
 // === Epoch 中断 ===
 config.epoch_interruption(true);               // 超时即杀

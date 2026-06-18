@@ -188,10 +188,10 @@ RawCommand (携带 auth context)
 
 | Transport | 应用层证书 audience | 判定方式 |
 |-----------|---------------------|---------|
-| MCP (Agent) | `mcp:{server_id}:{world_id}:{player_id}` | HTTP header `X-Swarm-Transport: mcp` + `Swarm-Certificate-Chain` + `Swarm-Signature` |
-| WebSocket (Browser) | `ws:{server_id}:{world_id}:{player_id}` | WebSocket 升级请求中 `X-Swarm-Transport: ws` + Web session token 或 application certificate |
-| REST (Browser/CLI) | `rest:{server_id}:{world_id}:{player_id}` | HTTP header `X-Swarm-Transport: rest` + application certificate；Bearer token 仅 Web 兼容 |
-| Replay (Viewer) | `replay:{server_id}:{world_id}:{match_id}` | HTTP header `X-Swarm-Transport: replay` |
+| MCP (Agent) | `swarm-aud-v1:agent-mcp:{server_id}:{world_id}:{player_id}` | HTTP header `X-Swarm-Transport: agent-mcp` + `Swarm-Certificate-Chain` + `Swarm-Signature` |
+| WebSocket (Browser) | `swarm-aud-v1:browser-ws:{server_id}:{world_id}:{player_id}` | WebSocket 升级请求中 `X-Swarm-Transport: browser-ws` + Web session token 或 application certificate |
+| REST (Browser/CLI) | `swarm-aud-v1:cli-rest:{server_id}:{world_id}:{player_id}` | HTTP header `X-Swarm-Transport: cli-rest` + application certificate；Bearer token 仅 Web 兼容 |
+| Replay (Viewer) | `swarm-aud-v1:replay-viewer:{server_id}:{world_id}:{match_id}` | HTTP header `X-Swarm-Transport: replay-viewer` |
 
 **判定规则**：
 - 缺少 `X-Swarm-Transport` header → 拒绝（`401 MissingTransportHeader`）

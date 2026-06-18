@@ -48,7 +48,7 @@ Web UI (Monaco + PixiJS)          MCP Interface
   - public_key: Ed25519
   - usage: client_auth | code_signing | admin | federation
   - scopes: string[]
-  - audience: "transport:server_id:world_id:player_id"
+  - audience: "swarm-aud-v1:<transport>:<server_id>:<world_id>:<player_id>"
   - issued_at / expires_at
   - issuer_chain: Server Intermediate CA → Server Root CA fingerprint
 
@@ -79,7 +79,7 @@ Browser (Web UI)
          ▼
 ┌──────────────────┐
 │  Gateway/MCP      │  ← SSE 推送（text/event-stream）
-│  (仅 HTTP/SSE)    │     Token audience: gateway_origin + world_id + browser
+│  (仅 HTTP/SSE)    │     Token audience: swarm-aud-v1:browser-http:<server_id>:<world_id>:<player_id>
 └──────────────────┘
 ```
 
@@ -105,13 +105,13 @@ AI Agent / CLI
          ▼
 ┌──────────────────┐
 │  Gateway/MCP      │  ← Agent endpoint（独立端口或路径）
-│  (app-cert signed)│     Certificate audience: server_id + world_id + cli
+│  (app-cert signed)│     Certificate audience: swarm-aud-v1:cli-rest:<server_id>:<world_id>:<player_id>
 └──────────────────┘
 ```
 
 **Agent/CLI 特有安全要求**：
 - Agent 端点必须验证 `Swarm-Certificate-Chain` 与 canonical request signature，不依赖 Origin header
-- Certificate `audience` 绑定 `{server_id, world_id, "cli"}`
+- Certificate `audience` 绑定 `swarm-aud-v1:cli-rest:<server_id>:<world_id>:<player_id>`
 - Swarm CA 只用于应用层证书，不得安装到系统/浏览器 trust store
 - HTTP 不安全传输可用于身份认证和完整性校验；首次访问需人工确认并 pin Server Root CA fingerprint，pin 后服务器身份不依赖外部 TLS
 - 拒绝任何携带 browser-style Origin/CSRF header 的 agent 端点请求（防跨协议混淆）
@@ -178,7 +178,7 @@ Swarm-Signature: <ed25519 signature>
 | `public_key` | 用户/设备公钥 |
 | `usage` | `client_auth` / `code_signing` / `admin` / `federation` |
 | `scope` | 空格分隔的权限 |
-| `audience` | `server_id + world_id + transport` |
+| `audience` | `swarm-aud-v1:<transport>:<server_id>:<world_id>:<player_id>` |
 | `expires_at` | 证书过期时间 |
 | `issuer_chain` | Server Intermediate CA → Server Root CA fingerprint |
 

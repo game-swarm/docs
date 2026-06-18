@@ -186,7 +186,7 @@ RejectionReason enum:
 | Host Function | Call Limit | Max Output | CPU Cost Units | 错误码 |
 |--------------|-----------|------------|----------------|--------|
 | host_get_terrain | unlimited | 4B | 1 | -1=OOB |
-| host_get_objects_in_range | 50/tick | 4KB | 10 + 1/entity | -2=range_too_large, -3=buffer_overflow |
+| host_get_objects_in_range | 5/tick | 4KB | 10 + 1/entity | -2=range_too_large, -3=buffer_overflow |
 | host_path_find | 10/tick | 1KB | 50 + 1/node (max 500 nodes) | -2=dest_unreachable, -3=node_limit_exceeded, -4=timeout |
 | host_get_world_config | 5/tick | 256B | 5 | -2=key_not_found |
 | host_get_world_rules | 1/tick | 2KB | 20 | — |

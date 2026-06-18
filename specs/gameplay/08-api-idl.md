@@ -170,16 +170,6 @@ commands:
     validator: [exists, owner, drone, body_part(Claim), is_controller, in_range(1)]
     cost: {}
 
-  CreateMarketOrder:
-    params: { object_id: ObjectId, resource: ResourceName, amount: ResourceAmount, price_resource: ResourceName, price_amount: ResourceAmount }
-    validator: [exists, owner, drone, market_enabled, valid_resource, valid_price]
-    cost: {}
-
-  BuyMarketOrder:
-    params: { object_id: ObjectId, order_id: u64 }
-    validator: [exists, owner, drone, market_enabled, order_exists, not_expired, has_resources]
-    cost: {}
-
   # ═════════════════════════════════════
   # 特殊攻击
   # ═════════════════════════════════════
