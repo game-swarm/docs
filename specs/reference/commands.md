@@ -22,7 +22,7 @@ WASM 模块通过 `tick(snapshot) → CommandIntent[]` JSON 返回指令。
 ### Move
 移动 drone 到目标方向。
 ```json
-{ "sequence": 1, "action": { "type": "Move", "object_id": "d1", "direction": "TopRight" } }
+{ "sequence": 1, "action": { "type": "Move", "object_id": "d1", "direction": "North" } }
 ```
 - 校验：drone 有 MOVE body part，fatigue = 0，目标格可通行，非 spawning
 - 消耗：无

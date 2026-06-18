@@ -342,7 +342,7 @@ Drone 在 Phase 2b spawn_system 中创建——位于 death_mark（释放 room c
 |--------|--------|
 | `object_id` 是玩家拥有的 Drone | `NotOwner` |
 | `drone.body` 包含 `RangedAttack` 部件 | `MissingBodyPart(RangedAttack)` |
-| `target_id` 是有效的 player_id | `PlayerNotFound` |
+| `target_id` 是有效的 player_id | `NotVisibleOrNotFound` |
 | `target_id != player_id`（非己方） | `FriendlyTarget` |
 | `is_visible_to(target_player, attacker)` — 可见性约束 | `TargetNotVisible` |
 | 目标全局冷却（同一 target_id 过去 50 tick 内被 Overload） | `TargetOverloadCooldown` |

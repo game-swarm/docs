@@ -1,6 +1,6 @@
 # Engine 架构
 
-> 详见 DESIGN §3。本文档是从 DESIGN.md 拆分出的引擎架构域文件。
+> 引擎架构域文件。从 design/README.md 拆分。详细规范见 `specs/core/01-tick-protocol.md`。
 
 ## 3. Engine（Rust）
 

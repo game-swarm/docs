@@ -106,7 +106,7 @@ enums:
     - AlreadyHacked
     - InvalidDamageType
     - AlreadyDebilitated { damage_type: String }
-    - PlayerNotFound
+    - NotVisibleOrNotFound
     - TargetNotVisible
     - TargetOverloadCooldown
 
