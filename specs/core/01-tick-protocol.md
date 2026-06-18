@@ -777,6 +777,101 @@ FDB commit 失败 (retry 1): 跳过 COLLECT，直接 EXECUTE
 
 FDB commit 成功 (retry N): final_fuel[tick] = consumed_fuel[tick]
 FDB commit 失败 (retry 3，放弃): 退还 consumed_fuel[tick]
+
+## 9. 确定性合同 (Determinism Contract)
+
+本节是 Swarm 的确定性权威合同——所有实现者（engine、Gateway、SDK、replay verifier）必须一致遵守。若实现者各自选择合理解释，线上 tick 与 replay 可能分叉。
+
+### 9.1 命令全局排序键
+
+RawCommand 的全局排序键为 `(player_id, sequence, source)`：
+
+```
+sort_key = (player_id, sequence, source)
+```
+
+- `player_id`：命令来源玩家
+- `sequence`：WASM 输出的单调递增序号（每玩家独立，从 1 开始）
+- `source`：命令来源标识（`Wasm` / `Tutorial` / `Simulate`）
+
+排序结果确定。同一 player 的 sequence 严格递增；不同 player 间按 player_id 字典序。此排序键同时用于 Phase 2a inline apply 顺序和 TickTrace 记录。
+
+### 9.2 部署生效时序
+
+`swarm_deploy` 的生效时序：
+
+```
+tick N:    swarm_deploy 调用 → 编译/签名 → 模块入队
+tick N+1:  COLLECT 阶段加载新模块 → EXECUTE 阶段首次执行
+```
+
+部署在提交后的**下一个完整 tick** 生效。同一 tick 内的 deploy 不会影响当前 tick 的执行——WASM 模块快照在 COLLECT 开始时确定。
+
+### 9.3 输出状态合同 (Output State Contract)
+
+各消费端看到世界状态的版本语义：
+
+| 消费端 | 读源 | 版本 | 滞后 |
+|---|---|---|---|
+| **WASM `tick(snapshot)`** | COLLECT 开始时 Bevy snapshot | `snapshot.tick == current_tick` | 0（本 tick 初始状态） |
+| **MCP `swarm_get_snapshot`** | 同 WASM 的 snapshot | `snapshot.tick == current_tick` | 0 |
+| **WebSocket delta** | BROADCAST 阶段计算的增量 | `delta.tick == last_committed_tick` | 0（同 tick 推送） |
+| **Replay / TickTrace** | FDB 持久化记录 | `tick_trace.tick == executed_tick` | 0（权威审计记录） |
+| **MCP `swarm_get_player_status`** | Dragonfly 缓存 → FDB | `last_tick` 字段 | ≤ 1 tick |
+| **Dragonfly cache** | 上次 BROADCAST 写入 | 缓存版本号 | 0–60s（可配置） |
+
+**关键不变量**：WASM `tick()` 和 MCP `swarm_get_snapshot` 始终看到同一份权威快照——不存在"WASM 执行中世界已变化"的时差。WebSocket 推送的 delta 基于同一份已提交状态计算。
+
+Bevy World 是 tick 内的权威执行状态；FDB 是跨 tick 的持久化权威；Dragonfly 是读缓存（允许滞后，但写入后立即一致）；NATS/WebSocket 是推送通道（尽力送达，gap 由客户端 fetch 填补）。
+
+### 9.4 TickTrace 完整性
+
+TickTrace 必须与 FDB 状态写入在同一事务中——禁止"状态成功但审计不完整"与"同事务无缺口"并存：
+
+```
+FDB 事务:
+  ├── 写入世界状态 (state/tick/N)
+  ├── 写入 TickTrace (trace/tick/N)  ← 同一事务
+  └── 写入 consumed_fuel (fuel/tick/N)
+
+事务成功 → 状态 + 审计 + fuel 三者原子持久化
+事务失败 → 三者全部回滚，重试
+```
+
+若 TickTrace 写入失败（极罕见：事务内部错误），整个 tick 回滚——不允许状态成功但审计缺失。
+
+### 9.5 RNG 确定性
+
+RNG 流按 namespace 隔离：
+
+| Namespace | Seed 来源 | 用途 |
+|---|---|---|
+| `combat` | `world_seed + tick` | 伤害浮动、暴击判定 |
+| `loot` | `world_seed + tick + entity_id` | 掉落生成 |
+| `npc_spawn` | `world_seed + tick + room_id` | NPC 生成 |
+| `event` | `world_seed + tick` | 世界事件触发 |
+
+每个 namespace 使用独立的 ChaCha8Rng，种子确定性导出。任何 WASM host function 不暴露 RNG 或熵源——WASM 代码必须使用 `swarm_get_random(sequence)` 从 host 获取确定性随机数。
+
+### 9.6 ECS 调度权威顺序
+
+ECS system 必须在 manifest 中声明执行顺序。以下系统必须 `.chain()`（不可并行）：
+
+```
+death_mark → spawn → spawning_grace → combat → status_advance → aging → death_cleanup
+```
+
+并行系统（regeneration, decay）仅操作独立数据，通过 `.before(death_cleanup)` 约束。
+
+所有特殊攻击的状态推进（Overload fuel 恢复、Hack stage 递增、Debilitate 计数递减、Fortify 护盾递减）由 `status_advance_system` 统一处理，位置在 `combat_system` 之后、`aging_system` 之前。
+
+### 9.7 WASM output 截断
+
+WASM `tick()` 输出上限 256KB。超出时整批丢弃——不保留部分解析的前缀。WASM 模块收到 `output_truncated` 拒绝码，下一 tick 可重新输出。
+
+### 9.8 RuleMod / 动态 action 边界
+
+Rhai RuleMod：固定点数（integer，禁止 f64）；禁止第二套状态修改路径（所有 action 必须进入 Command Validation 单一路径）；扩展 action 必须通过 World Action Manifest + IDL 注册 schema。
 ```
 
 禁止通过故意竞争失败构造重试绕过 budget：同 tick 内 WASM 仅执行一次（首次 COLLECT），后续重试不触发新的 WASM 调用。

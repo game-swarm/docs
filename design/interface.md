@@ -6,6 +6,8 @@
 
 MCP 是 AI agent 的「屏幕和鼠标」——与人类玩家的 Web UI 完全同级。
 
+**Schema 完整性要求**：所有 MCP 工具必须具备 `inputSchema`、`outputSchema` 和 `error` schema，由 `game_api.idl` 生成。特别是以下工具必须进入工具目录并提供完整的 request/response/error 定义和 rate limit：`swarm_sdk_fetch`、`swarm_get_schema`、`swarm_get_docs`、`swarm_get_player_status`、`swarm_deploy`、`swarm_validate_module`、`swarm_get_snapshot`、`swarm_get_available_actions`、`swarm_explain_last_tick`、`swarm_submit_csr`。
+
 ```
 人类：Monaco 编辑器 → 编译 WASM → 上传 ─┐
                                        ├─→ WasmSandboxExecutor → 世界

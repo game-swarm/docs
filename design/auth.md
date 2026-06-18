@@ -719,6 +719,42 @@ POST /mcp (JSON-RPC)
 
 客户端对敏感请求添加 `Swarm-Certificate-Chain`、`Swarm-Cert-Id`、`Swarm-Timestamp`、`Swarm-Nonce`、`Swarm-Signature`。服务端按 §5.4 验证证书链、usage、scope、audience、nonce 和签名。
 
+### 10.5a WebSocket 证书握手
+
+WebSocket 连接建立时执行以下证书握手，禁止仅凭 `swarm-cert.<cert_id>` 建立认证连接：
+
+```
+客户端 → 服务端: WebSocket 升级请求
+  头部:
+    Swarm-Certificate-Chain: <base64 leaf + intermediate>
+    Swarm-Cert-Id: <certificate_id>
+    Swarm-Timestamp: <unix_seconds>
+    Swarm-Nonce: <random_96bit>
+    Swarm-Signature: ed25519:<canonical_signature>
+
+服务端:
+  1. 验证证书链 → 提取 public_key + usage(mcp_query)
+  2. 验证 canonical payload: "SWARM-WS-V1\n<cert_id>\n<timestamp>\n<nonce>"
+  3. 验证 nonce 未使用（FDB 去重）
+  4. 验证 timestamp 在 ±30s 窗口内
+  5. 建立认证 WebSocket → 后续消息免签名（会话内信任）
+```
+
+WebSocket 断开后需重新握手。会话内消息不计入 per-tick rate limit（握手时已完成身份绑定）。
+
+### 10.5b Admin 高权限操作认证
+
+Admin 工具（`swarm_admin_*`）必须在 MCP schema 中显式表达双签/冷却/审计要求：
+
+| 操作 | 认证要求 | 冷却 | 审计 |
+|---|---|---|---|
+| Epoch bump / force CRL rotation | AdminCertificate 签名 + 第二个 Admin 确认 | 60s per-world | 写入 `audit/admin/` 日志 |
+| Batch revoke | AdminCertificate 签名 | 10s per-target | 记录所有 revoked cert_id |
+| Admin recovery link 生成 | AdminCertificate 签名 + 目标用户邮箱验证 | 无（用户触发） | 写入 `audit/recovery/` |
+| World config 热更新 | AdminCertificate 签名 | 30s per-world | 记录变更前后 config diff |
+
+Admin MCP tools 的 input schema 必须显式包含 `admin_certificate_id`、`admin_signature`、`idempotency_key`。服务端验证 canonical payload 包含 `method + params + timestamp + nonce`。
+
 ### 10.6 错误码体系
 
 | Code | HTTP | 说明 | 可重试 |

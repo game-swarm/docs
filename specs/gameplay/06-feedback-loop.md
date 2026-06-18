@@ -143,8 +143,45 @@ AI agent 开发循环强化：
   2. 一键跳转到战斗位置（地图聚焦）
   3. 提供反制建议: "你可以: [移动逃离] [反击] [呼叫友方 drone]"
   4. 战斗结束后显示 "战斗报告": 谁攻击了你、损失了什么、对方的可见信息
-  5. 引导到 Arena Challenge: "想练习 PvP 但不想冒风险？向攻击者发起 Arena 挑战"
+  5. 引导到 Arena Challenge: \"想练习 PvP 但不想冒风险？向攻击者发起 Arena 挑战\"
 ```
+
+### 2.5 Onboarding 验收标准
+
+以下 golden path 必须在 CI smoke test 中自动化验证——不仅是文档承诺：
+
+#### 人类玩家验收
+
+| 步骤 | 验收条件 | 目标时间 |
+|---|---|---|
+| 1. 进入教程房间 | Web 客户端加载完成后 10s 内显示教程 overlay | <30s 从打开到教程开始 |
+| 2. 修改 spawn_count | 代码修改 → 保存 → drone 数量变化在 3 tick 内可见 | <15s |
+| 3. 部署到 World | 从教程点击"部署到世界" → starter bot 在 World 中运行 | <60s |
+| 4. 首次 safe_mode 结束 | 玩家收到 soft_launch 过渡通知 | 自动（tick 500） |
+| 5. 首次 PvP 接触 | 战斗报告弹出一键可达 | 首次被攻击时 |
+
+#### AI Agent 验收
+
+| 步骤 | MCP 调用序列 | 验收条件 |
+|---|---|---|
+| 1. 发现 API | `swarm_get_schema` → `swarm_get_docs` → `swarm_get_available_actions` | 三次调用全部返回 200，schema 与当前世界 manifest hash 一致 |
+| 2. 生成并校验代码 | `swarm_validate_module` | 返回 `valid: true` 或具体错误列表 |
+| 3. 部署 | `swarm_deploy` | 返回 `deploy_id`，状态 `compiled` → `active` |
+| 4. 首次 tick 反馈 | 部署后下一个 tick 收到 `first_tick_executed` 事件 | 事件包含 drone_count > 0 和 first_position |
+| 5. 调试循环 | `swarm_explain_last_tick` → 修改代码 → `swarm_deploy` | 完成至少 1 次完整改进循环 |
+
+#### Starter Bot Smoke Test（CI 集成）
+
+每个 starter bot 必须在 CI 中通过：
+
+```
+1. 编译（TS: npx asc / Rust: cargo build --target wasm32-unknown-unknown）
+2. schema 校验（swarm_validate_module 返回 valid: true）
+3. dry-run（swarm_dry_run_commands 在 tutorial world snapshot 上执行，无拒绝码）
+4. 部署到 tutorial world（swarm_deploy → 等待 first_tick_executed）
+```
+
+Starter bot 代码中的字段名（`sequence`, `Spawn`, `MoveTo` 等）由 IDL 自动生成，禁止手写——通过 CI 交叉校验 `starter bot 源码` vs `game_api.idl` 的 schema。
 
 ## 3. 决策：信息与工具
 
