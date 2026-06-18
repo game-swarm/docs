@@ -51,9 +51,10 @@ wasmtime = "=30.0"   # 锁定版本 — 不自动升级
 
 CVE 监控：CI 中 `cargo audit`。每次 `wasmtime` 版本升级前人工审查 CHANGELOG。
 
-**安全 SLA**：
-- 严重 CVE（CVSS ≥ 9.0）：72 小时内评估 + 补丁，必要时临时降级到已知安全版本
-- 高危 CVE（CVSS ≥ 7.0）：7 天内修复
+**安全 SLA**（权威源 `specs/security/CVE-SLA.md`）：
+- Critical（CVSS ≥ 9.0）：24h 内评估 + 补丁，必要时暂停 WASM 部署
+- High（CVSS ≥ 7.0）：72h 内修复
+- Medium（CVSS ≥ 4.0）：1w 内修复
 - 每季度审查 Wasmtime 安全公告，评估是否需要版本迁移
 - `=30.0` 版本的安全支持窗口：跟踪 Bytecode Alliance 的 LTS/non-LTS 发布策略，锁定版本需在官方安全支持窗口内
 

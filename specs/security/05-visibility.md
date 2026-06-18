@@ -98,6 +98,8 @@ LEADERBOARD: 公开。指标: GCL、房间数、drone 数。
 
 **`snapshot_tick` 语义**：`swarm_get_snapshot` 返回的 `snapshot_tick` 等于当前 COLLECT 阶段开始时的 tick 编号。WASM `tick()` 收到的 `snapshot.tick` 与此相同。MCP query 与 WASM tick 看到的是**同一份快照**——不存在时差。
 
+> **WASM 作者注意**：`snapshot` 是本 tick COLLECT 阶段开始时的世界状态**快照**，不是"实时"视图。在同一 tick 内，其他玩家的 action 不会反映在你的 snapshot 中——它们会在本 tick EXECUTE 结束后、下一 tick BROADCAST 时才可见。这意味着：你的 WASM 基于 snapshot 做出决策后，世界可能已经变化。设计 WASM 逻辑时应将 snapshot 视为 commit-time 的确定性输入，而非持续更新的流。
+
 ### 3.2 MCP 工具
 
  工具 | 可见性过滤 |

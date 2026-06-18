@@ -27,6 +27,17 @@ game_api.idl  (单一真相)
 
 **Schema 不可扩展性**：所有 JSON schema（CommandIntent、每个 Command action、MCP tool input/output、REST API response）默认设置 `additionalProperties: false`——拒绝未知字段。唯一例外需在本文件中显式声明。此规则防止字段注入攻击和实现分叉：不同实现者看到同一 schema 不会因未知字段处理策略不同而产生分歧。
 
+**扩展 action 的字段**：自定义 action（通过 `[[custom_actions]]` 注册）的参数结构由 World Action Manifest 定义并通过 IDL 生成对应的子 schema。`CommandIntent.action` 使用 `oneOf` 按 `action.type` 分发到对应子 schema——自定义 action 的 `additionalProperties: false` 仅作用于其自身子 schema，不影响 CommandIntent envelope。
+
+**ABI 向后兼容**：`abi_version` 每次 host function 签名变更时递增。ABI 公告期如下：
+| 变更类型 | 公告期 | 旧模块行为 |
+|---|---|---|
+| 新增 host function | 即时生效 | 旧模块不受影响（不使用新函数即可） |
+| 修改 host function 签名 | 至少 30 天公告期 | 公告期内旧签名仍可用，公告期后旧模块部署被拒（`abi_version_mismatch`） |
+| 移除 host function | 至少 60 天公告期 | 公告期内标记 deprecated（WASM 收到 warning），公告期后移除 |
+
+`abi_version` 变更记录在 IDL changelog 中。SDK、MCP schema、starter bot 随 `abi_version` 递增同步更新。
+
 ## 2. IDL 格式
 
 ```yaml
