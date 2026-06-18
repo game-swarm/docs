@@ -1850,3 +1850,185 @@ if (rules.get("empire-upkeep").config.onshortfall.value === "damage") {
 给定 tick N-1 状态 + tick N RawCommand + world_seed + world_config（世界规则快照）+ mods_lock（模组版本快照）→ 相同 Wasmtime pinned 版本下 `execute_deterministic == recorded_state`。每个 tick 产出 `state_checksum` 写入 TickTrace。CI 对随机采样 tick 做 full replay 验证——包括恢复对应 `world_config` 规则集 + checkout 到对应 `mods_lock` 记录的精确模组 commit。
 
 ---
+
+## 9. 表现层：Drone 人格、外交、行为可视化与经济反馈
+
+本节定义 Swarm 的非核心玩法表现层——不影响 tick 确定性，但决定玩家体验的"可读性"和"情感连接"。
+
+### 9.1 Drone 人格系统
+
+每个 drone 在创建时获得确定性人格，由 `Blake3(player_id || spawn_tick || spawn_sequence || world_seed)` 生成。人格不影响 gameplay 数值——纯表现和行为微调。
+
+#### 人格维度
+
+| 维度 | 范围 | 效果 |
+|---|---|---|
+| **aggression** | 0.0–1.0 | 影响 idle 动画（焦躁↔平静）、移动路径微抖动幅度 |
+| **curiosity** | 0.0–1.0 | 影响探索倾向——idle 时在出生点附近小范围随机游走（半径 `curiosity × 5` 格） |
+| **loyalty** | 0.0–1.0 | 影响跟随距离（近↔远）、优先保护高 loyalty 的 drone |
+| **efficiency** | 0.0–1.0 | 影响动画速度（利落↔慵懒），不影响实际 tick 执行速度 |
+
+#### 确定性与回放
+
+人格种子完全确定性——同一 drone 在所有 replay 中表现出相同动画和行为。前端根据人格参数渲染动画，不改变网络同步的游戏状态。
+
+#### 人格可视化
+
+```
+高 aggression:   drone 微微抖动，攻击时前冲幅度大
+低 aggression:   drone 平稳移动，攻击时保持距离
+高 curiosity:    idle 时更大范围游走，频繁转向
+低 curiosity:    idle 时几乎静止，只在有指令时移动
+高 efficiency:   采集动画利落，一次抓取动作完成
+低 efficiency:   采集动画慵懒，抓取后停顿片刻
+```
+
+#### 玩家经济中的角色
+
+人格维度可选作为市场/社交信号：高 efficiency drone 在交易中可能溢价（尽管不影响实际性能——纯品牌/社区价值）。服主可禁用或扩增人格维度。
+
+### 9.2 外交系统
+
+玩家间正式关系由 on-chain 外交协议管理，所有操作记录在 FDB 中，可回放审计。
+
+#### 外交状态机
+
+```
+                 propose ──────────────────────────────┐
+                    │                                   │
+    neutral ────────┤                                   │
+                    │                                   ▼
+                    └── propose ──→ pending ──→ accept ──→ allied
+                                        │
+                                        └── reject ──→ neutral
+                                        └── timeout (72h) ──→ neutral
+
+    allied ──→ break ──→ neutral (cooldown: 24h 不可重新提议)
+```
+
+| 状态 | 发起方 | 目标方行为 | 解除方式 |
+|---|---|---|---|
+| `neutral` | 初始状态 | 标准 visibility rules 适用 | — |
+| `pending` | A 向 B 提议 | B 可 accept/reject | timeout 72h 自动 reject |
+| `allied` | 双方同意 | 见下方 allied 特权 | 任一方 break，24h cooldown |
+| `broken` | 曾 allied | 等同 neutral | 24h 后恢复 neutral |
+
+#### Allied 特权与限制
+
+| 权限 | neutral | allied |
+|---|---|---|
+| 可见性 | `is_visible_to` 标准规则 | ally 级可见性（资源/建筑/HP 额外可见） |
+| 攻击 | 可攻击（受 PvP 规则约束） | 禁止——攻击 ally 返回 `FriendlyTarget` |
+| Overload/Hack/Drain 特殊攻击 | 可攻击 | 禁止——等同攻击 |
+| 资源 transfer | 仅 global↔local | 可直接 player↔player transfer，免 convert 延迟 |
+| 共享 intel | 不可见 | ally 的 snapshot 包含友方 drone 位置标注 |
+| 穿行 | 标准碰撞 | ally drone 不阻挡彼此移动（无碰撞） |
+| Heal | 仅 self | 可 Heal ally drone |
+
+#### 外交安全
+
+- **间谍保护**：allied 状态不暴露对方 WASM 代码——仅暴露 drone 位置和资源状态
+- **叛变冷却**：break alliance 后 24h cooldown，防止"结盟→偷袭→立刻重结盟"循环
+- **外交 audit**：所有 propose/accept/reject/break 事件写入 `diplomacy/{world_id}/{tick}` 日志
+- **多联盟上限**：每玩家最多同时 5 个 active alliance
+
+### 9.3 行为可视化
+
+所有 drone 状态和特殊效果通过前端渲染可见——不依赖额外 MCP 查询。
+
+#### Drone 状态指示器
+
+| 状态 | 视觉表现 |
+|---|---|
+| idle | 人格驱动的微动画（游走/静止），淡色光圈 |
+| moving | 移动轨迹线（可选显示/隐藏），方向箭头 |
+| harvesting | 采集光束动画（drone → source），粒子飞向 drone |
+| building | 建筑脚手架动画，进度条（tick 完成百分比） |
+| attacking | 攻击光束/弹道（颜色按 damage_type），命中闪光 |
+| damaged | HP 条闪烁红色，低 HP 时冒烟 |
+| dying | 解体动画（1 tick），零件飞散 |
+| spawning | 出生粒子特效（2 tick） |
+| SpawningGrace | 金色护盾光环（1 tick 无敌帧） |
+
+#### 特殊效果可视化
+
+| 效果 | 目标表现 | 施加者表现 |
+|---|---|---|
+| Overload | 🔵 蓝色电流环绕，总压力值浮字显示 | 自己的 contribution 高亮闪烁 |
+| Hack | 🟣 紫色控制锁链（stage 递增加粗），被控制 drone 变紫色轮廓 | 链接着与被控制 drone |
+| Drain | 🟢 绿色资源流线（target → attacker） | 资源流入动画 |
+| Debilitate | 🔴 红色易伤标记（骷髅图标） | 施加时闪红 |
+| Disrupt | ⚡ 黄色闪电打断当前动画 | 一击即散 |
+| Fortify | 🛡️ 白色护盾光环，清除所有负面特效 | 施加时圆形扩散波 |
+| Leech | 🩸 深红吸血特效 | target → attacker |
+| Fabricate | 🏗️ 建筑变形动画（drone → structure） | 持续至完成 |
+
+#### 经济状态可视化
+
+建筑和房间级别经济状态：
+
+| 元素 | 视觉 |
+|---|---|
+| 建筑 HP | HP 条（绿→黄→红），低 HP 时闪烁 |
+| Controller 等级 | RCL 数字 + 光环颜色（1灰→8金） |
+| 全局存储利用率 | 房间边缘颜色深度（白→红，按 storage_tax tier） |
+| 资源点剩余 | 资源节点大小/亮度随剩余量衰减 |
+| 帝国势力范围 | 盟友可见 room 边框颜色（自己的颜色标识） |
+
+### 9.4 玩家经济反馈循环
+
+为人类和 AI 玩家提供经济健康可见性——通过 MCP 和 Web UI 双通道。
+
+#### 经济仪表板（Web UI）
+
+```
+┌─ 经济总览 ─────────────────────────────────┐
+│ Energy 净流量:  +1,245/tick  (收入 3,200 - 支出 1,955)    │
+│ 全局存储:      45,230 / 1,000,000 (4.5%)  [████░░░░░░]  │
+│ 税率:          0% (30% 以内免税)                         │
+│                                                    │
+│ ⚠️ 预测: 以当前速率，240 tick 后全局存储将进入 1% 税率区间 │
+│                                                    │
+│ 📊 效率:                                           │
+│   Harvest:  92% (45/49 drones harvesting)           │
+│   Build:    100% (3/3 drones building)              │
+│   Idle:     1 drone (d3 — 无可用 Source)           │
+│                                                    │
+│ 📈 趋势 (最近 100 tick):                           │
+│   Energy:  ████████░░  +8%                         │
+│   Drones:  ██████░░░░  +5 (30→35)                  │
+│   Rooms:   ████░░░░░░  +1 (2→3)                    │
+└────────────────────────────────────────────────────┘
+```
+
+#### MCP 经济查询
+
+| 工具 | 返回 | 说明 |
+|---|---|---|
+| `swarm_get_economy` | `EconomySnapshot` | 当前 tick 经济全貌（收入/支出分项、storage、税率、预测） |
+| `swarm_get_drone_efficiency` | `Vec<DroneEfficiency>` | 每 drone 最近 N tick 的效率（harvest 量、idle 比例） |
+| `swarm_get_economy_trend` | `EconomyTrend` | 最近 K tick 的趋势线（energy、drones、rooms、storage） |
+
+这些工具不修改世界状态——纯读取，不计入 MCP rate limit 的写操作配额。AI agent 可利用此数据做出宏观策略决策（"我应该扩展还是优化效率？"）。
+
+#### 告警与通知
+
+| 条件 | 通知方式 | 目标 |
+|---|---|---|
+| storage 将进入下一税率区间（30 tick 预警） | WebSocket push + Web UI toast | 人类玩家 |
+| drone 连续 10 tick idle | Web UI 警告图标 | 人类玩家 |
+| Energy 净流入为负且持续 50 tick | `economy_warning` MCP 事件 | AI agent |
+| WASM 代码在最近 100 tick 中效率低于世界 P50 | `efficiency_benchmark` MCP 事件 | AI agent |
+| 建筑 HP < 20% | Web UI 闪烁 + MCP `structure_damaged` 事件 | 双通道 |
+
+### 9.5 设计决策
+
+| 决策 | 结论 | 理由 |
+|---|---|---|
+| 人格是否影响 gameplay | 否，纯表现 | 维护确定性；避免"roll 到好人格=优势"的彩票效应 |
+| 人格种子 | 确定性 Blake3 | 同 replay 保证相同动画 |
+| 外交是否 on-chain | 是，FDB 持久化 | 可审计、可回放、防作弊 |
+| Allied 可见性增强 | ally 级（非完全透明） | 保留战术深度；不透传 WASM 代码 |
+| 经济仪表板实时性 | 每个 BROADCAST 后更新 | 与 tick 同步，无额外轮询 |
+| 行为可视化是否影响 tick | 否，前端纯渲染 | 引擎不计算动画——前端从 snapshot 推导状态 |
+| MCP 经济查询 rate limit | 独立配额 10/tick | 不挤占 gameplay MCP 配额 |
