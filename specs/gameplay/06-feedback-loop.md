@@ -132,7 +132,7 @@ AI agent 开发循环强化：
 | `swarm_deploy` | 上传 WASM | 返回 `deploy_id` 用于追踪 |
 | `swarm_explain_last_tick` | 解释上一 tick 执行结果 | AI 首个 tick 后自动调用——回答"我的 drone 做了什么？" |
 | `swarm_get_snapshot` | 查看世界状态 | 确认 drone 位置、HP、资源变化 |
-| `swarm_dry_run_commands` | 预测指令结果 | 部署前验证——不用等 tick 才知道逻辑错误 |
+| `swarm_dry_run` | 预测指令结果 | 部署前验证——不用等 tick 才知道逻辑错误 |
 | Deploy result event | 部署结果推送 | `{status: "compiled" \| "active", drone_count: N, first_position: (x,y)}` |
 
 #### 人类玩家首次 PvP 引导
@@ -177,7 +177,7 @@ AI agent 开发循环强化：
 ```
 1. 编译（TS: npx asc / Rust: cargo build --target wasm32-unknown-unknown）
 2. schema 校验（swarm_validate_module 返回 valid: true）
-3. dry-run（swarm_dry_run_commands 在 tutorial world snapshot 上执行，无拒绝码）
+3. dry-run（`swarm_dry_run` 在 tutorial world snapshot 上执行，无拒绝码）
 4. 部署到 tutorial world（swarm_deploy → 等待 first_tick_executed）
 ```
 
@@ -191,7 +191,7 @@ Starter bot 代码中的字段名（`sequence`, `Spawn`, `MoveTo` 等）由 IDL 
 |------|------|
 | `swarm_get_available_actions` | "我现在能做什么？" 返回当前状态下的可能动作列表 |
 | `swarm_get_snapshot` | 完整可见世界状态 |
-| `swarm_dry_run_commands` | "如果我提交这些指令，会成功吗？" snapshot-bound non-authoritative dry-run（前称 validate_plan） |
+| `swarm_dry_run` | "如果我提交这些指令，会成功吗？" snapshot-bound non-authoritative dry-run |
 | `swarm://docs/api-reference` | 完整 API 参考（MCP 资源） |
 
 ### 3.2 人类 IDE 功能
@@ -344,7 +344,7 @@ Drone 1003 本 tick 未行动。原因:
 - MCP 教程资源（AI）
 - 3 个 starter bot（TS + Rust + MCP）
 - `swarm_get_available_actions` MCP 工具
-- `swarm_dry_run_commands` MCP 工具
+- `swarm_dry_run` MCP 工具
 - `swarm_explain_last_tick` MCP 工具
 - 每 tick 指令解释
 - 本地模拟 (`swarm sim`)

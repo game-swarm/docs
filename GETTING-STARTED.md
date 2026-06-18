@@ -101,7 +101,7 @@ AI agent 通过 MCP 部署 WASM，与人类玩家走相同的证书路径：
 
 ## 下一步
 
-- [Command API 参考](specs/reference/commands.md) — 全部 23 种指令
+- [Command API 参考](specs/reference/commands.md) — 全部指令（见 API Registry）
 - [Host Functions](specs/reference/host-functions.md) — WASM 可调用的只读函数
 - [MCP 工具](specs/reference/mcp-tools.md) — AI agent 操作界面
 - [架构设计](design/README.md) — 完整系统设计

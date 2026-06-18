@@ -102,13 +102,13 @@ LEADERBOARD: 公开。指标: GCL、房间数、drone 数。
 
 ### 3.2 MCP 工具
 
- 工具 | 可见性过滤 |
-------|-----------|
- `get_snapshot` | 完整 `is_visible_to` 过滤 |
- `get_objects_in_range` | `is_visible_to` + 范围检查 |
- `get_terrain` | 任意格 — 地形是公开信息 |
- `inspect_entity` | 仅当 `is_visible_to` 返回 true 或为自身实体 |
- `inspect_room` | 仅限自身有视野的房间 |
+| 工具 | 可见性过滤 |
+|------|-----------|
+| `get_snapshot` | 完整 `is_visible_to` 过滤 |
+| `get_objects_in_range` | `is_visible_to` + 范围检查 |
+| `get_terrain` | 任意格 — 地形是公开信息 |
+| `swarm_get_drone` / `swarm_get_structure` | 仅当 `is_visible_to` 返回 true 或为自身实体 |
+| `swarm_get_room` | 仅限自身有视野的房间 |
 
 ### 3.3 WebSocket 增量
 
@@ -252,7 +252,7 @@ attacker 视角:
   - 不可见: target 玩家的 WASM 是否检测到 Hack（target 可通过 entity.owner 自查）
 
 target 视角:
-  - 可见: 自身 entity 上存在 `Hacked { by: player_id, remaining: 5 }` 状态（MCP `inspect_entity`）
+  - 可见: 自身 entity 上存在 `Hacked { by: player_id, remaining: 5 }` 状态（MCP `swarm_get_drone`）
   - 可见: 被 Hack 的 entity 无法执行部分命令（拒绝码见 specs/core/02-command-validation）
   - 不可见: attacker 的后续意图（夺取后如何使用）
 ```
@@ -395,7 +395,7 @@ spectate_delay = 50
 
 | 接口 | 脱敏策略 |
 |------|---------|
-| `swarm_dry_run_commands` | 仅返回 `Ok` / `RejectionReason`（等价脱敏版）——不返回被拒绝指令的具体目标信息 |
+| `swarm_dry_run` | 仅返回 `Ok` / `RejectionReason`（等价脱敏版）——不返回被拒绝指令的具体目标信息 |
 | `swarm_simulate` | 模拟结果仅包含自身实体状态变化——不包含其他玩家的实体、资源、指令 |
 | `swarm_explain_last_tick` | 仅解释自身 drone 的执行结果——不暴露其他玩家的 action、rejection detail、资源变化 |
 

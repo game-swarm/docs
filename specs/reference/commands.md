@@ -21,7 +21,7 @@ WASM 模块通过 `tick(snapshot) → CommandIntent[]` JSON 返回指令。
 
 ## 指令列表 — 19 指令（11核心+2Global+6特殊）— 见 [API Registry](api-registry.md) §1
 
-以下 15 种指令对应 `CommandAction` enum 的 15 个具体变体。第 16 个变体 `CommandAction::Custom(type)` 通过 `CustomActionRegistry` 路由到 8 种特殊攻击——见下方「特殊攻击」节。
+以下 15 种指令对应 `CommandAction` enum 的 15 个具体变体。第 16 个变体 `CommandAction::Custom(type)` 通过 `CustomActionRegistry` 路由到特殊攻击（见下方「特殊攻击」节）。**权威指令清单见 [API Registry](api-registry.md) §1**（19 指令：11核心+2Global+6特殊攻击）。
 
 ### Move
 移动 drone 到目标方向。
@@ -219,11 +219,11 @@ WASM 模块通过 `tick(snapshot) → CommandIntent[]` JSON 返回指令。
 
 ## 拒绝原因 — 见 [API Registry](api-registry.md) §2
 
-> 权威 `RejectionReason` enum 共 35 个 canonical code（定义见 [API Registry §2](api-registry.md)）。分为 Pipeline、Validation、MCP、Runtime 四层。
+> 权威 `RejectionReason` enum 共 47 个 canonical code（35 game + 12 auth，定义见 [API Registry §2](api-registry.md)）。分为 Pipeline、Validation、MCP、Runtime、Auth 五层。
 
-> **D2/B 设计决策**：35 canonical code 为 wire enum。详细上下文信息（如 fatigue 状态、特定目标容量、body part 缺失等）放入 `debug_detail` 字段，而非增加 RejectionReason enum 变体。这保持 wire enum 稳定，同时提供丰富的调试数据。
+> **D2/B 设计决策**：47 canonical code 为 wire enum（35 game + 12 auth）。详细上下文信息（如 fatigue 状态、特定目标容量、body part 缺失等）放入 `debug_detail` 字段，而非增加 RejectionReason enum 变体。这保持 wire enum 稳定，同时提供丰富的调试数据。
 
-> 旧文档中出现的 `NotMovable`、`Fatigued`、`SourceEmpty`、`TargetFull`、`TargetEmpty`、`AlreadyHacked`、`MissingBodyPart`、`TileBlocked`、`CarryFull`、`NotYourRoom`、`BodyTooLarge` 等代码已被统一合并至 canonical 35 码或降级为 `debug_detail`。详见 [API Registry §2 命名规范](api-registry.md#命名规范)。
+> 旧文档中出现的 `NotMovable`、`Fatigued`、`SourceEmpty`、`TargetFull`、`TargetEmpty`、`AlreadyHacked`、`MissingBodyPart`、`TileBlocked`、`CarryFull`、`NotYourRoom`、`BodyTooLarge` 等代码已被统一合并至 canonical 47 码或降级为 `debug_detail`。详见 [API Registry §2 命名规范](api-registry.md#命名规范)。
 
 ## 校验流程
 

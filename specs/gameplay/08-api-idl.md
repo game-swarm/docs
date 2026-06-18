@@ -65,7 +65,7 @@ enums:
   StructureType: [Spawn, Extension, Tower, Storage, Link, Extractor, Lab,
                   Terminal, Nuker, Observer, PowerSpawn, Factory, Depot]
   RejectionReason:
-    # > 权威定义见 [API Registry](../reference/api-registry.md) §2 — 35 变体
+    # > 权威定义见 [API Registry](../reference/api-registry.md) §2 — 47 变体 (35 game + 12 auth)
     - ObjectNotFound
     - NotOwner
     - NotMovable
