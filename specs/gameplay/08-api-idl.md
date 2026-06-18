@@ -47,7 +47,7 @@ version: "1.0.0"
 abi_version: 1                # 每次 host function 签名变更时递增
 
 types:
-  PlayerId: u32
+  PlayerId: u64
   RoomId: u32
   ObjectId: u64
   Tick: u64

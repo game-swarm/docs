@@ -120,7 +120,7 @@ Source Gate 验证 CommandIntent 后，服务端注入身份与时序上下文�
 
  字段 | 类型 | 来源 | 校验规则 |
 ------|------|------|---------|
- `player_id` | u32 | **服务端注入** | 必须匹配已认证玩家 |
+ | `player_id` | u64 | **服务端注入** | 必须匹配已认证玩家 |
  `tick` | u64 | **服务端注入** | 必须是当前 tick 或下一 tick（预提交） |
  `source` | Source | **服务端注入** | 见 specs/security/09-command-source §2.1 来源矩阵 |
  `sequence` | u32 | WASM 提供 | 每玩家每 tick 单调递增 |
@@ -579,7 +579,7 @@ death_mark → spawn → spawning_grace → combat → status_advance → (regen
 
 ```json
 {
-  "command": { "type": "Attack", "object_id": 1001, "target_id": 1002, "seq": 3 },
+  "command": { "type": "Attack", "object_id": 1001, "target_id": 1002, "sequence": 3 },
   "rejection": "NotVisibleOrNotFound",
   "detail": "target_id=1002, reason=not_visible_to_caller, caller_pos=(5,3), admin_only=true",
   "tick": 4521
@@ -685,7 +685,7 @@ death_mark → spawn → spawning_grace → combat → status_advance → (regen
 远程攻击。drone 需 RangedAttack body part。
 
 ```json
-{ "action": "RangedAttack", "object_id": "d1", "target_id": "e5", "range": 3, "seq": N }
+{ "action": "RangedAttack", "object_id": "d1", "target_id": "e5", "range": 3, "sequence": N }
 ```
 
  校验规则 | 说明 |
@@ -700,7 +700,7 @@ death_mark → spawn → spawning_grace → combat → status_advance → (regen
 占领 Controller。drone 需 Claim body part。
 
 ```json
-{ "action": "ClaimController", "object_id": "d1", "target_id": "c1", "seq": N }
+{ "action": "ClaimController", "object_id": "d1", "target_id": "c1", "sequence": N }
 ```
 
  校验规则 | 说明 |
@@ -714,7 +714,7 @@ death_mark → spawn → spawning_grace → combat → status_advance → (regen
 回收 drone，退还资源。
 
 ```json
-{ "action": "Recycle", "object_id": "d1", "seq": N }
+{ "action": "Recycle", "object_id": "d1", "sequence": N }
 ```
 
  规则 | 说明 |
@@ -730,7 +730,7 @@ death_mark → spawn → spawning_grace → combat → status_advance → (regen
 #### Disrupt
 
 ```json
-{ "action": "Disrupt", "object_id": "d1", "target_id": "e5", "seq": N }
+{ "action": "Disrupt", "object_id": "d1", "target_id": "e5", "sequence": N }
 ```
 
  属性 | 值 |
@@ -744,7 +744,7 @@ death_mark → spawn → spawning_grace → combat → status_advance → (regen
 #### Fortify
 
 ```json
-{ "action": "Fortify", "object_id": "d1", "target_id": "f2", "seq": N }
+{ "action": "Fortify", "object_id": "d1", "target_id": "f2", "sequence": N }
 ```
 
  属性 | 值 |
@@ -758,7 +758,7 @@ death_mark → spawn → spawning_grace → combat → status_advance → (regen
 #### Hack
 
 ```json
-{ "action": "Hack", "object_id": "d1", "target_id": "e5", "seq": N }
+{ "action": "Hack", "object_id": "d1", "target_id": "e5", "sequence": N }
 ```
 
  属性 | 值 |
@@ -772,7 +772,7 @@ death_mark → spawn → spawning_grace → combat → status_advance → (regen
 #### Drain
 
 ```json
-{ "action": "Drain", "object_id": "d1", "target_id": "s1", "seq": N }
+{ "action": "Drain", "object_id": "d1", "target_id": "s1", "sequence": N }
 ```
 
  属性 | 值 |
@@ -786,7 +786,7 @@ death_mark → spawn → spawning_grace → combat → status_advance → (regen
 #### Overload
 
 ```json
-{ "action": "Overload", "object_id": "d1", "target_id": "e5", "seq": N }
+{ "action": "Overload", "object_id": "d1", "target_id": "e5", "sequence": N }
 ```
 
  属性 | 值 |
@@ -800,7 +800,7 @@ death_mark → spawn → spawning_grace → combat → status_advance → (regen
 #### Debilitate
 
 ```json
-{ "action": "Debilitate", "object_id": "d1", "target_id": "e5", "damage_type": "Kinetic", "seq": N }
+{ "action": "Debilitate", "object_id": "d1", "target_id": "e5", "damage_type": "Kinetic", "sequence": N }
 ```
 
  属性 | 值 |
@@ -814,7 +814,7 @@ death_mark → spawn → spawning_grace → combat → status_advance → (regen
 #### Leech
 
 ```json
-{ "action": "Leech", "object_id": "d1", "target_id": "e5", "seq": N }
+{ "action": "Leech", "object_id": "d1", "target_id": "e5", "sequence": N }
 ```
 
  属性 | 值 |
@@ -828,7 +828,7 @@ death_mark → spawn → spawning_grace → combat → status_advance → (regen
 #### Fabricate
 
 ```json
-{ "action": "Fabricate", "object_id": "d1", "target_id": "e5", "structure_type": "Extension", "seq": N }
+{ "action": "Fabricate", "object_id": "d1", "target_id": "e5", "structure_type": "Extension", "sequence": N }
 ```
 
  属性 | 值 |

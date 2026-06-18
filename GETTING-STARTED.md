@@ -38,10 +38,10 @@ tick((snap: Snapshot): Command[] => {
   const drones = snap.entities.filter(e => e.type === "Drone");
   if (drones.length === 0) {
     cmds.push({
-      action: "SpawnDrone",
+      action: "Spawn",
       object_id: spawn.id,
       body: ["MOVE", "WORK", "CARRY"],
-      seq: 1,
+      sequence: 1,
     });
     return cmds;
   }
@@ -54,7 +54,7 @@ tick((snap: Snapshot): Command[] => {
       action: "Harvest",
       object_id: drone.id,
       target_id: source.id,
-      seq: 2,
+      sequence: 2,
     });
   }
 
