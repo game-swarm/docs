@@ -1,8 +1,10 @@
-# Resource Ledger — 统一资源入口
+# Resource Ledger — 统一资源入口（单一经济权威）
 
 > 详见 design/gameplay.md
 >
 > **R15 B9 修复**。本文档定义 Swarm 引擎中所有资源流动的唯一切入点（Transfer Gateway），消除 local transfer / global transfer / allied transfer / PvE award 等多入口的资源逃逸路径。
+>
+> **R22 B2 修复**。本文档为 Swarm 经济系统的**唯一设计/数学权威**。所有费率、公式、参数以本文档为准。`economy.idl.yaml` 为机器 schema（引用本文档），`api-registry.md` 为生成产物（禁止手写经济数值）。
 
 ## 原则
 

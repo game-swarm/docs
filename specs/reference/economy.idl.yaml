@@ -5,7 +5,7 @@
 # All rates expressed as integer BasisPoints (bp). No f64.
 # =============================================================================
 
-api_version: "0.1.0"
+api_version: "0.1.1"
 
 # =============================================================================
 # 1. Fixed-Point Types
@@ -99,7 +99,8 @@ resource_operation:
       category: taxation
       description: >
         Per-tick tax assessed on resources held in global storage. Tax rate
-        depends on the total quantity stored (all resource types combined).
+        depends on storage utilization as a percentage of capacity (percentage-based
+        tiers, per specs/core/08-resource-ledger.md §2.2).
         Assessed before any other per-tick deductions.
       trigger: "every tick, per player"
       parameters:
@@ -107,77 +108,74 @@ resource_operation:
           type: u64
           unit: resource units
           description: "Sum of all resources currently in global storage"
+        - name: storage_capacity
+          type: u64
+          unit: resource units
+          description: "Player's current global storage capacity"
       tax_schedule:
-        description: "Tiered tax rates in BasisPoints"
+        description: "Tiered tax rates as percentage of capacity. Per resource-ledger.md §2.1."
         tiers:
           - tier: 0
             label: "tax-free"
-            threshold: "0 .. 9999 units"
+            threshold_pct: 30
             rate_bp: 0
-            description: "No tax for small stockpiles"
+            description: "0–30% capacity: tax-free"
           - tier: 1
             label: "low"
-            threshold: "10000 .. 99999 units"
+            threshold_pct: 60
             rate_bp: 1
-            description: "0.01% per tick"
+            description: "30–60% capacity: 0.01% per tick"
           - tier: 2
             label: "medium"
-            threshold: "100000 .. 999999 units"
+            threshold_pct: 85
             rate_bp: 5
-            description: "0.05% per tick"
+            description: "60–85% capacity: 0.05% per tick"
           - tier: 3
             label: "high"
-            threshold: "1000000+ units"
+            threshold_pct: 100
             rate_bp: 20
-            description: "0.20% per tick"
+            description: "85–100% capacity: 0.20% per tick"
       computation:
         tax_deduction:
-          formula: "(stored_total * applicable_rate_bp) / 10000"
-          description: "Floor division; minimum deduction of 1 unit if rate > 0 and stored_total > 0"
+          formula: "Σ over each tier i: taxable_in_tier × rate_bp[i] / 10000, where taxable_in_tier = min(storage_pct - threshold_pct[i], tier_width[i]) × capacity"
+          description: "Per resource-ledger.md §2.2 tiered formula. Floor division; minimum deduction of 1 unit if rate > 0 and stored_total > 0."
           output_type: u64
       minimum_deduction:
         description: "If applicable_rate_bp > 0 and stored_total > 0, min deduction is 1 unit"
+      authority: "specs/core/08-resource-ledger.md §2.2 — authoritative tiered formula"
 
     # -------------------------------------------------------------------------
-    # 2.3 UpkeepDeduction — per-tick maintenance cost
+    # 2.3 UpkeepDeduction — per-tick empire maintenance cost
     # -------------------------------------------------------------------------
     - name: UpkeepDeduction
       category: maintenance
       description: >
-        Per-tick upkeep cost deducted from player resources. Covers drone
-        maintenance, structure maintenance, and room controller upkeep.
-        Deducted after StorageTax.
+        Per-tick empire-wide upkeep cost deducted from player global storage.
+        Uses superlinear empire upkeep formula (per specs/core/08-resource-ledger.md
+        §Empire Upkeep). Deducted before StorageTax in Resource Ledger order.
       trigger: "every tick, per player"
       parameters:
-        - name: drone_count
+        - name: room_count
           type: u32
-          description: "Number of active drones owned by the player"
-        - name: structure_count
+          description: "Number of rooms controlled by the player"
+        - name: base_upkeep
           type: u32
-          description: "Number of completed structures owned by the player"
-        - name: controller_count
+          unit: resource units
+          description: "Base upkeep per room (Standard=50, Vanilla=30, Tutorial=10)"
+        - name: room_soft_cap
           type: u32
-          description: "Number of claimed room controllers"
-        - name: controller_levels
-          type: "[u32]"
-          description: "Array of controller levels (one per claimed room)"
-      cost_schedule:
-        drone_upkeep:
-          per_unit: 0
-          unit: "bp of drone body cost"
-          description: "Drones have no passive upkeep; cost is embedded in lifespan/spawn"
-        structure_upkeep:
-          per_unit: 1
-          unit: "resource units per tick per structure"
-          description: "Flat per-structure maintenance cost"
-        controller_upkeep:
-          formula: "controller_level * controller_level * 10"
-          unit: "resource units per tick per controller"
-          description: "Quadratic in controller level"
+          description: "Room soft cap for superlinear curve (Standard=10, Vanilla=15, Tutorial=20)"
       computation:
         total_upkeep:
-          formula: "(structure_count * structure_upkeep_per_unit) + sum(level^2 * 10 for level in controller_levels)"
+          formula: "base_upkeep × room_count × (1 + room_count / room_soft_cap)"
+          description: "Superlinear empire upkeep. Integer floor."
           output_type: u64
+        deficit_handling:
+          description: >
+            If global storage insufficient, deduct to 0 and record UpkeepDeficit.
+            Consecutive 3-tick deficit → drone hunger (-50% efficiency).
+            Consecutive 10-tick deficit → forced drone death (age ×10 acceleration).
+      authority: "specs/core/08-resource-ledger.md §Empire Upkeep — authoritative formula"
 
     # -------------------------------------------------------------------------
     # 2.4 PvEAward — resource grant for defeating NPC entities
@@ -349,14 +347,14 @@ resource_operation:
         max_spawn_cost: null  # implicitly bounded by max_body_parts * max_part_cost
 
     # -------------------------------------------------------------------------
-    # 2.7 AlliedTransfer — tax-free transfer between allies
+    # 2.7 AlliedTransfer — transfer between allied players (fee + cooldown)
     # -------------------------------------------------------------------------
     - name: AlliedTransfer
       category: transfer
       description: >
         Resource transfer between allied players via global storage.
-        No tax or fee is applied. Both sender and receiver must have
-        an active alliance.
+        Subject to fee, cooldown, and daily cap (per specs/core/08-resource-ledger.md §2.1).
+        Both sender and receiver must have an active alliance ≥ 100 tick.
       trigger: "TransferToGlobal + TransferFromGlobal (allied only)"
       parameters:
         - name: sender_id
@@ -374,19 +372,32 @@ resource_operation:
           description: "Amount to transfer"
       constraints:
         allied_only: true
-        alliance_requirement: "Both players must share an active alliance"
-        tax_exempt: true
-        cooldown: null  # no cooldown for allied transfers
+        alliance_requirement: "Both players must share an active alliance for ≥ 100 tick"
+        fee_bp: 200
+        fee_description: "2.00% fee on transferred amount"
+        transfer_delay: 200
+        delay_unit: tick
+        cooldown: 500
+        cooldown_unit: tick
+        cooldown_scope: "per receiver"
+        daily_cap: 10000
+        daily_cap_unit: resource units
+        daily_cap_scope: "per receiver per 24h"
+        new_player_lock: "Receiver must not be within new_player_transfer_lock (500 tick)"
       computation:
         sender_deduction:
           formula: "amount"
-          description: "Exact amount deducted from sender global storage"
+          description: "Full amount deducted from sender global storage"
           output_type: u64
         receiver_credit:
           formula: "amount"
-          description: "Exact amount credited to receiver global storage"
+          description: "Full amount credited to receiver global storage (after delay)"
           output_type: u64
-        net_tax: 0
+        fee_deduction:
+          formula: "(amount * 200) / 10000"
+          description: "2.00% fee on transferred amount, deducted separately from sender"
+          output_type: u64
+      authority: "specs/core/08-resource-ledger.md §2.1 — authoritative fee schedule"
 
 # =============================================================================
 # 3. Formulas — canonical computation references
@@ -410,20 +421,24 @@ formulas:
         rounding: floor
 
   storage_tax:
-    description: "Tiered per-tick tax on global storage"
+    description: "Tiered per-tick tax on global storage (percentage-based)"
     steps:
       - step: 1
-        operation: "Determine tier from stored_total"
-        tier_thresholds:
-          - { max: 9999, rate_bp: 0 }
-          - { max: 99999, rate_bp: 1 }
-          - { max: 999999, rate_bp: 5 }
-          - { max: null, rate_bp: 20 }
+        operation: "Determine storage_pct = stored_total / storage_capacity × 100"
       - step: 2
-        operation: "tax_deduction = (stored_total * rate_bp) / 10000"
-        types: "u64, u32 → u64"
+        operation: "For each tier i: taxable = min(storage_pct - threshold_pct[i], tier_width[i]) × capacity; tax += taxable × rate_bp[i] / 10000"
+        tier_thresholds:
+          - { threshold_pct: 30, rate_bp: 0 }
+          - { threshold_pct: 60, rate_bp: 1 }
+          - { threshold_pct: 85, rate_bp: 5 }
+          - { threshold_pct: 100, rate_bp: 20 }
+        tier_width:
+          - "tier 0: 30, tier 1: 30, tier 2: 25, tier 3: 15"
+      - step: 3
+        operation: "total_tax = sum of all tier taxes"
+        types: "u64"
         rounding: floor
-        minimum: "1 unit if rate_bp > 0 and stored_total > 0"
+        minimum: "1 unit if any rate_bp > 0 and stored_total > 0"
 
   build_cost_discounted:
     description: "Controller-level discounted build cost"
@@ -459,18 +474,19 @@ limits:
       note: "engine-enforced; new resource creation is rejected when cap is reached"
 
   taxable_thresholds:
-    storage_tax_tier_1_min:
-      value: 10000
-      unit: "resource units"
-      description: "Threshold at which tier-1 storage tax (1 bp) begins"
-    storage_tax_tier_2_min:
-      value: 100000
-      unit: "resource units"
-      description: "Threshold at which tier-2 storage tax (5 bp) begins"
-    storage_tax_tier_3_min:
-      value: 1000000
-      unit: "resource units"
-      description: "Threshold at which tier-3 storage tax (20 bp) begins"
+    description: "Storage tax tier thresholds as percentage of capacity. Per resource-ledger.md §2.1."
+    storage_tax_tier_1_pct:
+      value: 30
+      unit: "capacity %"
+      description: "Threshold at which tier-1 storage tax (1 bp) begins (30% capacity)"
+    storage_tax_tier_2_pct:
+      value: 60
+      unit: "capacity %"
+      description: "Threshold at which tier-2 storage tax (5 bp) begins (60% capacity)"
+    storage_tax_tier_3_pct:
+      value: 85
+      unit: "capacity %"
+      description: "Threshold at which tier-3 storage tax (20 bp) begins (85% capacity)"
 
   resource_flow_limits:
     max_single_transfer:
@@ -495,6 +511,13 @@ limits:
 # Changelog
 # =============================================================================
 changelog:
+  - version: "0.1.1"
+    date: "2026-06-18"
+    changes:
+      - "R22 B2: StorageTax changed to percentage-based tiers (30/60/85/100% capacity) per resource-ledger.md §2.2"
+      - "R22 B2: UpkeepDeduction changed to superlinear empire upkeep formula per resource-ledger.md §Empire Upkeep"
+      - "R22 B2: AlliedTransfer added 200bp fee, 200 tick delay, 500 tick cooldown, 10000 daily cap"
+      - "R22 B2: Added authority annotations referencing specs/core/08-resource-ledger.md"
   - version: "0.1.0"
     date: "2026-06-18"
     changes:

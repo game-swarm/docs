@@ -3,13 +3,16 @@
 > 详见 design/engine.md
 >
 > **R15 B8 修复**。本文档定义 Swarm 引擎的持久化分层架构，消除 "FDB 事务内写一切" 与 "跨存储双写会炸" 之间的合同空白。
+>
+> **R22 B1 修复**。加入显式的 replay-critical subset 声明、Deploy 完整状态机、replay-critical 字段清单。
 
 ## 原则
 
 1. **FDB 只写小对象**：tick head、state checksum、small manifest、object pointers + content hashes。
-2. **大 BLOB 进对象存储**：完整 TickTrace、snapshot delta、replay artifacts、WASM module binaries。
+2. **大 BLOB 进对象存储**：完整 TickTrace debug/rich trace、snapshot delta、replay artifacts、WASM module binaries。
 3. **单写事务原子性**：FDB commit 是唯一权威持久化点。对象存储写入失败不破坏 FDB 状态完整性。
 4. **Hash 链贯穿**：FDB 记录的 content hash 证明对象存储中数据的完整性。
+5. **Replay-critical 与 debug/rich 分离**：FDB 事务原子提交 replay-critical subset（保证确定性回放与反作弊审计）；对象存储承载非关键的 rich trace/debug blob（可降级、可延迟、可丢失而不影响核心正确性）。
 
 ---
 
@@ -24,7 +27,96 @@
 
 ---
 
-## 2. Tick Commit 序列
+## 2. Replay-Critical Subset（权威声明）
+
+> **R22 B1**: 明确哪些 Field 必须在 FDB 事务中原子提交（replay-critical），哪些可以异步写入对象存储（debug/rich）。此声明是 `05-persistence-contract.md` 的最权威条款——所有其他文档引用 persistence 合同时以此为准。
+
+### 2.1 Replay-Critical（FDB 原子提交 — 不可降级）
+
+以下字段随每 tick FDB 事务原子提交，缺失任一则 tick 不可 replay：
+
+| # | 字段 | 存储位置 | 用途 |
+|---|------|---------|------|
+| 1 | `tick` | FDB tick_head | tick 编号 |
+| 2 | `state_checksum` | FDB tick_head | world state 完整性验证 |
+| 3 | `system_manifest_hash` | FDB tick_manifest | ECS 系统版本/调度配置 hash |
+| 4 | `world_config_hash` | FDB tick_manifest | world.toml 配置 hash |
+| 5 | `mods_lock_hash` | FDB tick_manifest | 已激活 RuleMod 集合 hash |
+| 6 | `commands` + `rejections` | FDB tick_commands | 所有 validated command + rejection 记录 |
+| 7 | `fuel_ledger` | FDB tick_fuel | 每玩家 fuel 扣费明细 |
+| 8 | `deploy_activation_decision` | FDB tick_deploy | 本 tick 激活的部署列表（drone_id, module_hash, fdb_version_counter） |
+| 9 | `canonical_codec_version` | FDB tick_head | 序列化格式版本 |
+| 10 | `terminal_state` | FDB tick_head | tick 终端状态（verified/audit_gap/unreplayable/reconstructable） |
+
+### 2.2 Debug/Rich（对象存储异步写入 — 可降级）
+
+以下字段写入对象存储 blob，缺失不影响 deterministic replay：
+
+| 字段 | 内容 | 降级行为 |
+|------|------|---------|
+| `tick_trace_blob` | 完整 TickTrace 序列化（含 debug detail, rich events, per-system metrics） | blob 缺失 → replay 可用但 rich audit 降级; 产生 `terminal_state = audit_gap` |
+| `snapshot_delta_blob` | snapshotted entity 的详细状态变更 | blob 缺失 → 从相邻 keyframe 恢复 |
+| `replay_artifact_blob` | 可视化/调试用 annotation | blob 缺失 → 无影响 |
+
+### 2.3 Deploy 完整状态机
+
+> **R22 B1**: 消除 `swarm_deploy` 的 TOCTOU 与激活前可用性缺口。FDB manifest 原子提交 deploy intent，object store 异步上传 WASM binary。
+
+```
+状态: VALIDATE → UPLOAD_PREPARE → MANIFEST_COMMIT → ACTIVATION_PENDING → ACTIVE
+                                                                      ↘ FAILED (rollback)
+
+VALIDATE:
+  ├─ 输入: wasm_bytes + metadata + player cert
+  ├─ 验证: WASM 合法性、模块大小 ≤ cap、fuel 预算充足、玩家未达 drone cap
+  ├─ 失败 → 拒绝部署 (ERR_DEPLOY_VALIDATION)
+  └─ 成功 → 进入 UPLOAD_PREPARE
+
+UPLOAD_PREPARE:
+  ├─ 编译 WASM → 原生码（预编译，不在 tick 内 JIT）
+  ├─ 计算 module_hash = Blake3(compiled_module)
+  ├─ 入队异步上传任务: upload_blob(wasm_binary, object_store_key)
+  └─ 进入 MANIFEST_COMMIT（不等 blob 上传完成）
+
+MANIFEST_COMMIT:
+  ├─ FDB 事务原子提交 deploy manifest:
+  │   ├─ deploy_id, player_id, drone_id, module_hash, fdb_version_counter
+  │   ├─ object_store_key (blob 预期位置)
+  │   ├─ upload_status = "pending"
+  │   └─ activation_tick = current_tick + 1 (下一完整 tick 激活)
+  ├─ COMMIT 成功 → 进入 ACTIVATION_PENDING
+  └─ COMMIT 失败 → 回滚，deploy_id 无效
+
+ACTIVATION_PENDING:
+  ├─ 等待 activation_tick 到达
+  ├─ 期间 blob upload 可能在后台完成 (upload_status → "complete") 或失败
+  └─ activation_tick 到达时:
+      ├─ upload_status == "complete" AND module_hash 验证通过 → ACTIVE
+      │   └─ drone 获得新 WASM 模块，下一 tick 生效
+      ├─ upload_status == "failed" OR module_hash 不匹配
+      │   └─ → FAILED: drone 保持旧模块(如有)或空模块
+      │        FDB 记录 deploy_failure_reason
+      └─ upload_status == "pending" (blob 仍在传输)
+          └─ 等待最多 30s → 仍 pending → 视为 FAILED
+
+ACTIVE:
+  └─ 模块已激活。drone 在 COLLECT 阶段使用此模块执行。
+
+FAILED:
+  ├─ FDB 记录 deploy_failure_reason
+  ├─ object store 中 blob (如有) 由 GC 清理 (保留 1h 后删除)
+  └─ 玩家可重新部署
+```
+
+**关键不变量（Deploy）**：
+- **FDB manifest 是 deploy 的唯一权威记录**：`fdb_version_counter` 为 replay 提供严格全序。blob upload 异步执行，不阻塞 tick 循环。
+- **同一 tick 内的 deploy 不影响当前 tick**：WASM 模块快照在 COLLECT 开始时确定。deploy 在 `activation_tick`（≥ current_tick + 1）生效。
+- **Blob 缺失不影响 FDB 状态完整性**：`upload_status = "failed"` 时 drone 保持旧模块或空模块，FDB 状态不受对象存储影响。
+- **Deploy mutation 的 replay class**：`deploy_mutation` — 状态变更通过 FDB 事务原子化，replay verifier 以 `fdb_version_counter` 全序重放，不依赖对象存储 blob 可用性。
+
+---
+
+## 3. Tick Commit 序列
 
 > **D5/B 裁决**：对象存储写入改为异步——FDB commit 先完成，blob upload 在后台执行。FDB 仅存储 manifest + content_hash + pointer，不等待 blob 写入结果。
 
@@ -92,7 +184,7 @@ Phase D: WAL 截断
 
 ---
 
-## 3. 持久化失败语义（D5/B async 模型）
+## 4. 持久化失败语义（D5/B async 模型）
 
 FDB commit 先于对象存储写入——以下为所有失败场景的处理：
 
@@ -107,9 +199,9 @@ FDB commit 先于对象存储写入——以下为所有失败场景的处理：
 
 ---
 
-## 4. Replay 恢复
+## 5. Replay 恢复
 
-### 4.1 正常 Replay
+### 5.1 正常 Replay
 
 ```
 1. 从 FDB 读取目标 tick 的 tick_manifest
@@ -121,7 +213,7 @@ FDB commit 先于对象存储写入——以下为所有失败场景的处理：
 7. 重放 delta chain: keyframe → 目标 tick
 ```
 
-### 4.2 Keyframe 不可用时
+### 5.2 Keyframe 不可用时
 
 若目标 tick 最近的 keyframe 已被 GC：
 
@@ -131,7 +223,7 @@ FDB commit 先于对象存储写入——以下为所有失败场景的处理：
 3. 若无可用 keyframe 且无 FDB 全量 → 该 tick 范围不可 replay
 ```
 
-### 4.3 Replay Verifier 输入
+### 5.3 Replay Verifier 输入
 
 Replay verifier 以 **FDB commit 的 manifest/hash 为权威**，不重新扫描对象存储：
 
@@ -142,9 +234,9 @@ Replay verifier 以 **FDB commit 的 manifest/hash 为权威**，不重新扫描
 
 ---
 
-## 5. GC (垃圾回收)
+## 6. GC (垃圾回收)
 
-### 5.1 对象存储 GC
+### 6.1 对象存储 GC
 
 | 层级 | TTL | 清理策略 |
 |------|:---:|---------|
@@ -154,20 +246,20 @@ Replay verifier 以 **FDB commit 的 manifest/hash 为权威**，不重新扫描
 
 **孤儿清理**: 由于 FDB commit 先于 blob 写入，正常流程不产生孤儿 blob。唯一孤儿场景：blob 写入成功但 etag 回填失败 → GC 扫描 `upload_status != 'complete'` 但对象存储中存在对应 blob → 保留 1h 后删除。**正常 `upload_status = 'complete'` 的 blob 按 TTL 分层清理**（见上表）。
 
-### 5.2 Keyframe GC
+### 6.2 Keyframe GC
 
 - hot: 保留 7d（每 K tick 一个 keyframe）
 - cold: 保留 30d（每 10K tick 一个 keyframe）
 - 删除 keyframe 时同步删除对应的 snapshot delta chain
 
-### 5.3 WAL GC
+### 6.3 WAL GC
 
 - 每次 FDB commit 成功后截断已提交 tick 的 WAL
 - WAL 仅保留未提交 tick 的条目
 
 ---
 
-## 6. Commit Retry 对 Hash Chain 的影响（R16 B3 修复）
+## 7. Commit Retry 对 Hash Chain 的影响（R16 B3 修复）
 
 ```
 若 tick N 的 FDB commit 因瞬时错误（网络/锁冲突）失败：
@@ -186,7 +278,7 @@ Replay verifier 以 **FDB commit 的 manifest/hash 为权威**，不重新扫描
 
 这意味着：**同一 tick 编号的 TickTrace 可能包含多个 attempt（attempt_id 递增），但 collect_id 始终不变**。Replay 只关心最终 committed 的 attempt——hash chain 验证以 FDB 中实际存在的链为准。跨 attempt 的燃料消耗上限 = `1 × MAX_FUEL`（首次 COLLECT 时的扣费即为最终扣费，重试不追加）。
 
-### 6.1 TickTrace 标识字段
+### 7.1 TickTrace 标识字段
 
 TickTrace 中新增以下标识字段以支持 attempt/collect/commit 追踪：
 
@@ -214,7 +306,7 @@ TickTrace {
 }
 ```
 
-### 6.2 Blob 损坏终端状态
+### 7.2 Blob 损坏终端状态
 
 当对象存储中的 TickTrace blob 无法正常读取或验证时，引擎根据恢复能力将其归类为以下四种终端状态：
 
@@ -245,7 +337,7 @@ TickTrace {
 
 ---
 
-## 7. 实现约束
+## 8. 实现约束
 
 | 约束 | 要求 |
 |------|------|
@@ -258,7 +350,7 @@ TickTrace {
 
 ---
 
-## 8. 与现有文档的关系
+## 9. 与现有文档的关系
 
 - `design/engine.md` §3.3 (TickInputEnvelope)、§3.4.2 (容量合同)、§3.4.7 (keyframe)：本文件为权威持久化合同。engine.md 描述架构意图，本文档定义实现合同。
 - `specs/core/01-tick-protocol.md` §2.3 (快照)、§9.4 (TickTrace hash chain)：本文件补充持久化层面。

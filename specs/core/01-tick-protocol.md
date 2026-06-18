@@ -760,14 +760,16 @@ sort_key = (priority_class, shuffle_index, source_rank, sequence, command_hash)
 
 ### 9.2 部署生效时序
 
-`swarm_deploy` 的生效时序：
+`swarm_deploy` 的生效时序（详见 `specs/core/05-persistence-contract.md` §2.3 Deploy 完整状态机）：
 
 ```
-tick N:    swarm_deploy 调用 → 编译/签名 → 模块入队
-tick N+1:  COLLECT 阶段加载新模块 → EXECUTE 阶段首次执行
+tick N:    swarm_deploy 调用 → 编译/签名 → FDB manifest commit (deploy_mutation replay class)
+           └─ 同时入队对象存储异步上传 WASM binary
+tick N+1:  若 upload_status == "complete" → COLLECT 阶段加载新模块 → EXECUTE 阶段首次执行
+           若 upload_status != "complete" → drone 保持旧模块，deploy 进入 FAILED
 ```
 
-部署在提交后的**下一个完整 tick** 生效。同一 tick 内的 deploy 不会影响当前 tick 的执行——WASM 模块快照在 COLLECT 开始时确定。
+部署在 FDB manifest commit 后的**下一完整 tick** 生效（`activation_tick = current_tick + 1`）。同一 tick 内的 deploy 不影响当前 tick 的执行——WASM 模块快照在 COLLECT 开始时确定。**Replay verifier 以 FDB manifest 中的 `fdb_version_counter` 全序重放，不依赖对象存储 blob 可用性。**
 
 ### 9.3 输出状态合同 (Output State Contract)
 

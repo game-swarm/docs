@@ -513,7 +513,9 @@ refund_pct = max(0.1, 0.5 × (remaining_lifespan / total_lifespan))
 
 ### 3.19 `status_advance_system` 调度
 
-所有特殊攻击的状态推进（Hack 的 stage 递增、Overload fuel 恢复、Debilitate 计数递减、Fortify 护盾计数递减）由 `status_advance_system` 统一处理。调度位置在 Phase 2b 中 `combat_system` 之后、`regeneration_system` 之前：
+所有特殊攻击的状态推进（Hack 的 stage 递增、Overload fuel 恢复、Debilitate 计数递减、Fortify 护盾计数递减）由 `status_advance_system` 统一处理。完整执行管道、per-status 唯一 writer contract、并发写入结构、mode unlock 策略详见 `specs/core/06-phase2b-system-manifest.md` §S14 + §Special Attack Unique Writer Contract + §Mode Unlock Strategy。
+
+调度位置在 Phase 2b 中 `combat_system` 之后、`regeneration_system` 之前：
 
 ```
 death_mark → spawn → spawning_grace → combat → status_advance → (regeneration, decay 并行) → death_cleanup

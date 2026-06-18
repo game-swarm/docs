@@ -182,10 +182,13 @@ Serial Spine:
 - **ID**: `spec_atk_red`
 - **Reads**: PendingSpecialAttack intents buffer (from S11-S13), Entity (status components)
 - **Writes**: `pending_intents` buffer (canonical sorted), StatusState (seeded)
-- **Processing pipeline**:
-  1. **Parallel collect**: S11-S13 产生的特殊攻击 intent（Hack/Drain/Overload/Debilitate/Disrupt/Fortify）写入 `pending_intents` buffer
-  2. **Canonical priority sort**: 按 `(priority_class, intent_source.entity_id, intent_target.entity_id)` 确定性排序
-  3. **Deliver to S22**: 排序后的 intents 交付 `status_advance_system` 统一推进
+- **Processing pipeline (R22 B3 — 完整执行表)**:
+  1. **Parallel collect**: S11-S13 产生的特殊攻击 intent（Hack/Drain/Overload/Debilitate/Disrupt/Fortify）写入 per-system sub-buffer
+  2. **Merge sort**: 收集所有 sub-buffer → 按 `(priority_class, intent_source.entity_id, intent_target.entity_id)` 确定性归并排序（serial collector，禁止依赖 nondeterministic push order）
+  3. **Reducer resolve**: 同一 target 的多个 intent 按优先级链裁决（Hack > Drain > Overload > Debilitate > Disrupt > Fortify）；冲突 intent 降级记录
+  4. **Deliver to S22**: 排序+裁决后的 intents 交付 `status_advance_system` 统一推进
+  5. **Status advance (S22)**: 统一读入 intents → 更新 StatusState（duration--, expire, apply）→ 触发 damage/application
+  6. **Damage application (S15)**: 特殊攻击产生的 damage 通过 `damage_application` 统一应用
 - **Must run after**: S11, S12, S13
 - **Must run before**: S22
 - **Note**: 此 reducer 不直接修改实体状态——仅负责 intent 归并、排序、路由。实际状态变更由 S22 `status_advance_system` 执行。
@@ -209,6 +212,52 @@ Serial Spine:
 | status_advance_system | `status_adv` | All StatusState components, pending_intents (from S14) | StatusState (duration--, expire, apply intents) |
 
 **Parallel safety**: 各 system 操作互不重叠的 Component 集合。`status_advance_system` 读取 S14 输出的 canonical sorted intents 并统一推进，不与其他 status system 冲突（不同 component）。
+
+### Special Attack Unique Writer Contract (R22 B3)
+
+每种 status/component 有且仅有一个写入者 system。禁止多路径写同一状态：
+
+| Status Component | 唯一 Writer (system_id) | 写入时机 |
+|------------------|------------------------|---------|
+| `HackState` | `status_adv` (S22) | status_advance 统一推进 |
+| `DrainState` | `status_adv` (S22) | status_advance 统一推进 |
+| `OverloadState` | `status_adv` (S22) | status_advance 统一推进 |
+| `DebilitateState` | `status_adv` (S22) | status_advance 统一推进 |
+| `DisruptState` | `status_adv` (S22) | status_advance 统一推进 |
+| `FortifyState` | `status_adv` (S22) | status_advance 统一推进 |
+| `PendingIntents` buffer | `spec_atk_red` (S14) | intent collect + merge sort |
+| Damage from special attack | `dmg_apply` (S15) | damage_application 统一处理 |
+
+**并发写入结构**: S11-S13 各自写入 per-system sub-buffer（线程局部，无竞争）。S14 serial collector 读取所有 sub-buffer → merge sort → 写入 canonical `pending_intents`。**禁止依赖 nondeterministic push order。**
+
+### Status Advance Execution Order (per tick, within S22)
+
+```
+for each intent in pending_intents (canonically sorted):
+    match intent.kind:
+        Hack       → HackState.stage += 1; duration = hack_duration
+        Drain      → ResourceAmount -= drain_amount; duration = drain_duration
+        Overload   → FuelBudget.reduce(overload_amount); duration = overload_duration
+        Debilitate → Entity.efficiency *= debilitate_factor; duration = debilitate_duration
+        Disrupt    → Entity.interrupted = true; duration = disrupt_duration
+        Fortify    → Entity.armor += fortify_amount; duration = fortify_duration
+
+    // Decrement all active status durations
+    for each active StatusState:
+        status.duration -= 1
+        if status.duration == 0 → expire effect (reverse temporary modifiers)
+```
+
+### Mode Unlock Strategy (D4/B 裁决 — Standard 全量启用)
+
+| Mode | Special Attacks | 理由 |
+|------|:--------------:|------|
+| Tutorial | 全部禁用 | 学习基础 Movement/Harvest/Build |
+| Novice | 全部禁用 | 保护新手体验 |
+| Standard | **全量启用** (Hack/Drain/Overload/Debilitate/Disrupt/Fortify) | 教程/SDK 强引导；学习者通过 code/docs 自学 |
+| Arena | 全量启用 | 与 Standard 相同 |
+
+Standard 模式下 special attack 全量可用。教程 (`swarm_get_docs`) 和 SDK 模板提供分阶段学习路径，但不限制引擎能力。
 
 ### S23: aging_system
 - **ID**: `aging`
