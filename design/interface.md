@@ -16,6 +16,8 @@ AI：  MCP 看世界 → 生成 WASM → 部署 ───┘
 
 ### 4.1 MCP 工具分类
 
+> 权威工具清单见 [API Registry](specs/reference/api-registry.md) §3 — 46 工具，含 Economy/SDK/Resources 分类
+
 | 类别 | 工具 | 用途 | replay_class |
 |------|------|------|-------------|
 | **世界查看** | `swarm_get_snapshot` | 获取可见世界状态 | read_replay_safe |
@@ -112,6 +114,8 @@ fn host_get_world_config(key_ptr: i32, key_len: i32, out_ptr: i32, out_len: i32)
 fn host_get_world_rules(out_ptr: i32, out_len: i32) -> i32;
 ```
 
+> **注意**: 以下为概念签名。权威定义见 [API Registry](specs/reference/api-registry.md) §4.1
+
 全部返回 `i32`：0 = 成功，负数 = 错误码。
 `out_ptr`/`out_len`：WASM 分配缓冲区，host 写入结果后再次校验边界。
 
@@ -139,57 +143,19 @@ fn host_get_world_rules(out_ptr: i32, out_len: i32) -> i32;
 
 ### 5.4 Command Schema 与 RejectionReason
 
-Command enum（core IDL，冻结）：
+参见 [API Registry](specs/reference/api-registry.md) §1 — 19 指令 (11核心+2Global+6特殊攻击)
 
-| Command | 参数 | 说明 |
-|---------|------|------|
-| Move | direction (N/S/E/W/NE/NW/SE/SW) | 移动到相邻格 |
-| Harvest | target_id | 采集资源 |
-| Build | structure_type, x, y | 建造建筑 |
-| Attack | target_id | 近战攻击 |
-| RangedAttack | target_id | 远程攻击 |
-| Heal | target_id | 治疗 |
-| Spawn | body_parts: Vec<BodyPart> | 生成 drone |
-| Recycle | target_id | 回收 drone |
-| Transfer | target_id, resource, amount | 转移资源 |
-| Withdraw | target_id, resource, amount | 提取资源 |
-| ClaimController | — | 宣称房间主权 |
-| Hack | target_id | 特殊攻击：黑客 |
-| Drain | target_id | 特殊攻击：吸取 |
-| Overload | target_id | 特殊攻击：过载 |
-| Debilitate | target_id | 特殊攻击：虚弱 |
-| Disrupt | target_id | 特殊攻击：干扰 |
-| Fortify | — | 特殊攻击：加固自身 |
-| Leech | target_id | 特殊攻击：生命吸取 |
-| Fabricate | structure_type, x, y | 特殊攻击：构造 |
-| SendMessage | target_id, payload (max 256B) | drone 间消息 |
+Notes:
+- Move: 4方向 (N/S/E/W)。8方向为 Future RFC
+- SendMessage: Future RFC: drone间消息传递。当前不在 Core CommandAction 中。
 
-RejectionReason enum:
-
-| 原因 | 说明 |
-|------|------|
-| InvalidCommand | 命令格式错误 |
-| OutOfRange | 目标超出范围 |
-| InsufficientResources | 资源不足 |
-| TargetNotFound | 目标不存在或不可见 |
-| CooldownActive | 冷却中 |
-| RoomCapReached | 房间容量已满 |
-| NotAuthorized | 无权限 |
-| FuelExhausted | WASM fuel 耗尽 |
-| TimeoutExceeded | 超过 per-tick deadline |
-| SnapshotOverBudget | Snapshot 超 cap |
+RejectionReason enum: 参见 [API Registry](specs/reference/api-registry.md) §2 — 35 变体，统一为 `ObjectNotFound`、`InsufficientResource`、`NotOwner` 等
 
 ### 5.5 Host Function 成本模型
 
 所有 host function 返回 `i32`（0=成功，负数=错误码）。每函数定义 per-tick 资源约束：
 
-| Host Function | Call Limit | Max Output | CPU Cost Units | 错误码 |
-|--------------|-----------|------------|----------------|--------|
-| host_get_terrain | unlimited | 4B | 1 | -1=OOB |
-| host_get_objects_in_range | 5/tick | 4KB | 10 + 1/entity | -2=range_too_large, -3=buffer_overflow |
-| host_path_find | 10/tick | 1KB | 50 + 1/node (max 500 nodes) | -2=dest_unreachable, -3=node_limit_exceeded, -4=timeout |
-| host_get_world_config | 5/tick | 256B | 5 | -2=key_not_found |
-| host_get_world_rules | 1/tick | 2KB | 20 | — |
+> 参见 [API Registry](specs/reference/api-registry.md) §4 — 统一预算和输出上限
 
 Fuel deduction: 1 CPU cost unit = 1 wasmtime fuel unit。host call budget 独立于 WASM compute budget——两者均计入 per-tick 总量。
 
@@ -221,7 +187,7 @@ SwarmError 分类：
 
 ### 5.7 swarm_simulate 与 swarm_deploy
 
-**swarm_simulate**: 给定 snapshot 离线模拟 N tick。不执行其他玩家 WASM——使用 NPC-only world。最大 50 tick，资源配额独立于热路径。输出 deterministic replay。
+**swarm_simulate**: 给定 snapshot 离线模拟 N tick。不执行其他玩家 WASM——使用 NPC-only world。最大 100 tick，max_entities=1000，资源配额独立于热路径。输出 deterministic replay。参见 [API Registry](specs/reference/api-registry.md) §5。
 
 **swarm_deploy 幂等性**: 同 module_hash 重试只扣费一次（idempotency_key = module_hash）。module 保留策略：最近 10 个版本保留，旧版本在无引用后 GC。
 

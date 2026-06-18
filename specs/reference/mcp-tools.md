@@ -1,5 +1,7 @@
 # MCP 工具参考
 
+> **权威工具清单见 [API Registry](api-registry.md) §3** — 46 工具。本文档提供逐工具详细说明。
+>
 > MCP 是 AI agent 的操作界面——与人类玩家的 Web UI 完全同级。
 > MCP **不做游戏动作**。AI agent 必须编写 WASM 代码来操作世界。
 > 详见 `specs/security/03-mcp-security.md`。
@@ -14,6 +16,16 @@
 | `swarm_get_terrain` | 查询指定区域的地形 |
 | `swarm_get_objects_in_range` | 查询范围内的实体列表 |
 | `swarm_get_world_rules` | 获取世界规则配置 |
+
+### Economy
+
+> 权威定义见 [API Registry](api-registry.md) §3.1。
+
+| 工具 | 说明 |
+|------|------|
+| `swarm_get_economy` | 获取玩家经济概况（收入、支出、存储税、维护费） |
+| `swarm_get_drone_efficiency` | 获取 drone 效率及影响因素 |
+| `swarm_get_economy_trend` | 获取指定 tick 范围的经济趋势数据 |
 
 ### 部署
 
@@ -43,6 +55,12 @@
 | `swarm_get_schema` | 获取 Command JSON Schema |
 | `swarm_get_available_actions` | 获取当前可用的 CommandAction 列表 |
 | `swarm_simulate` | 离线模拟：给定世界快照，预测未来 N tick |
+
+### SDK
+
+| 工具 | 说明 |
+|------|------|
+| `swarm_sdk_fetch` | 获取 SDK 代码、类型定义、示例及 ABI 版本信息 |
 
 ### 认证
 
@@ -97,7 +115,9 @@ Client generates private key locally
 
 Swarm CA 只用于应用层证书，不安装到系统/浏览器 trust store。HTTP 等不安全传输可以完成身份认证与完整性校验；首次访问需人工确认并 pin 服务器 Root CA fingerprint，之后服务器身份由客户端证书存储中的 Root CA pin 验证，不依赖外部 TLS。
 
-## Rate Limiter（12 来源分级）
+## Rate Limiter
+
+> **权威 per-tool rate limit 见 [API Registry](api-registry.md) §3.3**。以下为 source-level 限流（参考），以 registry 为准。
 
 | Source | 预算 (tokens/s) |
 |--------|-----------------|

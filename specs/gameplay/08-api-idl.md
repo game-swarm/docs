@@ -63,6 +63,7 @@ enums:
   StructureType: [Spawn, Extension, Tower, Storage, Link, Extractor, Lab,
                   Terminal, Nuker, Observer, PowerSpawn, Factory, Depot]
   RejectionReason:
+    # > 权威定义见 [API Registry](../reference/api-registry.md) §2 — 35 变体
     - ObjectNotFound
     - NotOwner
     - NotMovable
@@ -109,6 +110,7 @@ enums:
     - TargetOverloadCooldown
 
 commands:
+  # > 权威定义见 [API Registry](../reference/api-registry.md) §1 — 19 指令
   Move:
     params: { object_id: ObjectId, direction: Direction }
     validator: [exists, owner, drone, fatigue, body_part(Move), passable, !spawning]
@@ -233,7 +235,10 @@ body_cost:
 #   body_part.Move = { Energy: 60, Crystal: 10 }
 
 host_functions:
+  # > IDL 内部使用短名称（如 get_terrain, path_find），权威名称带 host_ 前缀（host_get_terrain, host_path_find）。
+  # > 权威定义见 [API Registry](../reference/api-registry.md) §4
   tick:
+    # > tick 是 WASM export，非 host function import。Host functions 见 [API Registry](../reference/api-registry.md) §4
     export: true
     params: [snapshot_ptr: i32, snapshot_len: i32]
     returns: i32  # 0 = success, pointer to command JSON in WASM memory

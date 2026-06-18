@@ -307,10 +307,10 @@ Swarm:     Move = Action  → 每 tick 移动 OR 采集 OR 攻击 OR 建造
 | **Active players** | target 500 / hard cap 1000 | 活跃玩家数 |
 | **Active drones** | target 5000 / hard cap 10000 | 活跃 drone 总数 |
 | **Total entities** | hard cap 50000 | 含 drones、structures、NPC、resources |
-| **Per-player drone cap** | 100 (default) | 可配置 |
+| **Per-player drone cap** | 500 (default, world.toml configurable) | 可配置 |
 | **Snapshot per-player (WASM)** | 256KB | tick() 输入；fog_of_war 过滤后的可见实体 |
 | **Snapshot player display** | 分页传输 | 展示用，非 WASM 输入；不受 fog_of_war 限制 |
-| **Commands per player per tick** | max 1000 | 可配置拒绝策略 |
+| **Commands per player per tick** | max 100 | 可配置拒绝策略 |
 | **Pathfinding requests** | max 100 per player per tick | 超出排队或拒 |
 | **FDB transaction** | 小事务（head/manifest/hash/pointer） | tick 内世界 head 推进；大 blob 进入对象存储 |
 | **TickTrace/keyframe retention** | 7d (hot) / 30d (warm) / 180d (cold) | 可配置 |

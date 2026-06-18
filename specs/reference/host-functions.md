@@ -1,5 +1,7 @@
 # WASM Host Functions 参考
 
+> **权威定义见 [API Registry](api-registry.md) §4**。本文档提供实现指南。
+>
 > 详见 `specs/core/04-wasm-sandbox.md`
 
 ## 允许的 Import
@@ -58,6 +60,18 @@ i32 host_get_world_rules(out_ptr: i32, out_len: i32) -> i32
 - 其他: 共享剩余配额
 
 超出预算 → 返回 -1，tick 继续执行（非致命错误）。
+
+## 输出上限
+
+> 权威定义见 [API Registry](api-registry.md) §4.3。
+
+| 函数 | 最大输出 |
+|------|---------|
+| `host_path_find` | **8 KB** |
+| `host_get_objects_in_range` | **64 KB** |
+| `host_get_world_config` | **16 KB** |
+| `host_get_world_rules` | **16 KB** |
+| `host_get_terrain` | **8 KB** |
 
 ## 安全约束
 

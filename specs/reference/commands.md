@@ -1,5 +1,7 @@
 # Command API 参考
 
+> **本文档为 API Registry 的派生展示**。权威定义见 [API Registry](api-registry.md)。本文档提供使用示例和上下文说明。
+>
 > 详见 `specs/gameplay/08-api-idl.md`、`specs/core/02-command-validation.md`
 
 WASM 模块通过 `tick(snapshot) → CommandIntent[]` JSON 返回指令。
@@ -15,7 +17,7 @@ WASM 模块通过 `tick(snapshot) → CommandIntent[]` JSON 返回指令。
 
 `player_id`、`source`、`tick` 由服务端 Source Gate 注入后形成 RawCommand（见 `specs/core/02-command-validation` §2）。
 
-## 指令列表（15 Core + 1 Custom + 8 Special Attacks）
+## 指令列表 — 19 指令（11核心+2Global+6特殊）— 见 [API Registry](api-registry.md) §1
 
 以下 15 种指令对应 `CommandAction` enum 的 15 个具体变体。第 16 个变体 `CommandAction::Custom(type)` 通过 `CustomActionRegistry` 路由到 8 种特殊攻击——见下方「特殊攻击」节。
 
@@ -211,9 +213,11 @@ WASM 模块通过 `tick(snapshot) → CommandIntent[]` JSON 返回指令。
 
 （共 11 个 special_effect handler：8 个绑定默认 CustomAction + 3 个附加）
 
-## 拒绝原因（45 种）
+> **Future RFC**: `SendMessage` 指令（drone 间消息传递）为 Future RFC，不在当前核心定义中。详见 [API Registry](api-registry.md) §1。
 
-> `RejectionReason` enum 共 45 个变体。以下为主管线校验拒绝原因。
+## 拒绝原因 — 35 变体 — 见 [API Registry](api-registry.md) §2
+
+> `RejectionReason` enum 共 35 个变体（权威定义见 [API Registry](api-registry.md) §2）。以下为主管线校验拒绝原因。
 
 | 拒绝原因 | 说明 |
 |----------|------|
