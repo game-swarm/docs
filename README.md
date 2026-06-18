@@ -49,8 +49,7 @@ docs/
 |------|------|
 | [swarm/engine](https://git.kagurazakalan.com/swarm/engine) | Rust 游戏引擎 |
 | [swarm/sandbox](https://git.kagurazakalan.com/swarm/sandbox) | WASM 沙箱运行时 |
-| [swarm/sdk-ts](https://git.kagurazakalan.com/swarm/sdk-ts) | TypeScript SDK |
-| [swarm/sdk-rust](https://git.kagurazakalan.com/swarm/sdk-rust) | Rust SDK |
+| SDK (由 engine `cargo run -- generate-sdk` 从 `sdk-templates/` 生成) | TypeScript + Rust SDK |
 | [swarm/gateway](https://git.kagurazakalan.com/swarm/gateway) | Go API 网关 |
 | [swarm/frontend](https://git.kagurazakalan.com/swarm/frontend) | Web 客户端 |
 
