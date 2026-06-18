@@ -350,6 +350,67 @@ drone age 维护由两层设施构成：
 | `transfer_from_global_time` | u32 | 5 | 全局→本地转换所需 tick 数（不可为 0） |
 | `global_storage_public` | bool | false | （计划中）全局存储是否完全公开 |
 
+#### 经济治理合同 (Economic Governance Contract)
+
+##### PoW 经济治理
+
+注册/CSR PoW 难度可配置，默认 `difficulty_bits = 24`。目标预算：
+
+| 指标 | 值 | 说明 |
+|---|---|---|
+| P50 注册耗时（Rust） | ~150ms | 常规客户端 |
+| P95 注册耗时（WASM） | ~1.5s | AI agent 浏览器端 |
+| 单核批量注册成本 | ~$0.0001/次（CPU time） | 不计电费 |
+| 每 1000 账号攻击成本 | ~$0.10（最低） | 仅 CPU，不含 IP 限流 |
+
+难度自适应调整输入：近期注册速率、失败率、IP 多样性。调整上限 `difficulty_bits_max = 32`（约 4s WASM），下限 `difficulty_bits_min = 20`（约 100ms WASM）。PoW challenge TTL 5min，一次性消费。
+
+##### 市场/交易声明
+
+Market 和 trading 功能为 **Phase 2 候选特性**。当前设计仅保留接口占位（`CreateMarketOrder`、`BuyMarketOrder`、`CancelMarketOrder`），不包含价格发现、撮合引擎、跨世界结算。所有 market 相关文档引用标注 `⏳ Phase 2`。Market 启用前必须完成独立的经济模拟和反垄断设计闭环。
+
+##### 存储默认值与安全下限
+
+| 规则 | 默认值 | 最小安全下限 | 说明 |
+|---|---|---|---|
+| `global_storage_tax_tiers` | `[(30,0),(60,1),(85,5),(100,20)]` | 最高税率 ≥ 0.10%/tick | 防止无限囤积 |
+| `transfer_to_global_time` | 10 tick | 不可为 0 | 无即时补给 |
+| `transfer_from_global_time` | 5 tick | 不可为 0 | 需物流规划 |
+| `global_storage_capacity` | 1,000,000 单位/玩家 | 无硬上限（税制抑制） | 服主可调 |
+
+##### 实体膨胀归因
+
+实体膨胀（drone/建筑过多导致 snapshot/path_find/visibility 成本上升）的成本不外部化——每个玩家的 snapshot 大小与其自身 drone 数量成正比（per-player 256KB cap 内），不随其他玩家膨胀而增长。全局 path_find 和 visibility 由引擎统一承担，不计入 per-player budget。若全局实体数 > 50,000 hard cap，新 Spawn 被拒（`WorldEntityCapReached`），而非让现有玩家承担膨胀惩罚。
+
+##### 反雪球合同 (Anti-Snowball Contract)
+
+World 模式不追求竞技公平——先入者、大帝国拥有资源优势是接受的设计。以下机制保护生态可持续性，不保证个体公平：
+
+| 机制 | 效果 | 目标 |
+|---|---|---|
+| 累进存储税 | 大存储量 → 高税率 → 自然天花板 | 防止无限囤积垄断 |
+| 维护费 (O(n²) rooms) | 大帝国维护成本非线性增长 | 收益递减，自然收敛 |
+| Controller 老化 | age 增长 → 修缮成本上升 → 硬上限 50% | 防止永续扩张 |
+| soft_launch 1500 tick | 新玩家独立保护期 | 给予初始发展窗口 |
+| 安全区出生 | 密度优先 + 反包围 | 新玩家不被堵死 |
+| SpawnGrace 1 tick | 新生 drone 无敌帧 | 防止出生即斩 |
+| Room drone cap (50→500) | 单房间兵力上限 | 防止局部兵力碾压 |
+
+所有反雪球参数由服主通过 `world.toml` 调参——vanilla 提供合理默认值，不内置硬性公平保证。Arena 模式独立——对称初始资源 + 免税 + 短时长，追求竞技公平。
+
+##### 长期目标系统
+
+以下系统形成非线性追求，不依赖单一扩张指标：
+
+| 目标 | 机制 | 说明 |
+|---|---|---|
+| **殖民地年龄** | tick 累计，解锁 tier/建筑/科技 | 时间沉淀产生差异化价值 |
+| **GCL (Global Control Level)** | 多房间 Controller 平均等级 | 鼓励横向扩张而非单房间堆叠 |
+| **RCL (Room Control Level)** | 单房间 Controller 等级 (1-8) | 纵向深度，解锁高级建筑 |
+| **Arena 段位** | 竞技排名 + 赛季 | PvP 成就独立于 World 资产 |
+| **PvE 里程碑** | 世界事件、NPC 据点攻克 | 合作/单人挑战目标 |
+| **Replay/观战** | 社区分享最佳策略 | 非资产型声誉 |
+
 #### 资源定义
 
 ```toml
