@@ -1,5 +1,7 @@
 # Swarm 技术选型
 
+> 技术选型的落地规范见 [WASM Sandbox](specs/core/04-wasm-sandbox.md)、[Persistence Contract](specs/core/05-persistence-contract.md)、[Snapshot Contract](specs/core/09-snapshot-contract.md)、[Command Source](specs/security/09-command-source.md)。
+
 ## 1. 引擎框架: Rust + Bevy ECS
 
 ### 备选
@@ -20,6 +22,8 @@
 ---
 
 ## 2. 玩家沙箱: WASM + Wasmtime
+
+> 沙箱实现详见 [WASM Sandbox](specs/core/04-wasm-sandbox.md)。
 
 ### 备选
 
@@ -56,6 +60,8 @@
 ---
 
 ## 4. 持久化: FoundationDB
+
+> 持久化合同详见 [Persistence Contract](specs/core/05-persistence-contract.md)，快照模型详见 [Snapshot Contract](specs/core/09-snapshot-contract.md)。
 
 ### 备选
 
