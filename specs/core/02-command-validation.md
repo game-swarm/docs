@@ -285,7 +285,7 @@ Drone 在 Phase 2b spawn_system 中创建——位于 death_mark（释放 room c
  `spawn_id` 是玩家的 Spawn | `NotOwner` |
  `object_id` 在 spawn 范围内 (range = 1) | `OutOfRange` |
 
-返还 50% 身体部件成本作为能量给 spawn。
+返还 lifespan-proportional 比例（10%–50%）身体部件成本作为能量给 spawn。**权威公式见 §3.18 和 Resource Ledger §2.5**。禁止在此引用固定 50%。
 
 ### 3.10 Hack（特殊攻击）
 
@@ -713,11 +713,11 @@ death_mark → spawn → spawning_grace → combat → status_advance → (regen
 { "action": "Recycle", "object_id": "d1", "sequence": N }
 ```
 
- 规则 | 说明 |
-------|------|
- 标准退还 | body part spawn 总成本的 50% |
- Tutorial | 前 500 tick 退还 100% |
- 效果 | drone 走 death_mark → death_cleanup 标准死亡路径（与其他死亡一致） |
+ | 规则 | 说明 |
+ |------|------|
+ | 标准退还 | lifespan-proportional: `max(1000, remaining_lifespan × 5000 / total_lifespan)` bp，范围 [10%, 50%] body_cost。**权威公式见 Resource Ledger §2.5 和 API Registry §10** |
+ | Tutorial override | `tutorial_recycle_refund_full_ticks` 内退还 100%（world-mode override，由 world.toml 控制） |
+ | 效果 | drone 走 death_mark → death_cleanup 标准死亡路径（与其他死亡一致） |
 
 ### 10.4 特殊攻击
 
