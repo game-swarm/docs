@@ -1,0 +1,1397 @@
+# =============================================================================
+# Game API IDL — Machine-Readable Single Source of Truth
+# =============================================================================
+# Canonical source for codegen / SDK / CI. All other docs derive from this.
+# This file is validated by CI — do not edit Markdown tables directly.
+# =============================================================================
+
+api_version: "0.2.0"
+
+# =============================================================================
+# 1. CommandAction — all 19 variants
+# =============================================================================
+command_action:
+  description: "Core CommandAction enum. WASM tick() output CommandIntent action types."
+  total_variants: 19
+  variants:
+    # --- 1.1 Core (11) ---
+    - name: Move
+      index: 1
+      category: core
+      parameters:
+        - name: direction
+          type: Direction4
+          required: true
+      description: "Move one cell in N/S/E/W direction"
+
+    - name: Harvest
+      index: 2
+      category: core
+      parameters:
+        - name: target_id
+          type: EntityId
+          required: true
+      description: "Harvest a resource from target"
+
+    - name: Transfer
+      index: 3
+      category: core
+      parameters:
+        - name: target_id
+          type: EntityId
+          required: true
+        - name: resource
+          type: ResourceType
+          required: true
+        - name: amount
+          type: u32
+          required: true
+      description: "Transfer resources locally to target"
+
+    - name: Withdraw
+      index: 4
+      category: core
+      parameters:
+        - name: target_id
+          type: EntityId
+          required: true
+        - name: resource
+          type: ResourceType
+          required: true
+        - name: amount
+          type: u32
+          required: true
+      description: "Withdraw resources from structure"
+
+    - name: Build
+      index: 5
+      category: core
+      parameters:
+        - name: structure_type
+          type: StructureType
+          required: true
+        - name: x
+          type: i32
+          required: true
+        - name: y
+          type: i32
+          required: true
+      description: "Build a structure at (x,y)"
+
+    - name: Attack
+      index: 6
+      category: core
+      parameters:
+        - name: target_id
+          type: EntityId
+          required: true
+      description: "Melee attack target"
+
+    - name: RangedAttack
+      index: 7
+      category: core
+      parameters:
+        - name: target_id
+          type: EntityId
+          required: true
+      description: "Ranged attack target"
+
+    - name: Heal
+      index: 8
+      category: core
+      parameters:
+        - name: target_id
+          type: EntityId
+          required: true
+      description: "Repair or heal target"
+
+    - name: Spawn
+      index: 9
+      category: core
+      parameters:
+        - name: body_parts
+          type: "[BodyPart]"
+          required: true
+        - name: spawn_id
+          type: SpawnId
+          required: true
+      description: "Spawn a drone with given body parts"
+
+    - name: Recycle
+      index: 10
+      category: core
+      parameters:
+        - name: target_id
+          type: EntityId
+          required: true
+      description: "Recycle a drone or structure"
+
+    - name: ClaimController
+      index: 11
+      category: core
+      parameters:
+        - name: target_id
+          type: EntityId
+          required: true
+      description: "Claim a room controller"
+
+    # --- 1.2 Global Storage (2) ---
+    - name: TransferToGlobal
+      index: 12
+      category: global_storage
+      parameters:
+        - name: resource
+          type: ResourceType
+          required: true
+        - name: amount
+          type: u32
+          required: true
+      description: "Deposit resources to global storage"
+
+    - name: TransferFromGlobal
+      index: 13
+      category: global_storage
+      parameters:
+        - name: resource
+          type: ResourceType
+          required: true
+        - name: amount
+          type: u32
+          required: true
+      description: "Withdraw resources from global storage"
+
+    # --- 1.3 Special Attack (6) ---
+    - name: Hack
+      index: 14
+      category: special_attack
+      parameters:
+        - name: target_id
+          type: EntityId
+          required: true
+      description: "5-stage intrusion attack"
+
+    - name: Drain
+      index: 15
+      category: special_attack
+      parameters:
+        - name: target_id
+          type: EntityId
+          required: true
+      description: "Continuously drain resources from target"
+
+    - name: Overload
+      index: 16
+      category: special_attack
+      parameters:
+        - name: target_id
+          type: EntityId
+          required: true
+      description: "Reduce target fuel budget"
+
+    - name: Debilitate
+      index: 17
+      category: special_attack
+      parameters:
+        - name: target_id
+          type: EntityId
+          required: true
+      description: "Reduce target efficiency"
+
+    - name: Disrupt
+      index: 18
+      category: special_attack
+      parameters:
+        - name: target_id
+          type: EntityId
+          required: true
+      description: "Interrupt target operation"
+
+    - name: Fortify
+      index: 19
+      category: special_attack
+      parameters:
+        - name: target_id
+          type: EntityId
+          required: true
+      description: "Strengthen own defenses"
+
+  custom_actions:
+    description: "Custom actions defined in World Action Manifest, not in Core enum."
+    known:
+      - name: Leech
+        action_id: custom
+        description: "World Action Manifest custom_action"
+      - name: Fabricate
+        action_id: custom
+        description: "World Action Manifest custom_action"
+
+# =============================================================================
+# 2. RejectionReason — all 35+ variants with codes
+# =============================================================================
+rejection_reason:
+  description: "All command rejection reasons. Covers Pipeline, Validation, MCP, and Runtime layers."
+  total_variants: 35
+  variants:
+    # --- 2.1 Pipeline-level (pre-processing, not in enum proper) ---
+    - code: InvalidJson
+      layer: pipeline
+      description: "JSON parsing failed"
+    - code: SchemaViolation
+      layer: pipeline
+      description: "Command schema does not conform to IDL"
+
+    # --- 2.2 Validation-level ---
+    - code: ObjectNotFound
+      layer: validation
+      index: 1
+      description: "Target entity does not exist"
+    - code: NotOwner
+      layer: validation
+      index: 2
+      description: "Not the owner of the target entity"
+    - code: InsufficientResource
+      layer: validation
+      index: 3
+      description: "Insufficient resources for operation"
+      note: "Unified singular form; deprecated: InsufficientResources, InsufficientEnergy"
+    - code: OutOfRange
+      layer: validation
+      index: 4
+      description: "Target is beyond operation range"
+    - code: NotStructure
+      layer: validation
+      index: 5
+      description: "Target is not a structure"
+    - code: NotController
+      layer: validation
+      index: 6
+      description: "Target is not a controller"
+    - code: NotVisibleOrNotFound
+      layer: validation
+      index: 7
+      description: "Target not visible or does not exist (merged to prevent oracle inference)"
+    - code: TargetNotVisible
+      layer: validation
+      index: 8
+      description: "Target is not in field of view"
+    - code: SpawnOnCooldown
+      layer: validation
+      index: 9
+      description: "Spawn is on cooldown"
+    - code: RoomDroneCapReached
+      layer: validation
+      index: 10
+      description: "Room drone capacity reached"
+    - code: AuthContextInvalid
+      layer: validation
+      index: 11
+      description: "Authentication context is invalid"
+    - code: CooldownActive
+      layer: validation
+      index: 12
+      description: "Operation cooldown is active"
+      note: "Generic cooldown; SpawnOnCooldown reserved for Spawn-specific"
+    - code: InvalidDirection
+      layer: validation
+      index: 13
+      description: "Direction is not one of the 4 valid directions"
+    - code: PositionOccupied
+      layer: validation
+      index: 14
+      description: "Target position is occupied"
+    - code: ConstructionLimitReached
+      layer: validation
+      index: 15
+      description: "Structure construction limit reached"
+    - code: SafeModeActive
+      layer: validation
+      index: 16
+      description: "Target is in safe mode"
+    - code: TargetOverloadCooldown
+      layer: validation
+      index: 17
+      description: "Target has an active overload cooldown"
+    - code: TargetFortifyCooldown
+      layer: validation
+      index: 18
+      description: "Target has an active fortify cooldown"
+    - code: NotEnoughBodyParts
+      layer: validation
+      index: 19
+      description: "Not enough body parts for operation"
+    - code: InvalidBodyPart
+      layer: validation
+      index: 20
+      description: "Invalid body part specified"
+    - code: InvalidStructureType
+      layer: validation
+      index: 21
+      description: "Invalid structure type specified"
+    - code: InvalidResourceType
+      layer: validation
+      index: 22
+      description: "Invalid resource type specified"
+    - code: SourceNotAllowed
+      layer: validation
+      index: 23
+      description: "Command source is not permitted for this operation"
+    - code: UnknownAction
+      layer: validation
+      index: 24
+      description: "Unknown action type"
+    - code: GlobalStorageDisabled
+      layer: validation
+      index: 25
+      description: "Global storage is not enabled"
+    - code: TransferInProgress
+      layer: validation
+      index: 26
+      description: "A transfer is already in progress"
+
+    # --- 2.3 MCP-level ---
+    - code: RateLimited
+      layer: mcp
+      index: 27
+      description: "Rate limit exceeded"
+    - code: InvalidCertificate
+      layer: mcp
+      index: 28
+      description: "Certificate is invalid"
+    - code: NotAuthorized
+      layer: mcp
+      index: 29
+      description: "Not authorized for this operation"
+      note: "Only for MCP-layer auth failures; validation layer uses NotOwner"
+
+    # --- 2.4 Runtime-level ---
+    - code: FuelExhausted
+      layer: runtime
+      index: 30
+      description: "WASM fuel exhausted"
+    - code: TimeoutExceeded
+      layer: runtime
+      index: 31
+      description: "WASM execution timed out"
+    - code: SnapshotOverBudget
+      layer: runtime
+      index: 32
+      description: "Snapshot exceeds size budget"
+    - code: CommandBufferFull
+      layer: runtime
+      index: 33
+      description: "Command buffer is full"
+    - code: ServerOverloaded
+      layer: runtime
+      index: 34
+      description: "Server is overloaded; degraded mode"
+    - code: InternalError
+      layer: runtime
+      index: 35
+      description: "Engine internal error"
+
+  naming_conventions:
+    InsufficientResource: "Unified singular form; deprecated: InsufficientResources, InsufficientEnergy"
+    ObjectNotFound: "Unified form; deprecated: TargetNotFound"
+    CooldownActive: "Generic cooldown; SpawnOnCooldown is Spawn-specific"
+    NotVisibleOrNotFound: "Safe merged code to prevent oracle inference"
+    NotAuthorized: "MCP-layer only; validation layer uses NotOwner"
+
+# =============================================================================
+# 3. MCP Tools — all 46 tools with security columns
+# =============================================================================
+mcp_tools:
+  description: "All MCP tools available to clients. Grouped by capability profile."
+  total_tools: 46
+  rate_limits:
+    query: "50/tick"
+    debug: "30/tick"
+    dev_aux: "20/tick"
+    deploy: "10/h"
+    admin: "10/h"
+    sdk_fetch: "5/min"
+
+  tools:
+    # --- Onboarding ---
+    - name: swarm_get_info
+      category: Onboarding
+      input_schema: {}
+      output_schema:
+        version: string
+        tick_rate: u32
+        world_name: string
+        player_count: u32
+      rate_limit: "100/min"
+      required_scope: "swarm:read"
+      subject_source: player_id
+      replay_class: read_replay_safe
+      visibility_filter: none
+      rate_limit_key: per_player
+
+    - name: swarm_get_snapshot
+      category: Onboarding
+      input_schema:
+        player_id: PlayerId
+      output_schema:
+        tick: u64
+        entities: "[Entity]"
+        terrain: TerrainGrid
+        resources: "[Resource]"
+        truncated: bool
+        omitted_count: u32
+      rate_limit: "1/tick"
+      required_scope: "swarm:read"
+      subject_source: player_id
+      replay_class: read_replay_safe
+      visibility_filter: fog_of_war
+      rate_limit_key: per_player
+
+    - name: swarm_get_resources
+      category: Onboarding
+      input_schema:
+        player_id: PlayerId
+      output_schema:
+        resources: "[Resource]"
+        storage: StorageInfo
+        income_rate: f64
+      rate_limit: "10/tick"
+      required_scope: "swarm:read"
+      subject_source: player_id
+      replay_class: read_replay_safe
+      visibility_filter: owner
+      rate_limit_key: per_player
+
+    - name: swarm_list_rooms
+      category: Onboarding
+      input_schema:
+        player_id: PlayerId
+      output_schema:
+        rooms: "[{id, level, controller_level}]"
+      rate_limit: "10/tick"
+      required_scope: "swarm:read"
+      subject_source: player_id
+      replay_class: read_replay_safe
+      visibility_filter: fog_of_war
+      rate_limit_key: per_player
+
+    - name: swarm_get_room
+      category: Onboarding
+      input_schema:
+        room_id: RoomId
+      output_schema:
+        terrain: TerrainGrid
+        entities: "[Entity]"
+        resources: "[Resource]"
+        controller: ControllerInfo
+      rate_limit: "10/tick"
+      required_scope: "swarm:read"
+      subject_source: world
+      replay_class: read_replay_safe
+      visibility_filter: fog_of_war
+      rate_limit_key: per_room
+
+    - name: swarm_list_drones
+      category: Onboarding
+      input_schema:
+        player_id: PlayerId
+      output_schema:
+        drones: "[{id, room, body, lifespan, status}]"
+      rate_limit: "10/tick"
+      required_scope: "swarm:read"
+      subject_source: player_id
+      replay_class: read_replay_safe
+      visibility_filter: owner
+      rate_limit_key: per_player
+
+    - name: swarm_get_drone
+      category: Onboarding
+      input_schema:
+        drone_id: DroneId
+      output_schema:
+        id: DroneId
+        room: RoomId
+        body: "[BodyPart]"
+        lifespan: u32
+        status: DroneStatus
+        code_hash: string
+        fuel_used: u64
+      rate_limit: "10/tick"
+      required_scope: "swarm:read"
+      subject_source: drone_id
+      replay_class: read_replay_safe
+      visibility_filter: owner_or_visible
+      rate_limit_key: per_drone
+
+    - name: swarm_get_code
+      category: Onboarding
+      input_schema:
+        drone_id: DroneId
+      output_schema:
+        code: bytes
+        hash: string
+        language: string
+        size: u32
+        last_deployed: u64
+      rate_limit: "20/tick"
+      required_scope: "swarm:read"
+      subject_source: drone_id
+      replay_class: read_replay_safe
+      visibility_filter: owner
+      rate_limit_key: per_drone
+
+    # --- Play ---
+    - name: swarm_get_leaderboard
+      category: Play
+      input_schema:
+        scope: string
+        limit: u32
+      output_schema:
+        entries: "[{player, gcl, rooms, drones}]"
+      rate_limit: "5/tick"
+      required_scope: "swarm:read"
+      subject_source: world
+      replay_class: read_replay_safe
+      visibility_filter: none
+      rate_limit_key: global
+
+    - name: swarm_get_replay
+      category: Play
+      input_schema:
+        tick_range: TickRange
+        player_id: PlayerId
+      output_schema:
+        ticks: "[TickData]"
+        entities: "[Entity]"
+        commands: "[Command]"
+        events: "[Event]"
+      rate_limit: "5/min"
+      required_scope: "swarm:read"
+      subject_source: world
+      replay_class: read_replay_safe
+      visibility_filter: fog_of_war
+      rate_limit_key: global
+
+    - name: swarm_get_events
+      category: Play
+      input_schema:
+        room_id: RoomId
+        tick_range: TickRange
+      output_schema:
+        events: "[{tick, type, data}]"
+      rate_limit: "10/tick"
+      required_scope: "swarm:read"
+      subject_source: world
+      replay_class: read_replay_safe
+      visibility_filter: fog_of_war
+      rate_limit_key: per_room
+
+    - name: swarm_get_terrain
+      category: Play
+      input_schema:
+        room_id: RoomId
+        bounds: Bounds
+      output_schema:
+        terrain_grid: TerrainGrid
+        size: Size
+      rate_limit: null  # host fn only
+      required_scope: "swarm:read"
+      subject_source: world
+      replay_class: read_replay_safe
+      visibility_filter: none
+      rate_limit_key: host_only
+
+    - name: swarm_get_path
+      category: Play
+      input_schema:
+        from: Position
+        to: Position
+        player_id: PlayerId
+      output_schema:
+        path: "[Position]"
+        distance: f64
+        cost: f64
+      rate_limit: null  # host fn only
+      required_scope: "swarm:read"
+      subject_source: player_id
+      replay_class: read_replay_safe
+      visibility_filter: fog_of_war
+      rate_limit_key: host_only
+
+    - name: swarm_get_visibility
+      category: Play
+      input_schema:
+        player_id: PlayerId
+      output_schema:
+        visible_rooms: "[RoomId]"
+        visible_entities: "[EntityId]"
+      rate_limit: "10/tick"
+      required_scope: "swarm:read"
+      subject_source: player_id
+      replay_class: read_replay_safe
+      visibility_filter: owner
+      rate_limit_key: per_player
+
+    - name: swarm_list_controllers
+      category: Play
+      input_schema:
+        player_id: PlayerId
+      output_schema:
+        controllers: "[{room, level, progress, owner}]"
+      rate_limit: "10/tick"
+      required_scope: "swarm:read"
+      subject_source: player_id
+      replay_class: read_replay_safe
+      visibility_filter: fog_of_war
+      rate_limit_key: per_player
+
+    - name: swarm_get_controller
+      category: Play
+      input_schema:
+        controller_id: ControllerId
+      output_schema:
+        room: RoomId
+        level: u32
+        progress: f64
+        owner: PlayerId
+        downgrade_timer: u32
+      rate_limit: "10/tick"
+      required_scope: "swarm:read"
+      subject_source: world
+      replay_class: read_replay_safe
+      visibility_filter: fog_of_war
+      rate_limit_key: per_room
+
+    - name: swarm_list_structures
+      category: Play
+      input_schema:
+        room_id: RoomId
+        player_id: PlayerId
+      output_schema:
+        structures: "[{id, type, pos, hits}]"
+      rate_limit: "10/tick"
+      required_scope: "swarm:read"
+      subject_source: player_id
+      replay_class: read_replay_safe
+      visibility_filter: fog_of_war
+      rate_limit_key: per_room
+
+    - name: swarm_get_structure
+      category: Play
+      input_schema:
+        structure_id: StructureId
+      output_schema:
+        id: StructureId
+        type: StructureType
+        pos: Position
+        hits: u32
+        capacity: u32
+        cooldown: u32
+      rate_limit: "10/tick"
+      required_scope: "swarm:read"
+      subject_source: world
+      replay_class: read_replay_safe
+      visibility_filter: fog_of_war
+      rate_limit_key: per_structure
+
+    - name: swarm_list_market_orders
+      category: Play
+      input_schema:
+        room_id: RoomId
+      output_schema:
+        orders: "[{id, type, resource, amount, price}]"
+      rate_limit: "10/tick"
+      required_scope: "swarm:read"
+      subject_source: world
+      replay_class: read_replay_safe
+      visibility_filter: none
+      rate_limit_key: per_room
+
+    - name: swarm_get_messages
+      category: Play
+      input_schema:
+        drone_id: DroneId
+      output_schema:
+        messages: "[{from, content, tick}]"
+      rate_limit: "10/tick"
+      required_scope: "swarm:read"
+      subject_source: drone_id
+      replay_class: read_replay_safe
+      visibility_filter: owner
+      rate_limit_key: per_drone
+
+    - name: swarm_get_economy
+      category: Play
+      input_schema:
+        player_id: PlayerId
+      output_schema:
+        income: f64
+        expenses: f64
+        storage_tax: f64
+        maintenance: f64
+      rate_limit: "10/tick"
+      required_scope: "swarm:read"
+      subject_source: player_id
+      replay_class: read_replay_safe
+      visibility_filter: owner
+      rate_limit_key: per_player
+
+    - name: swarm_get_drone_efficiency
+      category: Play
+      input_schema:
+        drone_id: DroneId
+      output_schema:
+        efficiency: f64
+        factors: "[EfficiencyFactor]"
+      rate_limit: "10/tick"
+      required_scope: "swarm:read"
+      subject_source: drone_id
+      replay_class: read_replay_safe
+      visibility_filter: owner
+      rate_limit_key: per_drone
+
+    - name: swarm_get_economy_trend
+      category: Play
+      input_schema:
+        player_id: PlayerId
+        ticks: u32
+      output_schema:
+        trend: "[{tick, metric, value}]"
+      rate_limit: "10/tick"
+      required_scope: "swarm:read"
+      subject_source: player_id
+      replay_class: read_replay_safe
+      visibility_filter: owner
+      rate_limit_key: per_player
+
+    # --- Deploy ---
+    - name: swarm_deploy
+      category: Deploy
+      input_schema:
+        player_id: PlayerId
+        drone_id: DroneId
+        wasm_bytes: bytes
+        metadata: Metadata
+      output_schema:
+        deploy_id: DeployId
+        accepted: bool
+        validation_errors: "[string]"
+      rate_limit: "10/h"
+      required_scope: "swarm:deploy"
+      subject_source: player_id
+      replay_class: idempotent_mutation
+      visibility_filter: owner
+      rate_limit_key: per_player
+
+    - name: swarm_validate_module
+      category: Deploy
+      input_schema:
+        wasm_bytes: bytes
+      output_schema:
+        valid: bool
+        errors: "[string]"
+        fuel_estimate: u64
+      rate_limit: "10/h"
+      required_scope: "swarm:deploy"
+      subject_source: player_id
+      replay_class: read_replay_safe
+      visibility_filter: none
+      rate_limit_key: per_player
+
+    - name: swarm_get_deploy_status
+      category: Deploy
+      input_schema:
+        deploy_id: DeployId
+      output_schema:
+        status: DeployStatus
+        errors: "[string]"
+        deployed_at: u64
+      rate_limit: "20/tick"
+      required_scope: "swarm:read"
+      subject_source: player_id
+      replay_class: read_replay_safe
+      visibility_filter: owner
+      rate_limit_key: per_player
+
+    - name: swarm_list_deployments
+      category: Deploy
+      input_schema:
+        player_id: PlayerId
+      output_schema:
+        deployments: "[{id, drone_id, status, at}]"
+      rate_limit: "20/tick"
+      required_scope: "swarm:read"
+      subject_source: player_id
+      replay_class: read_replay_safe
+      visibility_filter: owner
+      rate_limit_key: per_player
+
+    - name: swarm_get_world_config
+      category: Deploy
+      input_schema: {}
+      output_schema:
+        rules: "[RuleModule]"
+        mods: "[ModInfo]"
+        limits: Limits
+        tick_rate: u32
+      rate_limit: "10/tick"
+      required_scope: "swarm:read"
+      subject_source: world
+      replay_class: read_replay_safe
+      visibility_filter: none
+      rate_limit_key: global
+
+    - name: swarm_get_world_rules
+      category: Deploy
+      input_schema: {}
+      output_schema:
+        rule_modules: "[RuleModule]"
+        parameters: Parameters
+        version: string
+      rate_limit: "10/tick"
+      required_scope: "swarm:read"
+      subject_source: world
+      replay_class: read_replay_safe
+      visibility_filter: none
+      rate_limit_key: global
+
+    # --- Debug ---
+    - name: swarm_get_tick_trace
+      category: Debug
+      input_schema:
+        tick: u64
+      output_schema:
+        commands: "[Command]"
+        state_diff: StateDiff
+        rejections: "[Rejection]"
+        metrics: Metrics
+      rate_limit: "30/tick"
+      required_scope: "swarm:debug"
+      subject_source: world
+      replay_class: read_replay_safe
+      visibility_filter: admin_scope
+      rate_limit_key: global
+
+    - name: swarm_get_engine_stats
+      category: Debug
+      input_schema: {}
+      output_schema:
+        tick_duration: u64
+        player_count: u32
+        memory: MemoryStats
+        cpu: CpuStats
+        sandbox_stats: SandboxStats
+      rate_limit: "30/tick"
+      required_scope: "swarm:debug"
+      subject_source: world
+      replay_class: read_replay_safe
+      visibility_filter: admin_scope
+      rate_limit_key: global
+
+    - name: swarm_get_sandbox_profile
+      category: Debug
+      input_schema:
+        drone_id: DroneId
+      output_schema:
+        fuel_used: u64
+        host_calls: u32
+        memory_peak: u64
+        execution_time: u64
+      rate_limit: "30/tick"
+      required_scope: "swarm:debug"
+      subject_source: drone_id
+      replay_class: read_replay_safe
+      visibility_filter: admin_scope
+      rate_limit_key: per_drone
+
+    - name: swarm_list_errors
+      category: Debug
+      input_schema:
+        player_id: PlayerId
+        limit: u32
+      output_schema:
+        errors: "[{tick, drone, code, detail}]"
+      rate_limit: "20/tick"
+      required_scope: "swarm:debug"
+      subject_source: player_id
+      replay_class: read_replay_safe
+      visibility_filter: admin_scope
+      rate_limit_key: per_player
+
+    - name: swarm_get_state_checksum
+      category: Debug
+      input_schema:
+        tick: u64
+      output_schema:
+        checksum: string
+        algorithm: string
+        scope: string
+      rate_limit: "30/tick"
+      required_scope: "swarm:debug"
+      subject_source: world
+      replay_class: read_replay_safe
+      visibility_filter: admin_scope
+      rate_limit_key: global
+
+    - name: swarm_simulate
+      category: Debug
+      input_schema:
+        commands: "[Command]"
+        assumptions: Assumptions
+      output_schema:
+        trace: TickTrace
+        authoritative: false
+        assumptions: Assumptions
+        confidence: f64
+      rate_limit: "50/tick"
+      required_scope: "swarm:debug"
+      subject_source: player_id
+      replay_class: read_replay_safe
+      visibility_filter: owner
+      rate_limit_key: per_player
+
+    - name: swarm_dry_run
+      category: Debug
+      input_schema:
+        wasm_bytes: bytes
+        tick_count: u32
+      output_schema:
+        trace: TickTrace
+        fuel_used: u64
+        errors: "[string]"
+      rate_limit: "50/tick"
+      required_scope: "swarm:debug"
+      subject_source: player_id
+      replay_class: read_replay_safe
+      visibility_filter: owner
+      rate_limit_key: per_player
+
+    # --- Admin ---
+    - name: swarm_admin_challenge
+      category: Admin
+      input_schema:
+        challenge: string
+        signature: string
+      output_schema:
+        granted: bool
+        scope: string
+        expiry: u64
+      rate_limit: "5/min"
+      required_scope: "swarm:admin"
+      subject_source: admin_id
+      replay_class: admin_critical
+      visibility_filter: admin_scope
+      rate_limit_key: per_admin
+
+    - name: swarm_admin_set_world_config
+      category: Admin
+      input_schema:
+        key: string
+        value: string
+      output_schema:
+        accepted: bool
+        applied_at: u64
+      rate_limit: "10/h"
+      required_scope: "swarm:admin"
+      subject_source: admin_id
+      replay_class: admin_critical
+      visibility_filter: admin_scope
+      rate_limit_key: per_admin
+
+    - name: swarm_admin_rollback
+      category: Admin
+      input_schema:
+        target_tick: u64
+      output_schema:
+        rollback_id: RollbackId
+        state: StateInfo
+      rate_limit: "5/h"
+      required_scope: "swarm:admin"
+      subject_source: admin_id
+      replay_class: admin_critical
+      visibility_filter: admin_scope
+      rate_limit_key: per_admin
+
+    - name: swarm_admin_ban_player
+      category: Admin
+      input_schema:
+        player_id: PlayerId
+        reason: string
+        duration: u32
+      output_schema:
+        banned: bool
+        expiry: u64
+      rate_limit: "10/h"
+      required_scope: "swarm:admin"
+      subject_source: admin_id
+      replay_class: admin_critical
+      visibility_filter: admin_scope
+      rate_limit_key: per_admin
+
+    - name: swarm_admin_force_gc
+      category: Admin
+      input_schema:
+        scope: string
+      output_schema:
+        freed_bytes: u64
+        duration: u64
+      rate_limit: "5/h"
+      required_scope: "swarm:admin"
+      subject_source: admin_id
+      replay_class: admin_critical
+      visibility_filter: admin_scope
+      rate_limit_key: per_admin
+
+    - name: swarm_admin_get_audit_log
+      category: Admin
+      input_schema:
+        scope: string
+        limit: u32
+      output_schema:
+        entries: "[{timestamp, actor, action, detail}]"
+      rate_limit: "30/tick"
+      required_scope: "swarm:admin"
+      subject_source: admin_id
+      replay_class: read_replay_safe
+      visibility_filter: admin_scope
+      rate_limit_key: per_admin
+
+    # --- SDK ---
+    - name: swarm_sdk_fetch
+      category: SDK
+      input_schema:
+        language: string
+        include_examples: bool
+      output_schema:
+        sdk_code: string
+        type_definitions: string
+        examples: string
+        abi_version: string
+        min_engine_version: string
+      rate_limit: "5/min"
+      required_scope: "swarm:read"
+      subject_source: world
+      replay_class: read_replay_safe
+      visibility_filter: none
+      rate_limit_key: global
+
+    # --- Resources ---
+    - name: resources/list
+      category: Resources
+      input_schema: {}
+      output_schema:
+        resources: "[{type, name, category}]"
+      rate_limit: "50/tick"
+      required_scope: "swarm:read"
+      subject_source: world
+      replay_class: read_replay_safe
+      visibility_filter: none
+      rate_limit_key: global
+
+    - name: resources/read
+      category: Resources
+      input_schema:
+        resource_type: ResourceType
+      output_schema:
+        type: ResourceType
+        name: string
+        category: string
+        base_value: f64
+        rarity: string
+      rate_limit: "50/tick"
+      required_scope: "swarm:read"
+      subject_source: world
+      replay_class: read_replay_safe
+      visibility_filter: none
+      rate_limit_key: global
+
+  capability_profiles:
+    onboarding:
+      categories: [Onboarding, SDK, Resources]
+      default_assignment: "all authenticated clients"
+    play:
+      categories: [Play, Economy]
+      default_assignment: "World players, Arena spectators"
+    deploy:
+      categories: [Deploy]
+      default_assignment: "all authenticated clients"
+    debug:
+      categories: [Debug]
+      default_assignment: "developers / Arena hosts"
+    admin:
+      categories: [Admin]
+      default_assignment: "server owner / Admin certificate"
+
+  websocket_security:
+    agent_ws:
+      model: "per-message seq + MAC (ed25519)"
+      description: "Each message carries a monotonically increasing sequence number and MAC. Replay detection: seq must exceed last received value or connection is dropped. MAC covers (seq, tick, payload)."
+    browser_ws:
+      model: "read-only"
+      description: "Browser WebSocket receives broadcasts only (tick deltas, event streams). Write operations go through MCP/HTTP path."
+    replay_ws:
+      model: "read-only + seek"
+      description: "Replay clients can request historical tick ranges but cannot inject new commands."
+    agent_ws_signature:
+      header: "Swarm-Request-Signature"
+      covers: "(method, uri, timestamp, seq, body_hash)"
+      seq_rule: "monotonically increasing; server validates and updates last_seq"
+      violation: "seq rollback or MAC mismatch → disconnect + audit log"
+
+# =============================================================================
+# 4. Host Functions — all 5 with ABI signatures, budgets, fuel costs
+# =============================================================================
+host_functions:
+  description: "WASM modules import these host functions to call engine services."
+  total_functions: 5
+  functions:
+    - name: host_get_terrain
+      index: 1
+      abi_signature: "(room_id: u32, out_ptr: i32, out_len: i32) -> i32"
+      read_only: true
+      description: "Get room terrain data"
+      max_output: "8 KB"
+      per_call_fuel:
+        base: 500
+        incremental: null
+      per_call_budget: null  # counted against total
+      per_tick_budget: null
+
+    - name: host_get_objects_in_range
+      index: 2
+      abi_signature: "(x: i32, y: i32, range: u32, out_ptr: i32, out_len: i32) -> i32"
+      read_only: true
+      description: "Get entities within range of (x,y)"
+      max_output: "64 KB"
+      per_call_fuel:
+        base: 2000
+        incremental: "+100/entity"
+      per_call_budget: null
+      per_tick_budget: 5  # max calls per tick
+
+    - name: host_path_find
+      index: 3
+      abi_signature: "(from_x: i32, from_y: i32, to_x: i32, to_y: i32, opts_ptr: i32, opts_len: i32, out_ptr: i32, out_len: i32) -> i32"
+      read_only: true
+      description: "A* pathfinding"
+      max_output: "8 KB"
+      per_call_fuel:
+        base: "500 × nodes"
+        incremental: "+200 × edges"
+      per_call_budget: null
+      per_tick_budget: 10  # max calls per tick
+
+    - name: host_get_world_config
+      index: 4
+      abi_signature: "(key_ptr: i32, key_len: i32, out_ptr: i32, out_len: i32) -> i32"
+      read_only: true
+      description: "Read world configuration value"
+      max_output: "16 KB"
+      per_call_fuel:
+        base: 1000
+        incremental: null
+      per_call_budget: null
+      per_tick_budget: 5
+
+    - name: host_get_world_rules
+      index: 5
+      abi_signature: "(rule_id_ptr: i32, rule_id_len: i32, out_ptr: i32, out_len: i32) -> i32"
+      read_only: true
+      description: "Read rule module data"
+      max_output: "16 KB"
+      per_call_fuel:
+        base: 1000
+        incremental: null
+      per_call_budget: null
+      per_tick_budget: 1
+
+  total_host_call_budget: "1,000/tick/player"
+  host_call_output_limits:
+    host_path_find: "8 KB"
+    host_get_objects_in_range: "64 KB"
+    host_get_world_config: "16 KB"
+    host_get_world_rules: "16 KB"
+    host_get_terrain: "8 KB"
+
+  abi_error_priority:
+    - { code: -1, name: ERR_MEMORY_BOUNDS, condition: "out_ptr/out_len out of bounds" }
+    - { code: -2, name: ERR_ABI_VERSION, condition: "ABI version / schema mismatch" }
+    - { code: -3, name: ERR_NOT_VISIBLE, condition: "Entity not visible" }
+    - { code: -4, name: ERR_BUDGET_EXHAUSTED, condition: "Per-call budget exhausted" }
+    - { code: -5, name: ERR_PLAYER_BUDGET, condition: "Per-player budget exhausted" }
+    - { code: -6, name: ERR_GLOBAL_BUDGET, condition: "Global budget exhausted" }
+    - { code: -7, name: ERR_VALIDATION, condition: "Function-specific validation failure" }
+    - { code: -8, name: ERR_OUTPUT_SIZE, condition: "Output size exceeded" }
+    - { code: -9, name: ERR_TIMEOUT, condition: "Timeout (online execution only; replay does not re-run COLLECT)" }
+
+# =============================================================================
+# 5. Limits — all capacity constants
+# =============================================================================
+limits:
+  description: "Authoritative global capacity limits. All other docs reference these values."
+
+  game_limits:
+    commands_per_player_per_tick: 100
+    per_player_drone_cap: 500
+    per_player_drone_cap_note: "adjustable via world.toml"
+    global_drone_cap: 10000
+    global_entity_cap: 50000
+    drone_lifespan: 1500
+    drone_lifespan_unit: "ticks"
+    max_body_parts: 50
+    max_construction_sites: 100
+    safe_mode_duration: 500
+    safe_mode_duration_unit: "ticks"
+    reservation_timeout: 1000
+    reservation_timeout_unit: "ticks"
+    downgrade_timer: 5000
+    downgrade_timer_unit: "ticks"
+    global_storage_capacity: 1000000
+    global_storage_capacity_unit: "units"
+    global_storage_capacity_note: "adjustable via world.toml"
+
+  wasm_limits:
+    wasm_memory_max: "128 MB"
+    wasm_memory_max_note: "cgroup process-level; WASM linear memory 64 MB"
+    sandbox_cpu: "cpu.max = 250000 3000000"
+    sandbox_cpu_note: "0.25s per 3s period"
+    per_player_sandbox_deadline: "2500ms"
+    per_player_sandbox_deadline_mode: "World"
+    mcp_simulate_max_ticks: 100
+    mcp_simulate_max_entities: 1000
+    pathfinding_budget: 100000
+    pathfinding_budget_unit: "explored nodes/tick (engine global)"
+    pathfinding_result_path_max: 500
+    pathfinding_result_path_max_unit: "nodes"
+
+  tick_trace_retention:
+    hot: "7d"
+    warm: "30d"
+    cold: "180d"
+
+  replay:
+    keyframe_interval: 100
+    keyframe_interval_unit: "ticks"
+    code_update_cooldown: 5
+    code_update_cooldown_unit: "ticks"
+    code_update_cooldown_note: "World minimum; configurable via world.toml"
+
+  hardware_baseline:
+    target_active_players: 500
+    target_hardware: "64 GB RAM, 32 cores"
+    hard_cap_players: 1000
+    hard_cap_behavior: "exceeding triggers degraded mode with admission gating"
+    worker_pool_size: "min(max_pool, active_players)"
+    worker_pool_max: 256
+    degraded_mode: "refuse new WASM execution when over hard cap; already-ticking players continue"
+
+  fair_share_admission:
+    pathfinding:
+      global_budget: 100000
+      unit: "explored nodes/tick"
+      allocation: "floor(100000 / active_players)"
+      exhaustion: "first-come-first-served; ERR_BUDGET_EXHAUSTED when quota exceeded"
+      recompute: "at tick start, fixed for entire tick"
+    host_calls:
+      global_budget: 1000
+      unit: "calls/tick/player"
+      allocation: "fixed per-player cap"
+    snapshot:
+      global_budget: "256 KB"
+      allocation: "fixed per-player cap"
+
+# =============================================================================
+# 6. TickTrace Envelope — field list
+# =============================================================================
+tick_trace_envelope:
+  description: "TickInputEnvelope fields for replay determinism. All fields are authoritative."
+  total_fields: 22
+  fields:
+    - { name: api_version, type: u32, description: "API registry version" }
+    - { name: module_hash, type: "[u8; 32]", description: "WASM module Blake3 hash" }
+    - { name: wasmtime_version, type: string, description: "Wasmtime engine version" }
+    - { name: effective_tick, type: u64, description: "Effective tick number" }
+    - { name: wasm_status, type: enum, description: "WASM execution result" }
+    - { name: snapshot_hash, type: "[u8; 32]", description: "Input snapshot hash" }
+    - { name: commands_hash, type: "[u8; 32]", description: "Output commands hash" }
+    - { name: deploy_events, type: "[DeployEvent]", description: "Deploy event list" }
+    - { name: rollback_events, type: "[RollbackEvent]", description: "Rollback event list" }
+    - { name: admin_events, type: "[AdminEvent]", description: "Admin event list" }
+    - { name: world_config_hash, type: "[u8; 32]", description: "World configuration hash" }
+    - { name: mods_lock_hash, type: "[u8; 32]", description: "Rule module lock hash" }
+    - { name: engine_abi_version, type: u32, description: "Engine ABI version" }
+    - { name: core_idl_version, type: u32, description: "Core IDL version" }
+    - { name: world_action_manifest_hash, type: "[u8; 32]", description: "World Action Manifest hash" }
+    - { name: validator_version, type: u32, description: "Validator version" }
+    - { name: rejection_reason_registry_version, type: u32, description: "RejectionReason registry version" }
+    - { name: system_manifest_hash, type: "[u8; 32]", description: "Phase 2b System Manifest hash" }
+    - { name: limits_manifest_hash, type: "[u8; 32]", description: "Limits Manifest hash" }
+    - { name: host_abi_version, type: u32, description: "Host Function ABI version" }
+    - { name: canonical_codec_version, type: u32, description: "Canonical Codec version" }
+    - { name: visibility_truncation_version, type: u32, description: "Visibility/Truncation algorithm version" }
+
+# =============================================================================
+# 7. Direction4 — enum
+# =============================================================================
+direction4:
+  description: "4-direction enum used by Move command. 8-direction (NE/NW/SE/SW) is a future RFC, not in current core."
+  type: enum
+  values:
+    - { name: North, value: 0 }
+    - { name: South, value: 1 }
+    - { name: East, value: 2 }
+    - { name: West, value: 3 }
+
+# =============================================================================
+# 8. SwarmError JSON-RPC Envelope
+# =============================================================================
+swarm_error_envelope:
+  description: "Unified MCP/API error format. MCP shared error code -32000 reserved for unclassified internal errors; specific errors use error.code string."
+  format: jsonrpc_2.0
+  schema:
+    jsonrpc: "2.0"
+    error:
+      code: "RejectionReason (string)"
+      message: "Human-readable detail (max 256 chars)"
+      data:
+        command_index: "u32 (optional)"
+        rejection_detail: "max 512 bytes (optional)"
+    id: "<request_id>"
+  reserved_code:
+    code: -32000
+    usage: "unclassified internal errors; specific errors use error.code string"
+
+# =============================================================================
+# 9. ResourceOperation — all operation types
+# =============================================================================
+resource_operation:
+  description: "All operation types that involve resource manipulation. Subset of CommandAction."
+  operations:
+    - name: Harvest
+      action_index: 2
+      category: core
+      description: "Harvest a resource from target entity"
+      resource_flow: "source → drone"
+    - name: Transfer
+      action_index: 3
+      category: core
+      description: "Transfer resources locally to target"
+      resource_flow: "drone → target"
+    - name: Withdraw
+      action_index: 4
+      category: core
+      description: "Withdraw resources from structure"
+      resource_flow: "structure → drone"
+    - name: TransferToGlobal
+      action_index: 12
+      category: global_storage
+      description: "Deposit resources to global storage"
+      resource_flow: "drone → global"
+    - name: TransferFromGlobal
+      action_index: 13
+      category: global_storage
+      description: "Withdraw resources from global storage"
+      resource_flow: "global → drone"
+    - name: Drain
+      action_index: 15
+      category: special_attack
+      description: "Continuously drain resources from target"
+      resource_flow: "target → drone"

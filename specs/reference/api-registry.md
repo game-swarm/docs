@@ -1,5 +1,7 @@
 # Swarm API Registry — 权威事实源
 
+> **机器可读权威源**: [game_api.idl.yaml](game_api.idl.yaml)。Markdown 表格由此文件生成。冲突时以 YAML 为准。
+
 > **本文档是 Swarm 所有 API 合约的单一权威来源**。CommandAction、RejectionReason、MCP Tools、Host Functions、容量限制均以此文档为准。其他文档只能引用，不得重新声明可冲突的表格或列表。
 
 ## 原则
