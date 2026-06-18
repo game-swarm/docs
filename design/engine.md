@@ -306,9 +306,13 @@ Swarm:     Move = Action  → 每 tick 移动 OR 采集 OR 攻击 OR 建造
 | **Snapshot per-player (WASM)** | 256KB | tick() 输入；fog_of_war 过滤后的可见实体 |
 | **Snapshot player display** | 分页传输 | 展示用，非 WASM 输入；不受 fog_of_war 限制 |
 | **Commands per player per tick** | max 100 | 可配置拒绝策略 |
-| **Pathfinding requests** | max 100 per player per tick | 超出排队或拒 |
+| **Pathfinding requests** | max 10 per player per tick | 超限 deterministic fail |
+| **Pathfinding budget** | 100,000 explored nodes/tick | 引擎全局；per-player 按活跃玩家数 fair-share 分配 |
+| **Pathfinding result path** | 500 nodes max | 返回路径最大长度；超长截断 |
 | **FDB transaction** | 小事务（head/manifest/hash/pointer） | tick 内世界 head 推进；大 blob 进入对象存储 |
 | **TickTrace/keyframe retention** | 7d (hot) / 30d (warm) / 180d (cold) | 可配置 |
+
+**Per-player fair-share admission**: 引擎全局预算（如 pathfinding 100,000 explored nodes/tick）按活跃玩家数均分。每玩家份额 = `floor(global_budget / active_players)`。若 active_players 为 0，不执行分配。玩家超出其份额 → 当前调用 deterministic reject（路径返回部分结果或 `ERR_BUDGET_EXHAUSTED`）。引擎在 tick 开始时计算份额，整个 tick 内份额不变。份额按调用顺序消耗——先到先得，后续超份额即拒。此机制防止单玩家垄断全局寻路资源，保证公平性。
 
 **Arena 独立预算**：Arena 使用独立的 tick/collect/simulate budget，不继承 World 的 3s 模型。Arena pathfinding 和 visibility 缓存大小减半（5,000 / 25,000）。
 

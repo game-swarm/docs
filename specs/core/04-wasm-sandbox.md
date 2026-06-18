@@ -301,7 +301,7 @@ cargo test --test wasm_sandbox -- --test-threads=1
 | 执行时间（墙钟） | 2500 ms | Epoch interruption |
 | WASM 模块体积 | 5 MB | 预校验 |
 | Host function 调用 | 1000/tick | 计数 |
-| path_find 调用 | 10/tick | 计数 |
+| path_find 调用 | 10/tick | 计数；全局预算 100,000 explored nodes/tick，per-player fair-share 分配（见 engine.md §3.4.2） |
 | get_objects_in_range 调用 | 5/tick | 计数 |
 | 输出 JSON 体积 | 256 KB | 返回值大小检查 |
 
@@ -388,7 +388,7 @@ TickTrace 中存储的审计日志受以下大小限制，防止磁盘 DoS：
 | 资源 | 限制 | 验证命令 |
 |------|------|---------|
 | `memory.max` | 128 MB | `cgget -r memory.max /swarm-sandbox` |
-| `cpu.max` | `50000 100000`（50% CPU） | `cgget -r cpu.max /swarm-sandbox` |
+| `cpu.max` | `250000 3000000`（每 3s 周期 0.25s） | `cgget -r cpu.max /swarm-sandbox` |
 | `pids.max` | 16 | `cgget -r pids.max /swarm-sandbox` |
 | `io.max` | `8:0 rbps=1048576 wbps=0`（仅 1MB/s 读，禁止写） | `cgget -r io.max /swarm-sandbox` |
 
