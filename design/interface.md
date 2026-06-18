@@ -16,21 +16,20 @@ AI：  MCP 看世界 → 生成 WASM → 部署 ───┘
 
 ### 4.1 MCP 工具分类
 
-> **权威工具清单见 [API Registry](specs/reference/api-registry.md) §3** — 47 tools across game + auth + economy IDL sources.
+> **权威工具清单见 [API Registry](specs/reference/api-registry.md) §3** — 56 game tools + 11 auth tools.
 >
 > 以下为**概念分类概述**，不列完整表。所有工具的 canonical schema、replay_class、rate_limit、security columns 以 Registry 为准。本表仅作方向性说明，不得用于实现引用。
 
 | 类别 | 代表性工具 | 说明 |
 |------|-----------|------|
-| **世界查看** | `swarm_get_snapshot`, `swarm_get_terrain`, `swarm_get_objects_in_range` | AI agent 感知世界的「眼睛」 |
-| **部署** | `swarm_deploy` (deploy_mutation), `swarm_validate_module` | WASM 上传与预检 |
-| **调试** | `swarm_explain_last_tick`, `swarm_profile`, `swarm_dry_run_commands` | 开发者诊断 |
-| **学习** | `swarm_simulate`, `swarm_sdk_fetch` | 离线模拟与 SDK 自举 |
-| **经济** | `swarm_get_economy`, `swarm_get_drone_efficiency` | 资源流查询 |
+| **世界查看** | `swarm_get_snapshot`, `swarm_get_terrain`, `swarm_list_drones`, `swarm_get_room` | AI agent 感知世界的「眼睛」 |
+| **部署** | `swarm_deploy` (deploy_mutation), `swarm_validate_module`, `swarm_list_modules` | WASM 上传与预检 |
+| **调试** | `swarm_explain_last_tick`, `swarm_get_tick_trace`, `swarm_dry_run`, `swarm_simulate` | 开发者诊断与离线模拟 |
+| **经济** | `swarm_get_economy`, `swarm_get_drone_efficiency`, `swarm_get_economy_trend` | 资源流查询 |
 | **认证** | 见 [auth_api.idl.yaml](specs/reference/auth_api.idl.yaml) | 设备注册、证书管理、passkey 恢复等 |
-| **锦标赛** | `swarm_tournament_*` | 竞技赛事管理 |
+| **锦标赛** | `swarm_tournament_create`, `swarm_tournament_status`, `swarm_match_result` | 竞技赛事管理 |
 
-> ⚠️ **已移除的工具**（不在 canonical registry）：`swarm_rollback` → `swarm_admin_rollback`（管理工具），`swarm_get_schema`/`swarm_get_docs`/`swarm_get_available_actions` → 集成到 SDK + API Registry，`swarm_inspect_entity` → `swarm_get_drone`，`swarm_submit_csr` → `swarm_register_challenge` + `swarm_auth_login`，`swarm_token_refresh` → `swarm_auth_refresh`，`swarm_change_password`/`swarm_federated_login` → 见 auth_api.idl.yaml
+> ⚠️ **已从 registry 移除的工具**：`swarm_attack`/`swarm_build`/`swarm_move`/`swarm_spawn` → MCP 不做游戏动作；`swarm_oauth2_login`/`swarm_oauth2_callback` → 统一证书认证；`swarm_rollback` → `swarm_admin_rollback`；`swarm_inspect_entity` → `swarm_get_drone`；`swarm_inspect_room` → `swarm_get_room`；`swarm_get_objects_in_range` → host function（非 MCP 工具）；`swarm_dry_run_commands` → `swarm_dry_run`；`swarm_token_refresh` → `swarm_auth_refresh`
 
 ### 4.1a MCP Capability Profiles
 
@@ -38,11 +37,12 @@ MCP 工具按 capability profile 分组。详见 [API Registry](specs/reference/
 
 | Profile | 包含工具 | 适用场景 |
 |---------|---------|---------|
-| onboarding | 首次接入流程工具（auth + help） | AI agent 首次接入 |
-| play | 游戏过程工具（world view + actions + economy） | 日常游戏 |
+| onboarding | 首次接入流程工具（auth + help + docs） | AI agent 首次接入 |
+| play | 游戏过程工具（world view + queries + economy） | 日常游戏 |
 | deploy | 部署管理工具（upload + validate + list） | 代码部署 |
 | debug | 调试与性能分析工具 | 开发诊断 |
 | admin | 管理工具（证书吊销、账号恢复等） | 服务器管理 |
+| arena | 赛事管理工具（创建/预提交/状态/结果） | 竞技赛事 |
 
 ### 4.2 明确不在 MCP 中
 
@@ -109,7 +109,7 @@ fn host_get_world_rules(out_ptr: i32, out_len: i32) -> i32;
 
 ### 5.4 Command Schema 与 RejectionReason
 
-参见 [API Registry](specs/reference/api-registry.md) §1 — 19 指令 (11核心+2Global+6特殊攻击)
+参见 [API Registry](specs/reference/api-registry.md) §1 — CommandAction 完整定义（核心指令 + Global Storage + 特殊攻击 + Custom Actions）
 
 Notes:
 - Move: 4方向 (N/S/E/W)。8方向为 Future RFC

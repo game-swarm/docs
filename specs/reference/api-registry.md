@@ -4,7 +4,7 @@
 
 > **本文档是 Swarm 所有 API 合约的单一权威来源**。CommandAction、RejectionReason、MCP Tools、Host Functions、Economy Operations、容量限制均以此文档为准。其他文档只能引用，不得重新声明可冲突的表格或列表。
 
-**生成日期**: 2026-06-18 | **API 版本**: `0.3.0` (game_api) / `0.1.0` (auth_api) / `0.1.0` (economy)
+**生成日期**: 2026-06-18 | **API 版本**: `0.4.0` (game_api) / `0.1.0` (auth_api) / `0.1.0` (economy)
 **权威源**: [game_api.idl.yaml](game_api.idl.yaml), [auth_api.idl.yaml](auth_api.idl.yaml), [economy.idl.yaml](economy.idl.yaml)
 
 ## 原则
