@@ -1,6 +1,6 @@
 # Economy Balance Sheet — Vanilla / Tutorial / Standard
 
-> **R15 B7 修复**。本文档证明 Vanilla/Standard 世界的 maintenance curve 与 anti-snowball 目标一致性，并提供 1/5/20/50 房间的数值闭环验证。
+> **R15 B7 + B6/D3/D4 修复**。本文档证明 Vanilla/Standard 世界的 maintenance curve 与 anti-snowball 目标一致性，并提供 1/5/20/50 房间的数值闭环验证。**所有费率、公式以 `specs/core/08-resource-ledger.md` §2 统一参数表为唯一权威源。**
 
 ## 1. Maintenance Curve
 
@@ -26,6 +26,8 @@ upkeep = base_upkeep × rooms × (1 + rooms / room_soft_cap)
 
 维护费随房间数呈 **超线性增长**（O(n²) 趋势）。50 房间的维护费是 5 房间的 40 倍（而非 10 倍线性）。
 
+存储税使用 Resource Ledger §2.2 tiered 公式（`storage_tax_tiers = [(30,0),(60,1),(85,5),(100,20)]`），以下场景中的存储税数值均由此公式导出。
+
 ## 2. 收支平衡表
 
 ### 2.1 Standard 模式 — 1 房间
@@ -39,7 +41,7 @@ upkeep = base_upkeep × rooms × (1 + rooms / room_soft_cap)
 | 支出项 | 量/tick | 说明 |
 |--------|:------:|------|
 | 维护费 | 55 | base 50 + 1²/10 = 5 |
-| 存储税 | 0 | 存储 < 30% 免税（tier 0） |
+| 存储税 | 0 | 存储 < 30% 免税（tier 0，见 Resource Ledger §2.2） |
 | **总支出** | **55** | |
 
 | 净流量 | 量/tick |
@@ -151,32 +153,4 @@ Tutorial 模式弱维护费 + 长保护期，适合新手学习。Vanilla 模式
 
 ## 6. 存储税均衡证明 (Storage Tax Equilibrium Proof)
 
-存储税使用 tiered 税率形成自然均衡点：
-
-```
-Tiers: [(30%, 0 bp), (60%, 1 bp), (85%, 5 bp), (100%, 20 bp)]
-```
-
-**均衡条件**：当玩家的存储税支出 ≥ 其被动收入（Controller income）时，存储量不再增长。
-
-设存储量为 `S`（占容量 `C` 的比例 `p = S/C`），有效税率 `τ(p)`：
-
-```
-τ(0.30) = 0          （免税）
-τ(0.60) = 1 bp       （S × 0.0001 / tick）
-τ(0.85) = 5 bp       （S × 0.0005 / tick）
-τ(1.00) = 20 bp      （S × 0.002 / tick）
-```
-
-**均衡点**（以标准容量 1,000,000 为例）：
-
-| 存储量 | 税率 | 每 tick 税 | 均衡所需 Controller 收入 |
-|--------|------|:---------:|:----------------------:|
-| 300,000 (30%) | 0 bp | 0 | 0（免税，可无限囤积） |
-| 600,000 (60%) | 1 bp | 60 | RCL 3 (30/tick 净亏) |
-| 850,000 (85%) | 5 bp | 425 | RCL 5+ (200/tick 净亏) |
-| 1,000,000 (100%) | 20 bp | 2,000 | 极难维持（大帝国才可能） |
-
-**证明**：对于任何理性玩家，存储量 `p ≥ 0.85` 时的边际税率 (20 bp) 大于任何 Controller 能提供的 passive income。因此存储量在 85%–100% 区间形成自然天花板——超过此点的玩家必须通过 active income（harvesting）补贴存储税，形成经济压力。此机制无需硬性 cap 即可防止无限囤积。
-
-> 此证明假设 `global_storage_tax_tiers` 使用默认值 `[(30,0),(60,1),(85,5),(100,20)]`。服主可通过修改 tiers 改变均衡点位置。
+存储税使用 Resource Ledger §2.2 权威 tiered 公式计算。下表中税率由 `storage_tax_tiers = [(30,0),(60,1),(85,5),(100,20)]` 导出。

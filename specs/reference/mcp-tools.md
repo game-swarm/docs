@@ -1,5 +1,7 @@
 # MCP 工具参考
 
+> 权威源: [game_api.idl.yaml](game_api.idl.yaml) → [api-registry.md](api-registry.md) (生成)
+
 > **权威工具清单见 [API Registry](api-registry.md) §3** — 46 工具。本文档提供逐工具详细说明。
 >
 > MCP 是 AI agent 的操作界面——与人类玩家的 Web UI 完全同级。

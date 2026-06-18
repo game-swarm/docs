@@ -544,6 +544,59 @@ Swarm 是一个**可配置的游戏引擎平台**——每个世界实例（worl
 | **新玩家保护** | 首次 spawn 后 **500 tick safe_mode** | 房间内无敌，不可被攻击/Claim/Hack，详见 §3.1a 新手房间分配策略 |
 | **新手过渡期 (soft_launch)** | safe_mode 结束后 1500 tick `soft_launch_duration` | 仅 PvE 威胁（中立 NPC、资源潮、公共事件）。PvP 不可用。结束后 50 tick 前广播警告 |
 
+#### soft_launch 后 PvP 渐进过渡 (D6/B)
+
+> **D6/B 裁决**：soft_launch 结束后不是 PvP 的硬开关，而是分阶段渐进过渡，防止玩家在保护期结束瞬间被老玩家清场。
+
+##### 过渡阶段定义
+
+```
+soft_launch 结束 (tick T):
+  │
+  ├─ Phase 1: First-Attack Insurance (T ~ T+200 tick, "缓冲期")
+  │   ├─ PvP 启用但受限：
+  │   │   ├─ 攻击者首次攻击某玩家时，目标获得 50 tick 无敌盾（First-Attack Shield）
+  │   │   ├─ 无敌盾期间：所有来自该攻击者的 damage × 0，特殊攻击免疫
+  │   │   ├─ 无敌盾结束后 100 tick 冷却方可再次触发（防止盾牌循环）
+  │   │   └─ 玩家的被动行为（采集/建造/移动）不受限制
+  │   ├─ 被攻击者可见攻击来源（`attack_exposure = true`）
+  │   └─ 全局公告：`"Player <X> has initiated PvP combat — first-attack shield active for target"`
+  │
+  ├─ Phase 2: Soft PvP (T+200 ~ T+500 tick, "适应期")
+  │   ├─ First-Attack Shield 降级为 25 tick（半盾）
+  │   ├─ 伤害倍率：`damage_multiplier = 5000 bp`（50% 伤害）
+  │   └─ 玩家可主动声明 `pvp_ready`（通过 Controller 操作）提前进入全 PvP
+  │
+  └─ Phase 3: Full PvP (T+500 tick 后)
+      ├─ 标准 PvP 规则全部生效
+      └─ `pvp_enabled = true`，无额外保护
+```
+
+##### First-Attack Shield 详细规则
+
+| 属性 | 值 | 说明 |
+|------|-----|------|
+| shield_duration | 50 tick（Phase 1）/ 25 tick（Phase 2） | 被首次攻击触发 |
+| shield_cooldown | 100 tick | 同一攻击者-目标对的盾牌冷却 |
+| shield_scope | per-attacker | 仅免疫触发盾牌的攻击者；其他攻击者正常造成伤害 |
+| damage_reduction | 100%（Phase 1）/ 50%（Phase 2）+ 伤害倍率 50% | 完全免伤 / 部分免伤 |
+| special_attack_immune | true（Phase 1）/ false（Phase 2） | Phase 1 免疫 Hack/Drain/Disrupt 等 |
+| attacker_visible | true | 被攻击者获得攻击者 entity_id + 位置（即使超出正常视野） |
+
+##### 过渡阶段配置参数
+
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `soft_launch_duration` | 1500 tick | safe_mode 结束后的 PvE-only 期 |
+| `soft_launch_warning_ticks` | 50 tick | 提前警告时间 |
+| `first_attack_shield_phase1_duration` | 200 tick | Phase 1 全盾持续时间 |
+| `first_attack_shield_phase2_duration` | 300 tick | Phase 2 半盾持续时间 |
+| `first_attack_shield_duration` | 50 tick | 单次盾牌持续时间（Phase 1） |
+| `first_attack_shield_cooldown` | 100 tick | 盾牌冷却 |
+| `phase2_damage_multiplier` | 5000 bp | Phase 2 伤害倍率 (50%) |
+
+所有参数由服主在 `world.toml` 的 `[soft_launch]` 段中配置。Tutorial 世界默认 Phase 1/2 持续时间 = 0（直接进入全 PvP，因为 Tutorial 无 PvP）。
+
 #### Rhai 规则模组合同
 
 Rhai 模组必须遵守以下确定性合同，违反合同的模组在 CI 校验阶段被拒绝：

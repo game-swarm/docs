@@ -5,7 +5,7 @@
 # This file is validated by CI — do not edit Markdown tables directly.
 # =============================================================================
 
-api_version: "0.2.0"
+api_version: "0.3.0"
 
 # =============================================================================
 # 1. CommandAction — all 19 variants
@@ -226,11 +226,38 @@ command_action:
         description: "World Action Manifest custom_action"
 
 # =============================================================================
-# 2. RejectionReason — all 35+ variants with codes
+# 2. RejectionReason — 35 canonical codes + debug_detail (D2/B)
 # =============================================================================
 rejection_reason:
-  description: "All command rejection reasons. Covers Pipeline, Validation, MCP, and Runtime layers."
-  total_variants: 35
+  description: >
+    All command rejection reasons. Covers Pipeline, Validation, MCP, and Runtime layers.
+    Per D2/B: The 35 canonical codes are the wire enum. Detailed contextual information
+    (e.g. NotMovable, Fatigued, specific target state) goes into the `debug_detail` field,
+    NOT into additional RejectionReason enum variants. This keeps the wire enum stable
+    while providing rich debugging data.
+  total_canonical_codes: 35
+  debug_detail:
+    description: >
+      Non-canonical, human-readable detail string providing context beyond the
+      35 canonical codes. Examples: "NotMovable: encumbered by 3 units", "Fatigued:
+      action cooldown 12 ticks remaining", "PathBlocked: obstacle at (5,3)".
+      This field is NOT part of the RejectionReason wire enum — it is a separate
+      string payload that does not affect replay determinism.
+    max_length: 512
+    unit: "bytes"
+  detail_level:
+    description: >
+      Controls the verbosity of debug_detail in rejection responses. Allows
+      operators to tune information leakage vs debugging utility.
+    enum:
+      - value: competitive
+        description: "Minimal detail — only canonical code, no debug_detail. Tournament/ladder mode."
+      - value: practice
+        description: "Moderate detail — debug_detail includes cooldown/timer values, bot-facing hints."
+      - value: training
+        description: "Full detail — debug_detail includes exact state diffs, path traces, internal diagnostics."
+    default: competitive
+
   variants:
     # --- 2.1 Pipeline-level (pre-processing, not in enum proper) ---
     - code: InvalidJson
@@ -397,7 +424,7 @@ rejection_reason:
     NotAuthorized: "MCP-layer only; validation layer uses NotOwner"
 
 # =============================================================================
-# 3. MCP Tools — all 46 tools with security columns
+# 3. MCP Tools — 46 tools with security columns
 # =============================================================================
 mcp_tools:
   description: "All MCP tools available to clients. Grouped by capability profile."
@@ -411,7 +438,9 @@ mcp_tools:
     sdk_fetch: "5/min"
 
   tools:
-    # --- Onboarding ---
+    # =========================================================================
+    # Onboarding (8 tools)
+    # =========================================================================
     - name: swarm_get_info
       category: Onboarding
       input_schema: {}
@@ -538,7 +567,43 @@ mcp_tools:
       visibility_filter: owner
       rate_limit_key: per_drone
 
-    # --- Play ---
+    # =========================================================================
+    # Auth (2 tools) — added v0.3.0
+    # =========================================================================
+    - name: swarm_auth_login
+      category: Auth
+      input_schema:
+        credential: Credential
+        challenge_response: string
+      output_schema:
+        token: string
+        expiry: u64
+        scope: string
+        player_id: PlayerId
+      rate_limit: "10/min"
+      required_scope: "swarm:auth"
+      subject_source: none
+      replay_class: non_replayable
+      visibility_filter: none
+      rate_limit_key: per_ip
+
+    - name: swarm_auth_refresh
+      category: Auth
+      input_schema:
+        token: string
+      output_schema:
+        token: string
+        expiry: u64
+      rate_limit: "5/min"
+      required_scope: "swarm:auth"
+      subject_source: player_id
+      replay_class: non_replayable
+      visibility_filter: owner
+      rate_limit_key: per_player
+
+    # =========================================================================
+    # Play (14 tools)
+    # =========================================================================
     - name: swarm_get_leaderboard
       category: Play
       input_schema:
@@ -692,19 +757,6 @@ mcp_tools:
       visibility_filter: fog_of_war
       rate_limit_key: per_structure
 
-    - name: swarm_list_market_orders
-      category: Play
-      input_schema:
-        room_id: RoomId
-      output_schema:
-        orders: "[{id, type, resource, amount, price}]"
-      rate_limit: "10/tick"
-      required_scope: "swarm:read"
-      subject_source: world
-      replay_class: read_replay_safe
-      visibility_filter: none
-      rate_limit_key: per_room
-
     - name: swarm_get_messages
       category: Play
       input_schema:
@@ -762,7 +814,9 @@ mcp_tools:
       visibility_filter: owner
       rate_limit_key: per_player
 
-    # --- Deploy ---
+    # =========================================================================
+    # Deploy (6 tools)
+    # =========================================================================
     - name: swarm_deploy
       category: Deploy
       input_schema:
@@ -774,12 +828,19 @@ mcp_tools:
         deploy_id: DeployId
         accepted: bool
         validation_errors: "[string]"
+        fdb_version_counter: u64
+        object_store_key: string
       rate_limit: "10/h"
       required_scope: "swarm:deploy"
       subject_source: player_id
       replay_class: idempotent_mutation
       visibility_filter: owner
       rate_limit_key: per_player
+      notes: >
+        Uses deploy_mutation pattern (R16 B6): WASM blob is asynchronously uploaded
+        to the object store (see persistence.async_object_store_upload). The FDB commit
+        only writes a small manifest + hash pointer + fdb_version_counter.
+        The fdb_version_counter provides a strict total order for replay determinism.
 
     - name: swarm_validate_module
       category: Deploy
@@ -804,6 +865,8 @@ mcp_tools:
         status: DeployStatus
         errors: "[string]"
         deployed_at: u64
+        fdb_version_counter: u64
+        object_store_key: string
       rate_limit: "20/tick"
       required_scope: "swarm:read"
       subject_source: player_id
@@ -816,7 +879,7 @@ mcp_tools:
       input_schema:
         player_id: PlayerId
       output_schema:
-        deployments: "[{id, drone_id, status, at}]"
+        deployments: "[{id, drone_id, status, at, fdb_version_counter}]"
       rate_limit: "20/tick"
       required_scope: "swarm:read"
       subject_source: player_id
@@ -853,7 +916,9 @@ mcp_tools:
       visibility_filter: none
       rate_limit_key: global
 
-    # --- Debug ---
+    # =========================================================================
+    # Debug (7 tools)
+    # =========================================================================
     - name: swarm_get_tick_trace
       category: Debug
       input_schema:
@@ -964,7 +1029,9 @@ mcp_tools:
       visibility_filter: owner
       rate_limit_key: per_player
 
-    # --- Admin ---
+    # =========================================================================
+    # Admin (6 tools)
+    # =========================================================================
     - name: swarm_admin_challenge
       category: Admin
       input_schema:
@@ -1054,7 +1121,9 @@ mcp_tools:
       visibility_filter: admin_scope
       rate_limit_key: per_admin
 
-    # --- SDK ---
+    # =========================================================================
+    # SDK (1 tool)
+    # =========================================================================
     - name: swarm_sdk_fetch
       category: SDK
       input_schema:
@@ -1073,7 +1142,9 @@ mcp_tools:
       visibility_filter: none
       rate_limit_key: global
 
-    # --- Resources ---
+    # =========================================================================
+    # Resources (2 tools)
+    # =========================================================================
     - name: resources/list
       category: Resources
       input_schema: {}
@@ -1103,12 +1174,31 @@ mcp_tools:
       visibility_filter: none
       rate_limit_key: global
 
+  # ---------------------------------------------------------------------------
+  # RFC / Future tools — not in active tool count, not yet implemented
+  # ---------------------------------------------------------------------------
+  rfc_tools:
+    description: "Tools reserved for future RFC implementation. Not active, not included in total_tools count."
+    tools:
+      - name: swarm_list_market_orders
+        category: Play
+        rfc_status: future
+        rfc_tracking: "RFC-MARKET-001"
+        input_schema:
+          room_id: RoomId
+        output_schema:
+          orders: "[{id, type, resource, amount, price}]"
+        notes: >
+          Market subsystem is an RFC feature. This tool is defined for forward
+          compatibility but is NOT active. Do not emit in SDK codegen until
+          RFC-MARKET-001 is accepted and implemented.
+
   capability_profiles:
     onboarding:
-      categories: [Onboarding, SDK, Resources]
+      categories: [Onboarding, Auth, SDK, Resources]
       default_assignment: "all authenticated clients"
     play:
-      categories: [Play, Economy]
+      categories: [Play]
       default_assignment: "World players, Arena spectators"
     deploy:
       categories: [Deploy]
@@ -1137,7 +1227,7 @@ mcp_tools:
       violation: "seq rollback or MAC mismatch → disconnect + audit log"
 
 # =============================================================================
-# 4. Host Functions — all 5 with ABI signatures, budgets, fuel costs
+# 4. Host Functions — all 5 with ABI signatures, budgets, fuel costs, error priority
 # =============================================================================
 host_functions:
   description: "WASM modules import these host functions to call engine services."
@@ -1211,16 +1301,19 @@ host_functions:
     host_get_world_rules: "16 KB"
     host_get_terrain: "8 KB"
 
+  # ABI error priority table — per api-registry.md §4.5
+  # When multiple error conditions are met simultaneously, the first matching
+  # priority wins. Exhaustive ordering ensures deterministic error reporting.
   abi_error_priority:
-    - { code: -1, name: ERR_MEMORY_BOUNDS, condition: "out_ptr/out_len out of bounds" }
-    - { code: -2, name: ERR_ABI_VERSION, condition: "ABI version / schema mismatch" }
-    - { code: -3, name: ERR_NOT_VISIBLE, condition: "Entity not visible" }
-    - { code: -4, name: ERR_BUDGET_EXHAUSTED, condition: "Per-call budget exhausted" }
-    - { code: -5, name: ERR_PLAYER_BUDGET, condition: "Per-player budget exhausted" }
-    - { code: -6, name: ERR_GLOBAL_BUDGET, condition: "Global budget exhausted" }
-    - { code: -7, name: ERR_VALIDATION, condition: "Function-specific validation failure" }
-    - { code: -8, name: ERR_OUTPUT_SIZE, condition: "Output size exceeded" }
-    - { code: -9, name: ERR_TIMEOUT, condition: "Timeout (online execution only; replay does not re-run COLLECT)" }
+    - { priority: 1, code: -1, name: ERR_MEMORY_BOUNDS, condition: "out_ptr/out_len out of bounds" }
+    - { priority: 2, code: -2, name: ERR_ABI_VERSION, condition: "ABI version / schema mismatch" }
+    - { priority: 3, code: -3, name: ERR_NOT_VISIBLE, condition: "Entity not visible (visibility redaction)" }
+    - { priority: 4, code: -4, name: ERR_BUDGET_EXHAUSTED, condition: "Per-call budget exhausted" }
+    - { priority: 5, code: -5, name: ERR_PLAYER_BUDGET, condition: "Per-player budget exhausted" }
+    - { priority: 6, code: -6, name: ERR_GLOBAL_BUDGET, condition: "Global budget exhausted" }
+    - { priority: 7, code: -7, name: ERR_VALIDATION, condition: "Function-specific validation failure" }
+    - { priority: 8, code: -8, name: ERR_OUTPUT_SIZE, condition: "Output size exceeded" }
+    - { priority: 9, code: -9, name: ERR_TIMEOUT, condition: "Timeout (online execution only; replay does not re-run COLLECT)" }
 
 # =============================================================================
 # 5. Limits — all capacity constants
@@ -1299,17 +1392,19 @@ limits:
       allocation: "fixed per-player cap"
 
 # =============================================================================
-# 6. TickTrace Envelope — field list
+# 6. TickTrace Envelope — 22 fields including terminal_state
 # =============================================================================
 tick_trace_envelope:
-  description: "TickInputEnvelope fields for replay determinism. All fields are authoritative."
+  description: >
+    TickInputEnvelope fields for replay determinism. All fields are authoritative.
+    terminal_state replaces the legacy wasm_status enum with explicit variants.
   total_fields: 22
   fields:
     - { name: api_version, type: u32, description: "API registry version" }
     - { name: module_hash, type: "[u8; 32]", description: "WASM module Blake3 hash" }
     - { name: wasmtime_version, type: string, description: "Wasmtime engine version" }
     - { name: effective_tick, type: u64, description: "Effective tick number" }
-    - { name: wasm_status, type: enum, description: "WASM execution result" }
+    - { name: terminal_state, type: enum, description: "Terminal execution state (see terminal_state enum below)" }
     - { name: snapshot_hash, type: "[u8; 32]", description: "Input snapshot hash" }
     - { name: commands_hash, type: "[u8; 32]", description: "Output commands hash" }
     - { name: deploy_events, type: "[DeployEvent]", description: "Deploy event list" }
@@ -1327,6 +1422,34 @@ tick_trace_envelope:
     - { name: host_abi_version, type: u32, description: "Host Function ABI version" }
     - { name: canonical_codec_version, type: u32, description: "Canonical Codec version" }
     - { name: visibility_truncation_version, type: u32, description: "Visibility/Truncation algorithm version" }
+
+  terminal_state:
+    description: >
+      Replaces the legacy wasm_status field. Explicit terminal states for WASM
+      execution outcomes. Used for replay determinism — replay MUST produce the
+      identical terminal_state or the replay is invalid.
+    enum:
+      - name: Success
+        value: 0
+        description: "WASM execution completed successfully, commands produced"
+      - name: FuelExhausted
+        value: 1
+        description: "WASM fuel budget exhausted before completion"
+      - name: TimeoutExceeded
+        value: 2
+        description: "WASM execution exceeded wall-clock deadline"
+      - name: SnapshotOverBudget
+        value: 3
+        description: "Input snapshot exceeded per-player size budget"
+      - name: CommandBufferFull
+        value: 4
+        description: "Output command buffer exceeded capacity"
+      - name: InternalError
+        value: 5
+        description: "Engine internal error during WASM execution"
+      - name: NotExecuted
+        value: 6
+        description: "WASM was not executed this tick (e.g., replay from snapshot, degraded mode skip)"
 
 # =============================================================================
 # 7. Direction4 — enum
@@ -1354,6 +1477,7 @@ swarm_error_envelope:
       data:
         command_index: "u32 (optional)"
         rejection_detail: "max 512 bytes (optional)"
+        debug_detail: "max 512 bytes — non-canonical contextual detail (see rejection_reason.debug_detail)"
     id: "<request_id>"
   reserved_code:
     code: -32000
@@ -1395,3 +1519,120 @@ resource_operation:
       category: special_attack
       description: "Continuously drain resources from target"
       resource_flow: "target → drone"
+
+# =============================================================================
+# 10. Deploy — deploy_mutation + fdb_version_counter (R16 B6)
+# =============================================================================
+deploy:
+  description: >
+    Deploy subsystem architecture. Per R16 B6, deployments use a deploy_mutation
+    pattern: the full WASM blob is uploaded asynchronously to the object store,
+    and FDB only commits a small manifest record containing the hash pointer and
+    an fdb_version_counter. This keeps FDB transactions small and deterministic.
+  mechanism: deploy_mutation
+  fdb_version_counter:
+    description: >
+      Monotonically increasing counter maintained in FDB. Assigned atomically
+      with the deploy manifest commit. Provides a strict total order across all
+      deployments, which is critical for replay determinism — the replay engine
+      replays deploy events in fdb_version_counter order.
+    type: u64
+    atomicity: "incremented within the same FDB transaction as the deploy manifest"
+    replay_contract: "deploy events MUST be replayed in fdb_version_counter ascending order"
+
+  flow:
+    step_1_validate:
+      description: "Client calls swarm_validate_module or includes wasm_bytes in swarm_deploy"
+      actor: client
+    step_2_upload_blob:
+      description: "WASM blob uploaded to object store via async_object_store_upload (see persistence section)"
+      actor: engine
+      note: "Blob upload is async; the deploy call does not block on upload completion"
+    step_3_commit_manifest:
+      description: "FDB transaction commits manifest record: {deploy_id, drone_id, blob_hash, metadata, fdb_version_counter}"
+      actor: engine
+      note: "This is the only FDB write — small, fast, deterministic"
+    step_4_activate:
+      description: "On next tick boundary, engine loads WASM from object store by blob_hash and activates on drone"
+      actor: engine
+      note: "Activation is deferred to tick boundary for deterministic scheduling"
+
+  swarm_deploy_output:
+    deploy_id: DeployId
+    accepted: bool
+    validation_errors: "[string]"
+    fdb_version_counter: u64
+    object_store_key: string
+
+# =============================================================================
+# 11. Persistence — async_object_store_upload (D5/B)
+# =============================================================================
+persistence:
+  description: >
+    Persistence layer for large binary objects. Per D5/B, object-store blob
+    uploads are asynchronous — they do not block the FDB commit path. FDB only
+    stores a small manifest record with the blob hash pointer. This decouples
+    I/O throughput from transaction latency.
+  async_object_store_upload:
+    description: >
+      Asynchronous upload of binary blobs (WASM modules, replay recordings,
+      snapshot archives) to the object store. The upload runs in a background
+      task pool; the caller receives an immediate acknowledgment with an
+      object_store_key that can be polled for completion status.
+    storage_backend: "pluggable (default: local filesystem; production: S3-compatible)"
+    blob_types:
+      - type: wasm_module
+        max_size: "64 MB"
+        retention: "permanent (until all referencing drones are recycled)"
+        content_hash: Blake3
+      - type: replay_recording
+        max_size: "1 GB"
+        retention: "per tick_trace_retention policy"
+        content_hash: Blake3
+      - type: snapshot_archive
+        max_size: "256 MB"
+        retention: "per tick_trace_retention policy"
+        content_hash: Blake3
+    upload_contract:
+      invocation: "fire-and-forget from deploy flow (step 2)"
+      acknowledgment: "immediate — returns object_store_key"
+      completion_polling: "use swarm_get_deploy_status to check upload completion"
+      failure_mode: "retry with exponential backoff (max 3 attempts); permanent failure → deploy rejected"
+    fdb_manifest:
+      description: >
+        FDB stores only a small manifest record per blob: {blob_hash, object_store_key,
+        size, uploaded_at, status}. This record is part of the deploy_mutation FDB
+        transaction and is covered by fdb_version_counter ordering.
+      fields:
+        - blob_hash: "[u8; 32]"
+        - object_store_key: string
+        - size: u64
+        - uploaded_at: u64
+        - status: "enum { pending, uploaded, failed }"
+
+# =============================================================================
+# Changelog
+# =============================================================================
+changelog:
+  - version: "0.3.0"
+    date: "2026-06-18"
+    changes:
+      - "B1: Bump api_version to 0.3.0"
+      - "B2/D2: Add debug_detail field to RejectionReason; wire enum stays 35 canonical codes"
+      - "B2/D2: Add detail_level enum (competitive/practice/training) to control debug_detail verbosity"
+      - "B3: Remove swarm_list_market_orders from active tools → RFC section"
+      - "B3: Add swarm_auth_login and swarm_auth_refresh to Auth category"
+      - "B3: MCP tools now exactly 46 active; all have 5 security columns"
+      - "B4: TickTrace envelope: wasm_status → terminal_state with explicit enum (7 variants)"
+      - "B5: Deploy: add deploy_mutation mechanism + fdb_version_counter to swarm_deploy output"
+      - "D5/B: Add persistence section with async_object_store_upload contract"
+      - "Host functions: add explicit priority numbers to ABI error priority table"
+      - "SwarmError envelope: add debug_detail to error.data schema"
+  - version: "0.2.0"
+    date: "2026-06-18"
+    changes:
+      - "Initial structured IDL with 10 sections"
+  - version: "0.1.0"
+    date: "2026-06-18"
+    changes:
+      - "R15 B1+B4+H1: Initial authoritative registry"

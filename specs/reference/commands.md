@@ -1,5 +1,7 @@
 # Command API 参考
 
+> 权威源: [game_api.idl.yaml](game_api.idl.yaml) → [api-registry.md](api-registry.md) (生成)
+
 > **本文档为 API Registry 的派生展示**。权威定义见 [API Registry](api-registry.md)。本文档提供使用示例和上下文说明。
 >
 > 详见 `specs/gameplay/08-api-idl.md`、`specs/core/02-command-validation.md`

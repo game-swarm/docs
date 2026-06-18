@@ -24,6 +24,8 @@
 
 ## 2. Tick Commit 序列
 
+> **D5/B 裁决**：对象存储写入改为异步——FDB commit 先完成，blob upload 在后台执行。FDB 仅存储 manifest + content_hash + pointer，不等待 blob 写入结果。
+
 每个 tick 结束时执行以下持久化序列：
 
 ```
@@ -31,46 +33,75 @@ Phase A: Apply 完成
   ├─ 所有系统执行完毕，world state 确定
   ├─ state_checksum = Blake3(canonical_serialize(world))
   └─ TickTrace 完整序列化到内存 buffer
+  └─ 计算 content_hash = Blake3(compress(serialize(TickTrace)))
 
-Phase B: 对象存储写入（可并行）
-  ├─ Write tick_trace_blob = compress(serialize(TickTrace))
-  ├─ object_id = "{tick}/tick_trace.bin.zst"
-  ├─ content_hash = Blake3(tick_trace_blob)
-  └─ 写入对象存储，获得 object_store_etag
-
-Phase C: FDB 事务提交（原子）
+Phase B: FDB 事务提交（原子 — 先于对象存储写入）
   ├─ BEGIN FDB TRANSACTION
   ├─ INSERT tick_head (tick, state_checksum, timestamp)
-  ├─ INSERT tick_manifest (tick, object_id, content_hash, object_store_etag, blob_size)
+  ├─ INSERT tick_manifest (tick, object_id, content_hash, blob_size, upload_status = "pending")
+  │   └─ 注意：object_store_etag 此时为 NULL（blob 尚未写入）
   ├─ INSERT tick_hash_chain (tick, chain_hash = Blake3(prev_chain_hash || tick_head_hash))
   ├─ FOR each persistent state mutation:
   │   └─ UPDATE entity/resource/controller/... rows
   ├─ COMMIT
-  └─ 若 COMMIT 成功 → TickTrace 持久化完成
-     若 COMMIT 失败 → 事务回滚（对象存储中的 blob 成为孤儿，由 GC 清理）
+  └─ 若 COMMIT 成功 → tick 持久化完成（world state 已安全）
+     若 COMMIT 失败 → 事务回滚，tick 放弃
+
+Phase C: 对象存储异步写入（FDB commit 成功后触发）
+  ├─ 入队异步任务：write_blob(tick, tick_trace_binary, object_id)
+  ├─ 任务成功：
+  │   ├─ UPDATE tick_manifest SET upload_status = "complete", object_store_etag = <etag>
+  │   └─ TickTrace blob 可被 replay 读取
+  ├─ 任务失败（网络/超时）：
+  │   ├─ 重试最多 3 次（指数退避 1s/2s/4s）
+  │   ├─ 3 次均失败 → UPDATE tick_manifest SET upload_status = "failed"
+  │   └─ blob 缺失不影响 world state（FDB 已有完整状态），但该 tick replay 不可用
+  └─ 任务超时（> 5s）：
+      └─ 同失败处理
 
 Phase D: WAL 截断
   └─ 截断已提交 tick 的 WAL 条目
 ```
 
-### 关键不变量
+### Async Upload Status Tracking
 
-- **对象存储写入先于 FDB commit**：即使对象写入成功但 FDB commit 回滚，孤儿 blob 由 GC 清理。
-- **FDB commit 成功 = tick 持久化完成**：`tick_manifest` 行证明对象存储 blob 的存在性。
+`tick_manifest` 表扩展 `upload_status` 字段，跟踪每个 tick 的 blob 上传生命周期：
+
+| upload_status | 含义 | tick state 完整性 |
+|:---|------|:---:|
+| `pending` | blob 尚未写入对象存储 | ✅ FDB state 完整，replay 不可用 |
+| `uploading` | blob 正在写入（worker 已接管） | ✅ FDB state 完整 |
+| `complete` | blob 已写入，etag 已回填 | ✅✅ 完全持久化，replay 可用 |
+| `failed` | 3 次重试后仍失败 | ✅ FDB state 完整，replay 不可用 |
+
+**Replay 检查**：replay verifier 查询 `tick_manifest.upload_status`：
+- `complete` → 从对象存储拉取 blob，验证 hash
+- `pending` / `uploading` → 等待最多 30s 后重试；超时则降级为 `failed`
+- `failed` → 跳过该 tick（replay gap），标记 `terminal_state = audit_gap`
+
+**孤儿清理**：由于 FDB 先于对象存储写入，不再产生孤儿 blob。若 blob 写入成功但 etag 回填失败（FDB 更新超时），GC 通过对比对象存储中 blob 的 created_at 与 tick_manifest 中 upload_status 清理（`upload_status = 'failed'` 但对象存储中存在 blob → 保留 1h 后清理）。
+
+### 关键不变量（更新）
+
+- **FDB commit 成功 = tick 持久化完成**：`tick_manifest` 行证明 tick 已发生，`content_hash` 证明 blob 完整性。**blob 写入不再是 tick commit 的前提条件。**
+- **FDB 只存小对象**：`tick_manifest` 仅含 `object_id + content_hash + blob_size + upload_status`——无 blob 本体。
 - **FDB commit 失败 = tick 未发生**：world state 回滚到 Pre-Apply 快照，玩家 WASM 不重跑，tick 编号不递增。
 - **TickTrace hash chain 仅在 FDB commit 成功后追加**：prev_chain_hash 取自上一个已提交 tick，失败 tick 不产生链条目。
 
 ---
 
-## 3. 双写失败语义
+## 3. 持久化失败语义（D5/B async 模型）
 
-| 场景 | 对象存储状态 | FDB 状态 | 处理 |
-|------|:----------:|:------:|------|
-| 正常 | ✅ 已写入 | ✅ 已提交 | 正常 |
-| 对象存储写入失败 | ❌ 失败 | ❌ 回滚 | Tick 放弃，不递增 tick 编号 |
-| 对象存储写入超时 | ❓ 未知 | ❌ 回滚 | 即使对象最终写入成功，FDB 无对应 manifest → GC 清理 |
-| FDB commit 失败 | ✅ 已写入 | ❌ 回滚 | 对象成为孤儿 → GC 按 `created_at + orphan_ttl` 清理 |
-| FDB commit 超时 | ✅ 已写入 | ❓ 未知 | 重新查询 tick_head。若存在 + 匹配 content_hash = 成功；否则回滚 + GC |
+FDB commit 先于对象存储写入——以下为所有失败场景的处理：
+
+| 场景 | FDB 状态 | 对象存储状态 | 处理 |
+|------|:------:|:----------:|------|
+| 正常 | ✅ 已提交 | ✅ 已写入（异步完成） | 正常。`upload_status = complete` |
+| FDB commit 失败 | ❌ 回滚 | ❌ 未写入 | Tick 放弃，不递增 tick 编号 |
+| FDB commit 成功 + blob 写入成功 | ✅ 已提交 | ✅ 已写入 | 正常 |
+| FDB commit 成功 + blob 写入失败（3 次重试后） | ✅ 已提交 | ❌ 缺失 | `upload_status = failed`。world state 完整，replay 不可用 |
+| FDB commit 成功 + blob 写入超时（> 5s） | ✅ 已提交 | ❓ 未知 | 重试 3 次；仍失败 → `upload_status = failed` |
+| Blob 写入成功 + etag 回填失败 | ✅ 已提交 | ✅ 已写入 | 对象存储中存在 blob 但 manifest 中无 etag。GC 扫描：1h 后若 `upload_status != 'complete'` 则清理孤儿 blob |
 
 ---
 
@@ -119,7 +150,7 @@ Replay verifier 以 **FDB commit 的 manifest/hash 为权威**，不重新扫描
 | warm | 30d | tick + 30d 后转移至 cold |
 | cold | 180d | tick + 180d 后删除 |
 
-**孤儿清理**: 对象创建后 1h 内若无对应 `tick_manifest` 行 → 标记为 orphan → 24h 后删除。
+**孤儿清理**: 由于 FDB commit 先于 blob 写入，正常流程不产生孤儿 blob。唯一孤儿场景：blob 写入成功但 etag 回填失败 → GC 扫描 `upload_status != 'complete'` 但对象存储中存在对应 blob → 保留 1h 后删除。**正常 `upload_status = 'complete'` 的 blob 按 TTL 分层清理**（见上表）。
 
 ### 5.2 Keyframe GC
 
@@ -217,7 +248,7 @@ TickTrace {
 | 约束 | 要求 |
 |------|------|
 | FDB 事务大小 | 单 tick 事务 < 10KB（仅 tick_head + manifest + hash_chain row + small mutations） |
-| 对象存储写入超时 | 5s；超时 → tick 放弃，不重试对象写入 |
+| 对象存储异步写入超时 | 5s；超时 → 重试 3 次（指数退避 1s/2s/4s）；3 次均失败 → `upload_status = failed`，不阻塞 tick 循环 |
 | 对象存储读取 | 延迟 < 100ms p99 |
 | Keyframe 写入 | 异步，不阻塞 tick 循环 |
 | WAL 写入 | 同步，在 Apply 阶段每步写入 |

@@ -314,6 +314,76 @@ Swarm:     Move = Action  → 每 tick 移动 OR 采集 OR 攻击 OR 建造
 | **FDB transaction** | 小事务（head/manifest/hash/pointer） | tick 内世界 head 推进；大 blob 进入对象存储 |
 | **TickTrace/keyframe retention** | 7d (hot) / 30d (warm) / 180d (cold) | 可配置 |
 
+> **B7 补充**：以下容量推导和准入公式为本节新增。
+
+##### Aggregate CPU Admission Formula
+
+每 tick 的总 WASM CPU 预算由 tick budget 和活跃玩家数共同决定：
+
+```
+aggregate_cpu_budget = floor(TICK_BUDGET_COLLECT_MS × CPU_CORES × PER_CORE_MIPS)
+per_player_cpu_quota = floor(aggregate_cpu_budget / active_players)
+effective_per_player_quota = min(per_player_cpu_quota, MAX_FUEL)
+```
+
+其中：
+- `TICK_BUDGET_COLLECT_MS` = 2500ms（见 §3.4.1 COLLECT budget）
+- `CPU_CORES` = 引擎可用 CPU 核心数（默认 `num_cpus::get()`）
+- `PER_CORE_MIPS` = 每核每秒 Million Instructions（保守估算 ~500 MIPS/core）
+- `MAX_FUEL` = 10,000,000 fuel units（per-player hard cap）
+
+**Admission 决策**：每个玩家 WASM 执行时，其 fuel budget = `min(effective_per_player_quota, player_reserved_fuel)`。若 `effective_per_player_quota < MIN_FUEL`（默认 500,000），引擎拒绝新玩家 WASM 执行（`ERR_CPU_SATURATED`），已入玩家不受影响。此机制防止 CPU 过载扩散到已连接的活跃玩家。
+
+##### Worker Pool 推导
+
+Sandbox worker pool 动态伸缩，公式：
+
+```
+worker_pool_size = min(MAX_POOL, active_players)
+
+其中:
+  MAX_POOL = 1000（hard cap，编译期常量）
+  active_players = 当前活跃玩家数（有 WASM 模块部署 + 至少 1 个存活 drone）
+```
+
+**450 player scenario**: pool = min(1000, 450) = 450 workers
+**750 player scenario**: pool = min(1000, 750) = 750 workers
+**1000 player scenario**: pool = min(1000, 1000) = 1000 workers（pool 饱和）
+
+空闲 worker 保留 5min 后回收（见 §3.4.3）。新玩家连接时若 pool 未满且 `active_players < MAX_POOL`，fork 新 worker（若池中有空闲则复用）。
+
+##### 500/1000 Player Capacity Derivation
+
+**Target 500 活跃玩家推导**（单节点垂直扩展）：
+
+```
+输入假设:
+  - Tick interval = 3000ms
+  - Collect budget = 2500ms
+  - Per-player WASM execution p50 = 5ms, p99 = 15ms
+  - Snapshot build per player = ~0.5ms (shared snapshot, per-player view stitching)
+  - Execute phase = 400ms
+
+500 players × 5ms avg = 2500ms ← 等于 Collect budget
+  → 500 players at p50 execution time fully saturates Collect phase
+  → p99 players (15ms) cause排队，增大 tick 风险
+  → 500 = target（安全操作点，有余量处理 p99 延迟）
+```
+
+**Hard cap 1000 活跃玩家推导**：
+
+```
+1000 players × 5ms avg = 5000ms > Collect budget (2500ms)
+  → 依赖并行 worker pool 分摊
+  → 假设 1000 workers，p50=5ms，理论 peak = 5000ms 但并行化为 ~25ms wall-clock (1000 workers / 40 cores)
+  → 实际操作: snapshot stitching + dispatch overhead ≈ 500ms
+  → 余量: 2500ms - 500ms = 2000ms for execution
+  → 每玩家可用时间 = 2000ms / 1000 = 2ms (fuel throttled)
+  → 1000 = hard cap（引擎在此负载下仍可保证 tick 完成，但 per-player fuel 极度受限）
+```
+
+**超过 hard cap**: 新 WASM 部署被拒绝（`ERR_WORLD_FULL`），已部署但非活跃（无存活 drone）的玩家不计入 `active_players`。玩家可排队等待 slot 释放（drone 死亡、玩家登出）。
+
 **Per-player fair-share admission**: 引擎全局预算（如 pathfinding 100,000 explored nodes/tick）按活跃玩家数均分。每玩家份额 = `floor(global_budget / active_players)`。若 active_players 为 0，不执行分配。玩家超出其份额 → 当前调用 deterministic reject（路径返回部分结果或 `ERR_BUDGET_EXHAUSTED`）。引擎在 tick 开始时计算份额，整个 tick 内份额不变。份额按调用顺序消耗——先到先得，后续超份额即拒。此机制防止单玩家垄断全局寻路资源，保证公平性。
 
 > **权威容量定义**：所有容量上限和准入策略以 `specs/reference/api-registry.md` §5「全局容量限制」为准。engine.md 本节仅作性能合同（budget），数值引用自 registry 的权威列。
@@ -324,7 +394,7 @@ Swarm:     Move = Action  → 每 tick 移动 OR 采集 OR 攻击 OR 建造
 
 WASM 实例使用 **long-lived worker pool + per-tick clean Store/Instance reset**：
 
-- **Pool**：大小按 `max(min_pool, active_players)` 动态伸缩；空闲实例 5min 后回收
+- **Pool**：大小按 `min(MAX_POOL, active_players)` 动态伸缩（见 §3.4.2 Worker Pool 推导）；空闲实例 5min 后回收
 - **Per-tick reset**：memory 清零、fuel 重置、WASI 全部关闭后重新按需开启
 - **WASI 默认全部关闭**，仅开启确定性子集（由 engine 编译期固定）
 - **禁用的 WASI**：clock、random、filesystem、network、env、process、threads、atomics、SIMD

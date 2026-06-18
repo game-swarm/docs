@@ -57,21 +57,65 @@
 
 ---
 
-## 2. 费率模型（定点）
+## 2. 费率模型（定点）— 唯一经济权威
 
-| 费率参数 | 值 | 单位 | 说明 |
-|---------|-----|------|------|
-| `global_deposit_fee` | 100 | bp | 存入全局仓库费率 (1%) |
-| `global_withdraw_fee` | 500 | bp | 提取费率 (5%) |
+> **B6/D3/D4 裁决**：本文档为 Swarm 经济系统中所有费率、公式、参数的**唯一定义源**。
+> `design/economy-balance-sheet.md`、`design/gameplay.md` §8、`design/engine.md` 中所有经济计算必须引用本节参数，不得独立定义公式。
+
+### 2.1 统一参数表（全部使用 basis points，禁止浮点数）
+
+| 参数 | 值 | 单位 | 说明 |
+|------|-----|------|------|
+| **Global Transfer** | | | |
+| `global_deposit_fee` | 100 | bp | 存入全局仓库费率 (1.00%) |
+| `global_withdraw_fee` | 500 | bp | 提取费率 (5.00%) |
 | `global_transfer_delay` | 100 | tick | 全局提取延迟 |
-| `allied_transfer_fee` | 200 | bp | 联盟转移费率 (2%) |
+| **Allied Transfer** | | | |
+| `allied_transfer_fee` | 200 | bp | 联盟转移费率 (2.00%) |
 | `allied_transfer_delay` | 200 | tick | 联盟转移延迟 |
 | `allied_transfer_cooldown` | 500 | tick | 同目标联盟转移冷却 |
 | `allied_daily_cap` | 10,000 | units | 每日联盟转移上限 |
-| `storage_tax_rate` | 10 | bp/tick | 仓库存储税 (0.1%/tick) |
-| `new_player_transfer_lock` | 500 | tick | 新玩家禁止接收资源 |
+| **Storage Tax (累进)** | | | |
+| `storage_tax_tiers` | `[(30,0),(60,1),(85,5),(100,20)]` | (容量%, bp) | 累进存储税 tier 定义 |
+| `storage_tax_tier_0_threshold` | 30% | capacity% | 0–30% 免税 |
+| `storage_tax_tier_0_rate` | 0 | bp | Tier 0 税率 |
+| `storage_tax_tier_1_threshold` | 60% | capacity% | 30–60% |
+| `storage_tax_tier_1_rate` | 1 | bp | Tier 1 税率 (0.01%/tick) |
+| `storage_tax_tier_2_threshold` | 85% | capacity% | 60–85% |
+| `storage_tax_tier_2_rate` | 5 | bp | Tier 2 税率 (0.05%/tick) |
+| `storage_tax_tier_3_threshold` | 100% | capacity% | 85–100% |
+| `storage_tax_tier_3_rate` | 20 | bp | Tier 3 税率 (0.20%/tick) |
+| **Recycle** | | | |
 | `recycle_refund_base` | 5000 | bp | 基础退还比例 (50%) |
 | `recycle_refund_min` | 1000 | bp | 最低退还比例 (10%) |
+| **New Player Gate** | | | |
+| `new_player_transfer_lock` | 500 | tick | 新玩家禁止接收资源 |
+| `soft_launch_duration` | 1500 | tick | safe_mode 结束后 PvE-only 保护期 |
+
+### 2.2 存储税 tiered 公式
+
+```
+storage_tax(tick) = Σ over each tier i where storage_pct > tier_threshold[i]:
+    taxable_in_tier = min(storage_pct - tier_threshold[i], tier_width[i])
+    tax = taxable_in_tier × tier_rate[i] × global_storage_capacity / 10000
+```
+
+其中 `tier_width[i] = tier_threshold[i+1] - tier_threshold[i]`（最后一个 tier 宽度 = 100 - tier_threshold[last]）。
+
+**示例**（容量 1,000,000，存储量 750,000 = 75%）：
+- Tier 0 (0-30%): 300,000 × 0 bp = 0
+- Tier 1 (30-60%): 300,000 × 1 bp = 30
+- Tier 2 (60-75%): 150,000 × 5 bp = 75
+- **总税 = 105 / tick**
+
+### 2.3 Recycle 权威公式
+
+```
+recycle_refund = body_cost × remaining_lifespan / total_lifespan × recycle_refund_base / 10000
+recycle_refund = max(body_cost × recycle_refund_min / 10000, recycle_refund)
+```
+
+即 drone 在寿命 10% 时回收退还 10%，在寿命 100% 时退还 50%。`recycle_refund_base` = 5000 bp (50%)，`recycle_refund_min` = 1000 bp (10%)。新手保护（Tutorial 前 500 tick）退还 100%，由 world.toml `tutorial_recycle_refund_full_ticks` 控制。
 
 Allied transfer 附加约束：
 - 双方必须是同一联盟成员 ≥ 100 tick
@@ -149,7 +193,7 @@ PvE 资源产出通过 4 维账本控制，防止 faucet 无限放大：
 
 ## 6. ResourceAmount / ResourceRate 定点建模
 
-使用 D1 裁决的定点方案：
+使用 D1 裁决的定点方案。所有计算公式以 §2 统一参数表为准，此处仅声明类型约束：
 
 ```
 ResourceAmount: i64            # 资源量，整数
@@ -158,13 +202,11 @@ FeeBps: u16                    # 费率 (basis points, 0-10000)
 TransferDelay: u32             # 延迟 (tick)
 ```
 
-所有计算公式：
-
-```
-fee = amount * fee_bps / 10000
-recycle_refund = body_cost * remaining_lifespan * 5000 / total_lifespan / 10000
-recycle_refund = max(body_cost * 1000 / 10000, recycle_refund)  # min 10%
-```
+**公式引用**（权威定义见 §2）：
+- Global transfer fee: `amount * global_deposit_fee / 10000`（存入） / `amount * global_withdraw_fee / 10000`（提取）
+- Allied transfer fee: `amount * allied_transfer_fee / 10000`
+- Storage tax: tiered 公式见 §2.2
+- Recycle refund: lifespan 10%-50% 公式见 §2.3
 
 ### Empire Upkeep（帝国维护费）
 
@@ -178,7 +220,7 @@ room_soft_cap = 10 (Standard) / 15 (Vanilla) / 20 (Tutorial)
 
 维护费在 Resource Ledger 执行顺序中位于第 1 步（`UpkeepDeduction`），从玩家全局存储扣除。若全局存储不足，扣至 0 并记录 `UpkeepDeficit` 到 TickTrace。维护费 deficit 累积——连续 3 tick deficit 触发 drone 饥饿惩罚（效率 −50%），连续 10 tick deficit 触发 drone 强制死亡（age 加速 ×10）。
 
-**Recycle 权威公式**：Resource Ledger 为回收的单一权威源。回收退还比例 = `max(10%, remaining_lifespan / total_lifespan × 50%)`。即 drone 在寿命 10% 时回收退还 10%，在寿命 100% 时退还 50%。`recycle_refund_base` = 5000 bp (50%)，`recycle_refund_min` = 1000 bp (10%)。新手保护（Tutorial 前 500 tick）退还 100%，由 world.toml `tutorial_recycle_refund_full_ticks` 控制。
+**Recycle 权威公式见 §2.3**。回收退还比例 = `max(recycle_refund_min, remaining_lifespan / total_lifespan × recycle_refund_base)`，全部使用 basis points 定点计算。新手保护（Tutorial 前 500 tick）退还 100%，由 world.toml `tutorial_recycle_refund_full_ticks` 控制。
 
 ---
 
