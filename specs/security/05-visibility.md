@@ -223,21 +223,23 @@ GET /specs/reference/v1/world/rooms/:id/map → 仅地形（公开）
 
 ### 6.1 Overload 可观察性
 
+Overload 反馈通过 `OverloadPressure` ECS 组件暴露（详见 `design/gameplay.md` §Overload 反馈透明度）。
+
 ```
 attacker 视角（执行 Overload 的玩家）:
   - 可见: 是否成功执行（无拒绝码） + target_player_id
+  - 可见: 自己的 contribution 量（amount） + 目标当前总压力（total）
   - 不可见: target 的 actual_fuel（仅知 target 在当前世界中有可见实体）
-  - 不可见: target 是否真的因 Overload 受到影响
-  - 语义: "结果三等价"——Overload 成功 / target fuel 太低静默 no-op / target 不存在 ——
-          从 attacker 视角不可区分，attacker 仅知"命令已接受"
-  - 下一 tick 通过观察 target drone 是否停止行动来间接推断（合法信息）
+  - 不可见: 其他攻击者的 contribution（除非其他攻击者对当前玩家可见）
 
 target 视角（被 Overload 的玩家）:
   - 可见: 自身 fuel 变化（MCP `get_player_status`）
   - 可见: 自身 drone 因 fuel 不足未执行 action（MCP `swarm_explain_last_tick`）
-  - 不可见: 谁执行的 Overload
-  - 不可见: Overload 是否被应用（若 fuel 远高于扣除量，行为不变）
+  - 可见: OverloadPressure.total（当前累积压力） + 每个可见 source 的 contribution
+  - 不可见: 不可见 source 的 identity 和 contribution（不在 contribution 列表中暴露）
 ```
+
+不可见的攻击者不在 `contributions` 列表中暴露，防止通过 Overload 反馈反向定位隐身单位。`total` 字段始终对 target 可见，因为 target 可以观察自身的 fuel 下降来间接感知压力。
 
 ### 6.2 Hack 可观察性
 

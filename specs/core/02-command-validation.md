@@ -351,15 +351,7 @@ Drone 在 Phase 2b spawn_system 中创建——位于 death_mark（释放 room c
 
 **效果**: 消耗目标计算配额（短期压制，可恢复）。目标 `fuel budget` 减少 500k（默认 MAX_FUEL=10M 的 5%）。**下限**: `MAX_FUEL × 0.2`。**可见性约束**: 必须 `is_visible_to(target, attacker)`，不可攻击不可见玩家。**全局冷却**: 同一 `(world_id, target_player_id)` 每 50 tick 最多被 Overload 一次（不限攻击者数量）。
 
-**三种结果等价合同**：从攻击者视角，以下三种情况不可区分——消耗相同的 300 Energy、触发相同的 200 tick drone 冷却、触发相同的 50 tick 全局冷却、返回相同的 `Ok`：
-
-| 情况 | apply 前状态 | apply 行为 | 返回值 |
-|------|-------------|-----------|--------|
-| 成功 | target.fuel > floor + 500k | 正常扣除 500k | `Ok` |
-| 地板 | floor < target.fuel ≤ floor + 500k | 扣除至 floor | `Ok` |
-| 已在地板 | target.fuel == floor | 静默 no-op | `Ok` |
-
-外部不可区分是否触及 fuel 地板。攻击者只能通过目标后续行为变化间接推测（这是设计意图——Overload 是战术压制，不是间谍工具）。
+**反馈**: Overload 结果通过 `OverloadPressure` 组件暴露（详见 `design/gameplay.md` §Overload 反馈透明度）。攻击者可看到自己对目标的 contribution 和总压力；被攻击者可看到总压力及所有可见 source 的 contribution。
 
 **恢复**: 每 tick 恢复 `fuel_budget / 1000`（≈ 10k/tick 对于 10M 上限）。Fortify 立即清除 Overload 效果并重置恢复计时。恢复曲线可配置（world.toml `overload.fuel_recovery_rate`）。
 

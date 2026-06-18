@@ -615,7 +615,7 @@ Corrosive = 1.5        # 建筑怕腐蚀
 |---------|--------------|------|------|---------|------|
 | **Hack** | Claim | 夺取目标 drone：施加"控制锁"逐步建立控制——tick 1-2 目标减速 50%，tick 3-4 目标无法移动，tick 5 夺取成功（drone 转为 Neutral，停止执行 WASM，进入 idle）。5 tick 后自动恢复。idle 期间不消耗 lifespan。目标可通过 Disrupt 打断或 Fortify 净化控制锁 | 200 tick | 1000 Energy | 目标 `Psionic` 抗性 |
 | **Drain** | Carry + Work | 从目标建筑/存储中窃取资源，每 tick 转移 `carry_capacity` 单位 | 50 tick | 200 Energy/tick | 目标 `EMP` 抗性 |
-| **Overload** | RangedAttack | 消耗目标计算配额。目标 `fuel budget` 减少 500k（默认 MAX_FUEL=10M 的 5%）。**下限 MAX_FUEL × 0.2**。**必须满足 `is_visible_to(target, attacker)`——不可攻击不可见玩家。全局冷却：同一目标每 50 tick 最多被 Overload 一次（不限来源）。**Overload 返回静默结果——攻击者无法从结果推断目标 fuel 状态（信息泄露） | 200 tick（drone 冷却） | 300 Energy | 目标 `EMP` 抗性 |
+| **Overload** | RangedAttack | 消耗目标计算配额。目标 `fuel budget` 减少 500k（默认 MAX_FUEL=10M 的 5%）。**下限 MAX_FUEL × 0.2**。**必须满足 `is_visible_to(target, attacker)`——不可攻击不可见玩家。全局冷却：同一目标每 50 tick 最多被 Overload 一次（不限来源）。Overload 反馈通过 `OverloadPressure` 组件暴露（详见 §Overload 反馈透明度） | 200 tick（drone 冷却） | 300 Energy | 目标 `EMP` 抗性 |
 | **Debilitate** | Work | 给目标附加易伤状态。指定伤害类型抗性 ×2，持续 50 tick | 150 tick | 200 Energy | 目标 `Corrosive` 抗性 |
 | **Disrupt** | Attack | 打断目标当前动作（Drain/Hack 等持续动作立即终止）。不造成 HP 伤害 | 50 tick | 100 Energy | 目标 `Sonic` 抗性 |
 | **Fortify** | Tough | 自身/友方获得护盾（所有抗性 ×0.5）。**同时清除目标所有负面状态**（Debilitate/Drain/Overload/Hack控制锁），持续 100 tick | 300 tick | 400 Energy | 无——增益+净化 |
@@ -635,6 +635,61 @@ Corrosive = 1.5        # 建筑怕腐蚀
 - 5 tick 后自动恢复原 owner（Hack 自然到期）
 - 恢复前免疫再次 Hack
 - 可见性：对原 owner 保持可见（ally 级），对其他玩家为 enemy 级
+
+#### Overload 反馈透明度
+
+Overload 的反馈通过 ECS 组件 `OverloadPressure` 暴露，不再使用静默结果模型。
+
+##### OverloadPressure 组件
+
+每个实体（drone/structure/controller）可挂载 `OverloadPressure`：
+
+```
+OverloadPressure {
+    total: u32,                        // 当前累积压力值
+    contributions: Vec<Contribution>,  // 每个攻击者的贡献
+    tick_snapshot: u64,                // 上次更新的 tick
+}
+
+Contribution {
+    source_entity_id: EntityId,
+    amount: u32,
+}
+```
+
+##### 累积规则
+
+- 每 tick EXECUTE 阶段，所有指向同一 target 的 Overload action 合并写入 `OverloadPressure`
+- 只保留最新一次 snapshot tick 的数据（覆盖式，不追加历史）
+- target 实体销毁后组件自动清除
+
+##### 可见性模型
+
+| 角色 | 可见内容 | 约束 |
+|---|---|---|
+| 攻击者 | 自己的 contribution + 总压力 | 始终可见 |
+| 被攻击者 | 总压力 + 每个可见 source 的 contribution | 仅限 `is_visible(source, target)` 返回 true 的来源 |
+| 第三方 | 可见实体的 `OverloadPressure` | 受 visibility rules 约束 |
+
+不可见的攻击者不在 contribution 列表中暴露，防止通过 Overload 反馈反向定位隐身单位。
+
+##### 数据出口
+
+| 出口 | 说明 |
+|---|---|
+| **TickSnapshot** | 每个 entity 的 `OverloadPressure` 进入 snapshot |
+| **TickTrace / Replay** | 完整 OverloadPressure 包含在 TickTrace 中，可回溯 |
+| **MCP `swarm_get_entity`** | entity status 包含 `overload_pressure` 字段 |
+| **WebSocket 推送** | 可见性变更事件中附带 `overload_pressure` 增量 |
+
+##### 设计决策
+
+| 决策 | 结论 | 理由 |
+|---|---|---|
+| 历史存储 | 只保留当前 tick | 历史由 TickTrace/replay 覆盖，不增加状态存储 |
+| contribution 精度 | `u32`，不暴露小数 | 攻击公式内部可用 f64，对外只暴露整数 |
+| 隐藏攻击者 | 不可见则不出现在 contribution 列表 | 防止反向定位 |
+| 总压力是否区分来源 | 是，完整保留 contribution 列表 | 不区分来源则无法做反制决策 |
 
 #### 身体部件类型定义（`[[body_part_types]]`）
 
