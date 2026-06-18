@@ -373,71 +373,66 @@ Rhai 脚本执行
 
 | 阶段 | 机制 | 说明 |
 |------|------|------|
-| **签名** | Ed25519 签名（SHA-256 摘要） | 每个 `.rhai` 和 `mod.toml` 必须附带 `.sig` 签名文件；未签名 → 拒绝加载 |
-| **版本锁定** | `mod.toml` 声明 `version = "1.2.3"` + `api_version = "1"` | 引擎检查 API 版本兼容性；不兼容版本拒绝加载 |
-| **信任白名单** | `world.toml` 中 `[rhai] trusted_keys = [...]` | 仅白名单内公钥签名的模组可加载 |
-| **吊销 (CRL)** | `world.toml` 中 `[rhai] revoked_keys = [...]` | 被吊销密钥签名的模组拒绝加载——即使曾在白名单中 |
-| **Epoch 升级** | `world.toml` 中 `[rhai] epoch = N` | 服主提升 epoch → 所有旧签名失效，需重新签名。防止被吊销密钥的历史签名重放 |
+| **签名** | Ed25519 签名（blake3 摘要，整个 `.swarm-mod` 包） | `.swarm-mod` 归档附带 `.swarm-mod-signature`；签名无效 → 拒绝加载 |
+| **作者身份** | `mod.toml` 中 `[meta] author_pubkey` | 模组作者自行声明公钥。服主通过选择信任的 `.swarm-mod` 来源表达信任——下载即信任 |
+| **版本锁定** | `mod.toml` 声明 `version = "1.2.3"` + `engine = ">=0.8"` | 引擎检查版本兼容性；不兼容版本拒绝加载 |
+| **吊销 (CRL)** | `.swarm-mod` 签名通过 `author_pubkey` 验证 | 若作者密钥泄露，作者发布新版本模组（新 pubkey）+ 社区公告。无中心化 CRL——去中心化信任模型 |
 | **Operator Override** | `swarm mod disable <mod_id> --world <world>` | 运行时禁用指定模组（不卸载，仅暂停执行）。下次 tick 不再调用该模组钩子 |
 | **回滚策略** | 模组禁用后，其历史 effects 不回滚（已持久化到 FDB） | 世界状态不可逆——effects 一旦 apply 即永久生效。服主需通过新模组或手动修复纠正 |
 
 **进程内模式**（唯一生产运行模式）：Rhai engine 在核心引擎进程内执行。安全边界由 Ed25519 数字签名验证保证——所有模组必须签名，不存在"允许未签名"的宽松模式。
 
 - 签名验证在引擎启动时一次性完成，运行时无额外开销
-- 信任边界通过服主配置的公钥白名单控制（`world.toml` 中 `[rhai] trusted_keys = [...]`），而非进程边界
+- 信任决策由服主在安装 `.swarm-mod` 时做出（选择从哪个 URL 下载）——签名验证的是"代码确实来自声明的作者"，而非"作者是否在白名单中"。消除了中心化信任列表的维护负担
 - 模组超时（确定性 AST 节点预算超限）仅丢弃该模组本 tick 的 actions，不影响核心引擎或其他模组。AST 节点预算是确定性度量，同一输入在任何硬件上终止于相同节点，保证回放/重模拟一致性
 - 墙钟仅用于运维告警（如单模组 >2s 触发告警），不作为状态决定因素
 - RuleMod **禁止** inprocess 模式之外的其他执行模式——不存在 `[rhai] isolation` 切换选项
 
-**模组签名机制**：每个 `.rhai` 文件附带 `.sig` 文件（Ed25519 签名），引擎启动时验签：
+**模组签名机制**：整个模组作为一个 `.swarm-mod` tar.gz 归档分发，附带单个 Ed25519 签名。引擎安装时验签，启动时再次验签：
 
 ```
-empire-upkeep/
-├── mod.toml
+empire-upkeep-1.2.0.swarm-mod        # tar.gz 归档，标准命名: {name}-{version}.swarm-mod
+├── mod.toml                          # 含 author_pubkey 字段
 ├── init.rhai
-├── init.rhai.sig           # Ed25519 签名（对 init.rhai 的 SHA-256 摘要签名）
-├── tick_start.rhai
-├── tick_start.rhai.sig
-├── tick_end.rhai
-└── tick_end.rhai.sig
+├── tick_start.rhai                   # 可选
+└── tick_end.rhai                     # 可选
+
+empire-upkeep-1.2.0.swarm-mod-signature  # Ed25519 签名文件（与归档并行分发）
 ```
 
-- 签名由模组开发者使用 `swarm mod sign` 生成
-- 服主可配置信任的公钥列表（`world.toml` 中 `[rhai] trusted_keys = [...]`）
-- 引擎启动时验签：未签名或签名无效的 `.rhai` 文件**拒绝加载**，记录安全审计日志
-- `mod.toml` 也需签名（`mod.toml.sig`），防止配置篡改
+- 签名算法：`blake3(tar.gz归档)` → `Ed25519_sign(author_privkey, package_hash)`
+- `author_pubkey` 在 `mod.toml` 的 `[meta]` 中声明——**由模组作者自行声明，而非服主配置白名单**。服主通过选择信任哪个 `.swarm-mod` 来源来表达信任
+- 签名由模组开发者使用 `swarm mod pack` 生成，与打包一步完成
+- `.swarm-mod-signature` 与 `.swarm-mod` 归档并行分发（同一目录或 HTTP `Link` 头指向签名 URL）
+- 引擎安装时验签两次：`swarm mod add` 下载后立即验签 + 引擎启动时再次验签。任一失败 → `ModIntegrityError`，拒绝加载
 
 #### 模组签名
 
-模组签名确保只有经过认证的模组代码能在世界中执行。签名流程：
+模组签名确保模组代码来自声明的作者且未被篡改。签名流程：
 
 ```
 开发者侧:
-  1. 编写模组（.rhai 文件 + mod.toml）
-  2. swarm mod sign ./my-mod --key ~/.swarm/keys/mod-author.key
-     → 为每个 .rhai 文件和 mod.toml 生成对应的 .sig 文件
+  1. 编写模组（.rhai 文件 + mod.toml，含 author_pubkey）
+  2. swarm mod pack --key ~/.swarm/keys/author.ed25519
+     → 产出 {name}-{version}.swarm-mod + {name}-{version}.swarm-mod-signature
+  3. 上传两个文件到 GitHub Releases / CDN
 
 服主侧:
-  1. 安装模组: swarm mod install my-mod
-  2. 添加信任: swarm mod trust my-mod --key <author_pubkey>
-     或 world.toml 中配置:
-     [rhai]
-     trusted_keys = [
-       "kagurazaka:ed25519:abc123...",
-       "community:ed25519:def456..."
-     ]
-  3. 引擎启动时自动验签——未经信任密钥签名的模组拒绝加载
+  1. 安装模组: swarm mod add https://releases.example.com/mods/empire-upkeep-1.2.0.swarm-mod
+     → 自动下载 .swarm-mod + .swarm-mod-signature → 验证签名 → 解包到 ~/.swarm/mods/
+  2. world.toml 中引用（source = .swarm-mod URL, version = semver）
+  3. 引擎启动时再次验签（防止安装后文件被篡改）——验证失败拒绝启动
 ```
 
 **签名验证流程**（引擎侧）：
 
-1. 加载模组时，对每个 `.rhai` 文件计算 SHA-256 摘要
-2. 读取对应的 `.sig` 文件，使用声明方公钥验证 Ed25519 签名
-3. 公钥必须在 `trusted_keys` 白名单中
-4. 验证通过 → 正常加载；验证失败 → 拒绝加载 + 记录 `SecurityEvent::ModSignatureInvalid`
-5. `.sig` 文件缺失视为未签名 → 拒绝加载（无"允许未签名"的宽松模式）
+1. 引擎启动时读取 `mods.lock`，获取每个模组的 `author_pubkey`、`package_hash`、`signature`
+2. 对 `~/.swarm/mods/{name}/` 下的文件重新打包为 tar.gz → 计算 `blake3`
+3. 校验 `blake3 == mods.lock 中的 package_hash` — 不匹配 → 文件已被篡改 → `ModIntegrityError`
+4. 校验 `Ed25519_verify(author_pubkey, package_hash, signature)` — 不匹配 → 签名无效 → `ModIntegrityError`
+5. 验证通过 → 正常加载
 
-> **设计理由**: 无"允许未签名"模式——防止服主疏忽导致恶意模组注入。开发调试时使用 `swarm dev sign` 生成临时开发密钥签名。
+> **设计理由**：签名绑定到作者身份而非服主白名单（`trusted_keys`）。服主的信任决策体现在选择从哪个 URL 下载 `.swarm-mod`——若信任该作者，下载其发布的包；若不信任，不安装。这消除了中心化信任列表的维护负担，且与"无中心化市场"的设计一致。
 
 ### 5.1a 国际化
 
