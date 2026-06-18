@@ -152,6 +152,28 @@ AI Agent / CLI
                   └─────────────┘
 ```
 
+### 2.5 WebSocket 安全
+
+WebSocket 连接按客户端类型分为两条安全路径：
+
+**A. 已认证 Agent 会话（Authenticated WS）**：
+连接建立时通过 §10.5a WebSocket 证书握手完成身份绑定。会话建立后，**每条消息必须携带递增序列号 + MAC/Ed25519 签名**，防止会话内消息重放、注入或重排。具体要求：
+
+- `seq`: 单调递增序号（从 1 开始），接收方严格检查 `seq == last_seq + 1`
+- `mac`: 对 `SWARM-WS-MSG-V1\n<seq>\n<body_hash>` 的 Ed25519 签名，使用握手绑定的用户私钥
+- 签名验证通过后消息才能被处理；seq 跳跃视为安全事件 → 断开连接 + 审计日志
+- 服务端回复也必须附 seq（独立计数器）+ 服务端签名
+
+**B. 浏览器/公开观众（Read-Only Spectator）**：
+浏览器 WebSocket 连接**仅允许只读订阅**——接收 SSE 风格的推送事件流，不得发送任何写操作或认证消息。具体约束：
+
+- 公开 spectator WS 端点不接受 `Swarm-Certificate-Chain` 头部，不执行证书握手
+- 只读事件流仅包含公开世界状态（房间列表、在线玩家数、公开排行榜），不泄露玩家私有数据
+- 无 per-message 签名要求（只读、无状态变更）
+- 速率限制：每个 spectator 连接最多 10 events/s
+
+**决策记录 (D3)**：已认证 Agent WS 会话采用方案 B（per-message seq/MAC/signature），浏览器 spectator 采用方案 A（只读订阅）。
+
 ## 3. 认证
 
 > **权威凭证模型**：Swarm 的唯一权威身份凭证是应用层证书链 + 用户私钥签名。
@@ -197,6 +219,8 @@ AI 玩家令牌: `swarm:deploy swarm:read swarm:debug`。
 人类程序员令牌: `swarm:deploy swarm:read swarm:debug`（权限相同）。
 
 ## 4. MCP 工具 — 部署与管理
+
+> **MCP 工具授权 (authz)** 以 [API Registry §3.2 Capability Profiles](../reference/api-registry.md) 为权威来源。工具按 profile（`onboarding`、`play`、`deploy`、`debug`、`admin`）分组分配；每个 profile 对应特定 scope 和 rate limit。MCP 客户端的能力面由分配的 profile 决定，不在本文档中重复声明。
 
 ### 4.1 WASM 模块管理
 

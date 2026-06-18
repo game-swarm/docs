@@ -206,13 +206,8 @@ Swarm 支持三个扩展层级：
   │   │   ├── 资源竞争 → 先到先得（先执行者优先）
   │   │   └── 冲突 → 丢弃 + 记录 RejectionReason
   │   └── Spawn 命令在 Phase 2a 中只校验不入队
-  ├── Phase 2b: ECS Systems（部分并行）
-  │   ├── death_mark_system（标记待死亡 entity，释放 room cap 槽位）
-  │   ├── spawn_system（统一创建 Phase 2a 校验通过的 drone）
-  │   ├── combat_system（damage 先 → heal 后，同 tick 内结算）
-  │   ├── regeneration_system ─┐
-  │   ├── decay_system ────────┤ 并行（无数据竞争，与主线无依赖）
-  │   └── death_cleanup_system（实际 despawn，等全部系统完成）
+  │   ├── Phase 2b: ECS Systems
+  │   │   └── > **权威 Phase 2b 系统调度见 [System Manifest](specs/core/06-phase2b-system-manifest.md)** — 27 systems, serial spine + 3 parallel sets
   ├── FDB 原子提交（全或无）
   └── tick_counter 推进
 
