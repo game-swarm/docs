@@ -1140,7 +1140,6 @@ POST /mcp (JSON-RPC)
    - "transfer": 转移到指定 player_id（需该玩家 Ed25519 签名确认）
 4. **in-transit 资源处置**：
    - 进行中的 cargo transfer（`cargo_in_transit`）：立即取消，资源退回源 depot；若无源 depot 则进入世界丢弃池
-   - 活跃 market order（buy/sell）：立即取消，locked 资源退回；已匹配但未结算的 order 回滚
    - 未完成的 depot transaction：回滚，depot 状态恢复至操作前
    - 以上操作与资产处置（步骤 3）在同一 tick 原子执行
 5. 世界状态变更在下一 tick 生效（引擎侧处理）

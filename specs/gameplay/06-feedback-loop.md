@@ -110,7 +110,6 @@ Tick 2000+:     正常 PvP                         → 完整玩家交互
 | **资源抢占** | 低 | 多人抢同一 Source / Resource Surge——先到先得，但不损失已有资产 |
 | **房间占领竞速** | 低 | 多玩家试图 Claim 同一中立房间——输家仅损失 Claim drone，不损失基地 |
 | **Arena Challenge 嵌入 World** | 低 | 玩家可在 World UI 中向附近玩家发起小型 Arena 挑战（1v1, 100 tick, 对称初始资源）——输赢不影响 World 资产 |
-| **Market Contracts** | 低 | 老玩家发布资源运输/防御 bot challenge，新玩家接单获得安全奖励。失败仅损失 contract 押金 |
 
 #### AI Agent 首次部署引导
 

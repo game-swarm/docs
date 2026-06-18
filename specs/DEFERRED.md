@@ -68,16 +68,7 @@
 
 ## Phase 2 决策项
 
-### Market / Trading 完整实现
-
-- **来源**: B5 — Speaker 要求显式 deferral
-- **状态**: Phase 2 候选特性。当前从 IDL/默认 SDK 移除，仅保留 RFC 文档。Market 未来方向为 Transfer + Alliance 资源池的上层抽象（与 D3 裁决一致）。
-- **触发时机**: Phase 1 经济系统稳定后，独立经济模拟验证通过
-- **决策**:
-  - 价格发现机制（order book vs AMM vs 双边协商）
-  - 撮合引擎（per-tick batch auction vs continuous matching）
-  - 跨世界结算协议
-  - 反垄断/反操纵设计闭环
+### 反垄断/反操纵设计
 
 ---
 
@@ -91,7 +82,6 @@
 | 新玩家在饱和世界中的发展速度 | anti-snowball 机制是否提供可行发展窗口 | Phase 1 |
 | 100 账号批量注册 | PoW 成本是否构成有效门槛 | Phase 1 |
 | 大帝国 (20 rooms, 500 drones) 维护费可持续性 | O(n²) 维护费是否产生自然收敛 | Phase 2 |
-| Market 启用后的价格操纵攻击 | 反垄断机制有效性 | Phase 2 |
 
 ---
 

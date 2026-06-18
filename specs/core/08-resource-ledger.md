@@ -2,7 +2,7 @@
 
 > 详见 design/gameplay.md
 >
-> **R15 B9 修复**。本文档定义 Swarm 引擎中所有资源流动的唯一切入点（Transfer Gateway），消除 local transfer / global transfer / allied transfer / PvE award / Market 等多入口的资源逃逸路径。
+> **R15 B9 修复**。本文档定义 Swarm 引擎中所有资源流动的唯一切入点（Transfer Gateway），消除 local transfer / global transfer / allied transfer / PvE award 等多入口的资源逃逸路径。
 
 ## 原则
 
@@ -54,7 +54,6 @@
 | `SpawnCost` | Owner → Drone | 生成消耗 |
 | `UpkeepDeduction` | Owner → World | 维护费扣除 |
 | `StorageTax` | Storage → World | 存储税 |
-| `MarketTrade` | Player A ↔ Player B | 市场交易 (Future RFC) |
 | `ContractSettlement` | Contract → Participants | 合约结算 (Future RFC) |
 
 ---
@@ -232,7 +231,6 @@ room_soft_cap = 10 (Standard) / 15 (Vanilla) / 20 (Tutorial)
 
 | 入口 | 状态 | 替代方案 |
 |------|------|---------|
-| Market Orders | Future RFC | 暂不开放 |
 | Contract Settlement | Future RFC | Challenge Board 用非资源奖励 |
 | Merchant NPC | Future RFC | — |
 | Drone P2P Offer | Future RFC | Allied Transfer (受限) 部分覆盖 |

@@ -215,7 +215,6 @@ Allied Transfer 在 MVP 中以**受限合作（Restricted Cooperation）**模式
 
 | 特性 | RFC 标记 | 说明 |
 |------|:-------:|------|
-| Market Orders | `RFC-MARKET` | 挂单/吃单市场，限价单/市价单 |
 | Contract Settlement | `RFC-CONTRACT` | 智能合约结算，条件触发式转移 |
 | Merchant NPC | `RFC-MERCHANT` | NPC 商人，固定汇率买卖 |
 | Drone P2P Offer | `RFC-P2P` | 无人机间点对点报价交易 |
@@ -223,7 +222,7 @@ Allied Transfer 在 MVP 中以**受限合作（Restricted Cooperation）**模式
 | Escrow Service | `RFC-ESCROW` | 第三方托管服务 |
 | Resource Lending | `RFC-LEND` | 资源借贷（含利息） |
 
-代码中可使用 `enum` 变体预留这些操作类型（如 `MarketTrade`、`ContractSettlement`），但路由到 `unimplemented!()` 或返回 `Err(FeatureGate::FutureRfc)`。
+代码中可使用 `enum` 变体预留这些操作类型（如 `ContractSettlement`），但路由到 `unimplemented!()` 或返回 `Err(FeatureGate::FutureRfc)`。
 
 ### 3.4 Challenge Board 奖励约束
 

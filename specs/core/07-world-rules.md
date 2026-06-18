@@ -102,7 +102,6 @@ drone_decay_rate = 10000            # fixed<u32,4>: 1.0
 global_storage_enabled = true
 transfer_to_global_cost = { Energy = 0.01 }
 transfer_from_global_cost = { Energy = 0.05 }
-market_requires_terminal = true
 
 [combat]
 pvp_enabled = true

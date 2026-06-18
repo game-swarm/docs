@@ -88,7 +88,6 @@ LEADERBOARD: 公开。指标: GCL、房间数、drone 数。
   "terrain": [/* 所有可见房间的地形 */],
   "resources": { "energy": 5000, "minerals": {"H": 1200} },  // 仅自身
   "controller": { "level": 3, "progress": 4500 },            // 仅自身
-  "market_orders": [/* 可见订单 */],
   "leaderboard_snapshot": { "rank": 42, "gcl": 1500000 },
   "snapshot_tick": 4521,        // 快照构建时刻的 tick 编号——与 WASM tick(snapshot) 输入一致
   "truncated": false,           // 是否因 256KB 限制被截断
