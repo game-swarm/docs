@@ -121,7 +121,14 @@ issue_certificate_bundle(
 - 失败恢复：证书签发失败时 Auth 不创建 session，整体事务回滚——不出现「user 存在但无证书」的半状态
 - 审计：每次签发写入 FDB `auth/cert_audit/<certificate_id>`，记录 `player_id, public_key_id, usage, issued_at, issuer, scopes, ttl`
 - `Server Root CA` 不在线；`Server Intermediate CA` 定期轮换并可被 Root CA 吊销
-- Server Intermediate CA 私钥应存储于 HSM/KMS 或等效安全环境；最低要求为 `0600` 权限的独立文件系统，Engine 进程无读取权限
+- Server Intermediate CA 私钥存储要求：
+  | 层级 | 方案 | 最低要求 |
+  |---|---|---|
+  | 生产环境 | HSM (YubiHSM, AWS CloudHSM) 或 KMS (AWS KMS, GCP KMS) | 密钥不可导出；签名操作在 HSM 内完成 |
+  | 自托管 / 小型部署 | soft-HSM (SoloKeys, Nitrokey) 或 `pkcs11-tool` | 密钥加密存储；PIN 保护；速率限制 |
+  | 开发 / 测试 | 独立文件系统，`0600` 权限 | Engine/Auth 进程以外无读取权限 |
+
+  Intermediate CA 轮换周期 90 天，私钥备份需加密并离线冷存储。operator runbook 需包含：CA 私钥生成、轮换、吊销、灾难恢复流程。
 - Swarm CA 只用于应用层证书，不得作为系统/浏览器 TLS trust anchor
 
 ---
@@ -802,6 +809,38 @@ CSR 提交不设 IP/username 限速 — PoW 本身就是速率控制。Challenge
 Deploy 不使用 nonce——防重放由 `version_counter` 保证（见 D2 裁决）。
 
 高价值操作（admin 证书签发、恢复流程）使用 challenge-response 模式，challenge 不存储——校验时重算 `Blake3(account_id || server_seed || timestamp)`。
+
+#### Nonce vs Version Counter
+
+| 场景 | 机制 | 存储 | 崩溃语义 |
+|---|---|---|---|
+| MCP 查询请求（读） | Nonce (Dragonfly TTL) | Dragonfly, 300s TTL | TTL 窗口内可重放 |
+| Deploy 请求 | Version Counter (FDB) | FDB `version/{player_id}` | 严格递增，崩溃后不重放 |
+| Admin 高权限操作 | Challenge-response nonce | 不存储，Blake3 重算 | Challenge 一次性，无需持久 |
+| CSR 提交 | PoW nonce | FDB `challenge/{id}`，consumed 标记 | 一次性消费，原子标记 |
+
+Deploy 使用 FDB 持久化的 `version_counter`：
+
+```
+swarm_deploy:
+  FDB 事务:
+    current = read version/{player_id}
+    write version/{player_id} = current + 1
+    write deploy/{player_id}/{current + 1} = {module_hash, ...}
+```
+
+同一 player 的 deploy 严格按 version_counter 顺序执行。即使 Dragonfly 崩溃，deploy 也不重放——FDB 事务保证 version_counter 原子递增。
+
+#### Audience 字符串语法
+
+所有 audience 字符串使用规范语法：`transport:server_id:world_id:player_id`
+
+- `transport`：固定，标记此 audience 用于传输层认证
+- `server_id`：服务端标识（来自 Server Root CA 的 server_id）
+- `world_id`：世界标识
+- `player_id`：玩家标识
+
+禁止宽松匹配——audience 必须精确匹配 Canonical Request 中的对应字段。Gateway 在入口处验证 `audience` 字段与请求上下文（目标 server/world/player）完全一致。
 
 #### 证书链验证缓存
 
