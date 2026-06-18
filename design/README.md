@@ -144,8 +144,7 @@ swarm/
 ├── docs/           # 设计文档、技术规范
 │   ├── design/     #   架构设计（本目录）
 │   ├── specs/      #   技术规范 (core/ security/ gameplay/ future/)
-│   ├── specs/reference/        #   API 参考
-│   └── security/   #   安全策略
+│   └── specs/reference/        #   API 参考
 ├── engine/         # Rust 游戏引擎 — Bevy ECS, Tick 调度, 世界模拟
 ├── sandbox/        # WASM 沙箱运行时 — 编译服务, 模块管理, 安全审计
 ├── gateway/        # Go API 网关 — WebSocket, REST, gRPC, 认证

@@ -1,8 +1,6 @@
 # Tier 2 增量快照协议
 
-> 详见 design/engine.md（快照扩展路线）
-> 
-> **状态**: Phase 1+ entry gate — Tier 2 实现前必须冻结本文档。
+> 详见 design/engine.md
 
 ## 1. 目标
 

@@ -1,6 +1,6 @@
 # WASM Host Functions 参考
 
-> 详见 `specs/core/04-wasm-sandbox-baseline`
+> 详见 `specs/core/04-wasm-sandbox.md`
 
 ## 允许的 Import
 

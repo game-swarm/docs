@@ -23,12 +23,12 @@ design/*.md  ←──  specs/  ←──  specs/reference/
  (被引用)         (引用设计)    (引用规范)
 ```
 
-- `design/design/README.md` 是总导航——自足，不引用 specs
-- 每个 spec 头部声明 `> 详见 DESIGN §X` 或 `> 详见 design/<domain>.md`
+- `design/README.md` 是总导航——自足，不引用 specs
+- 每个 spec 头部声明 `> 详见 design/<domain>.md`
 - specs/reference/ 文档引用对应 spec
 
 ```
-design/design/README.md    设计导航 — 愿景 + 架构全景 + 域文件索引
+design/README.md    设计导航 — 愿景 + 架构全景 + 域文件索引
 design/engine.md    引擎架构 — Tick 生命周期, ECS, 快照, 确定性
 design/gameplay.md  游戏机制 — Vanilla, 身体部件, 伤害, 特殊攻击
 design/modes.md     游戏模式 — World vs Arena, PvE
@@ -46,7 +46,7 @@ specs/reference/               API 参考 — 开发者面向的接口文档
 - `specs/12-gateway-protocol.md` 为跨域 Gateway 协议（汇聚 specs/core/01 §4 + specs/security/03 §2 等）
 - **历史版本由 git 管理**——`git log specs/` 可追溯所有变更
 - 需要 checkpoint 时用 `git tag v0.N` 标记，不需要复制目录
-- `design/design/README.md` 是导航入口；域细节在各 `design/<domain>.md`
+- `design/README.md` 是导航入口；域细节在各 `design/<domain>.md`
 - 所有文档引用规范时使用 `specs/<dir>/<NN>-<name>.md` 格式
 
 ## 工作流

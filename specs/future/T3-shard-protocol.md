@@ -1,8 +1,6 @@
 # Tier 3 分片协议
 
-> 详见 design/engine.md（快照扩展路线）
->
-> **状态**: Phase 1+ entry gate — Tier 3 实现前必须冻结本文档。
+> 详见 design/engine.md
 
 ## 1. 目标
 

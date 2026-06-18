@@ -1,6 +1,6 @@
 # Command API 参考
 
-> 详见 `specs/gameplay/08-game-api-idl`、`specs/core/02-command-validation`
+> 详见 `specs/gameplay/08-api-idl.md`、`specs/core/02-command-validation.md`
 
 WASM 模块通过 `tick(snapshot) → CommandIntent[]` JSON 返回指令。
 
