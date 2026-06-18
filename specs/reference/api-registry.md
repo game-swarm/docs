@@ -14,8 +14,6 @@
 3. **版本化**：每次 API 变更更新 `api_version`，TickTrace 记录 `api_version`。
 4. **完整闭合**：新增指令/错误码/工具/函数必须在此注册，未注册的 CI 拒绝。
 
-**当前 API 版本**: game_api `0.4.0`, auth_api `0.1.0`, economy `0.1.0`
-
 ---
 
 ## 0. Fixed-Point Type Registry
