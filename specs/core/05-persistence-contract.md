@@ -1,5 +1,7 @@
 # Persistence Contract — FDB / TickTrace / WAL / Object Store 分层
 
+> 详见 design/engine.md
+>
 > **R15 B8 修复**。本文档定义 Swarm 引擎的持久化分层架构，消除 "FDB 事务内写一切" 与 "跨存储双写会炸" 之间的合同空白。
 
 ## 原则

@@ -1,5 +1,7 @@
 # Complete Tick Execution Manifest — 权威调度
 
+> 详见 design/engine.md
+>
 > **R16 B2 修复**。本文档是 Swarm 引擎**全部 tick 系统执行顺序的唯一权威定义**——覆盖 Phase 2a inline 命令处理器与 Phase 2b 被动系统。所有其他文档（engine.md、01-tick-protocol.md、02-command-validation.md）引用此处，不得重新声明可冲突的系统列表或顺序。
 
 ## 原则

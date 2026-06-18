@@ -2,7 +2,7 @@
 
 > 权威源: [game_api.idl.yaml](game_api.idl.yaml) → [api-registry.md](api-registry.md) (生成)
 
-> **权威工具清单见 [API Registry](api-registry.md) §3** — 46 工具（v0.3.0）。本文档提供使用模式和安全约束说明。
+> **权威工具清单见 [API Registry](api-registry.md) §3** — 56 工具。本文档提供使用模式和安全约束说明。
 >
 > MCP 是 AI agent 的操作界面——与人类玩家的 Web UI 完全同级。
 > MCP **不做游戏动作**。AI agent 必须编写 WASM 代码来操作世界。

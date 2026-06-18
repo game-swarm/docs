@@ -220,9 +220,9 @@ AI 玩家令牌: `swarm:deploy swarm:read swarm:debug`。
 
 ## 4. MCP 工具 — 部署与管理
 
-> **MCP 工具权威清单** 见 [API Registry §3.2](../reference/api-registry.md#32-工具清单-46) — 46 工具（v0.3.0）。
+> **MCP 工具权威清单** 见 [API Registry §3.2](../reference/api-registry.md#32-工具清单-46) — 56 工具。
 >
-> **认证工具权威定义** 见 [auth_api.idl.yaml](../reference/auth_api.idl.yaml) → [API Registry §3.2 Auth](../reference/api-registry.md#auth-2--added-v030)。
+> **认证工具权威定义** 见 [auth_api.idl.yaml](../reference/auth_api.idl.yaml) → [API Registry §3.2 Auth](../reference/api-registry.md#auth-2)。
 >
 > **MCP 工具授权 (authz)** 以 [API Registry §3.4 Capability Profiles](../reference/api-registry.md#34-capability-profiles) 为权威来源。工具按 profile（`onboarding`、`play`、`deploy`、`debug`、`admin`）分组分配；每个 profile 对应特定 scope 和 rate limit。MCP 客户端的能力面由分配的 profile 决定，不在本文档中重复声明。
 

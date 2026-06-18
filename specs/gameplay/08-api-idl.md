@@ -1,11 +1,8 @@
 # Game API IDL Spec — 游戏 API 接口定义语言
 
-> **⚠️ SUPERSEDED** — 本文件为历史设计文档。当前权威 IDL 源：
-> - [game_api.idl.yaml](../reference/game_api.idl.yaml) — 机器可读权威源
-> - [api-registry.md](../reference/api-registry.md) — 自动生成的权威参考（§1 CommandAction, §2 RejectionReason, §4 Host Functions）
-> - [auth_api.idl.yaml](../reference/auth_api.idl.yaml) — 认证 API IDL
-
 > 详见 design/interface.md
+>
+> **本文档说明 IDL 的设计理念、代码生成流程和 SDK 分发机制。权威数据类型定义见 [API Registry](../reference/api-registry.md)（由 `game_api.idl.yaml` / `auth_api.idl.yaml` / `economy.idl.yaml` 自动生成）。**
 
 > **目标**: host functions / Command / Validator / SDK / MCP schema 单一真相来源
 

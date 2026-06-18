@@ -1,5 +1,7 @@
 # Resource Ledger — 统一资源入口
 
+> 详见 design/gameplay.md
+>
 > **R15 B9 修复**。本文档定义 Swarm 引擎中所有资源流动的唯一切入点（Transfer Gateway），消除 local transfer / global transfer / allied transfer / PvE award / Market 等多入口的资源逃逸路径。
 
 ## 原则

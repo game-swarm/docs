@@ -1872,7 +1872,7 @@ despawn = { zh = "单位消亡", en = "Unit despawn", ja = "ユニット消滅" 
 │                          超线性系数             │
 │    onshortfall = damage  资源不足时的处理方式    │
 │                                               │
-│  🍂 resource-decay v0.3.0                     │
+│  🍂 resource-decay                          │
 │  资源腐败衰减——储存的资源随时间缓慢减少。        │
 │                                               │
 │  当前参数:                                     │

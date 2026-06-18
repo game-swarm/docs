@@ -5,7 +5,7 @@
 # This file is validated by CI — do not edit Markdown tables directly.
 # =============================================================================
 
-api_version: "0.3.0"
+api_version: "0.4.0"
 
 # =============================================================================
 # Type Registry — fixed-point integer types replacing f64
@@ -473,7 +473,7 @@ rejection_reason:
 # =============================================================================
 mcp_tools:
   description: "All MCP tools available to clients. Grouped by capability profile."
-  total_tools: 46
+  total_tools: 56
   rate_limits:
     query: "50/tick"
     debug: "30/tick"
@@ -612,8 +612,36 @@ mcp_tools:
       visibility_filter: owner
       rate_limit_key: per_drone
 
+    - name: swarm_get_docs
+      category: Onboarding
+      input_schema:
+        topic: string?
+      output_schema:
+        docs: string
+        sections: "[string]"
+      rate_limit: "20/tick"
+      required_scope: "swarm:read"
+      subject_source: world
+      replay_class: read_replay_safe
+      visibility_filter: none
+      rate_limit_key: global
+
+    - name: swarm_get_schema
+      category: Onboarding
+      input_schema:
+        entity_type: string?
+      output_schema:
+        schema: string
+        version: string
+      rate_limit: "20/tick"
+      required_scope: "swarm:read"
+      subject_source: world
+      replay_class: read_replay_safe
+      visibility_filter: none
+      rate_limit_key: global
+
     # =========================================================================
-    # Auth (2 tools) — added v0.3.0
+    # Auth (2 tools)
     # =========================================================================
     - name: swarm_auth_login
       category: Auth
@@ -859,6 +887,36 @@ mcp_tools:
       visibility_filter: owner
       rate_limit_key: per_player
 
+    - name: swarm_profile
+      category: Play
+      input_schema:
+        player_id: PlayerId?
+      output_schema:
+        player_id: PlayerId
+        gcl: u32
+        rooms: u32
+        drones: u32
+        joined_at: u64
+      rate_limit: "10/tick"
+      required_scope: "swarm:read"
+      subject_source: player_id
+      replay_class: read_replay_safe
+      visibility_filter: owner
+      rate_limit_key: per_player
+
+    - name: swarm_get_available_actions
+      category: Play
+      input_schema:
+        drone_id: DroneId
+      output_schema:
+        actions: "[{action, cost, cooldown, description}]"
+      rate_limit: "10/tick"
+      required_scope: "swarm:read"
+      subject_source: drone_id
+      replay_class: read_replay_safe
+      visibility_filter: owner
+      rate_limit_key: per_drone
+
     # =========================================================================
     # Deploy (6 tools)
     # =========================================================================
@@ -960,6 +1018,19 @@ mcp_tools:
       replay_class: read_replay_safe
       visibility_filter: none
       rate_limit_key: global
+
+    - name: swarm_list_modules
+      category: Deploy
+      input_schema:
+        player_id: PlayerId
+      output_schema:
+        modules: "[{id, drone_id, hash, language, size, deployed_at, status}]"
+      rate_limit: "10/tick"
+      required_scope: "swarm:read"
+      subject_source: player_id
+      replay_class: read_replay_safe
+      visibility_filter: owner
+      rate_limit_key: per_player
 
     # =========================================================================
     # Debug (7 tools)
@@ -1074,6 +1145,22 @@ mcp_tools:
       visibility_filter: owner
       rate_limit_key: per_player
 
+    - name: swarm_explain_last_tick
+      category: Debug
+      input_schema:
+        drone_id: DroneId
+      output_schema:
+        explanation: string
+        commands_executed: u32
+        commands_rejected: u32
+        events: "[string]"
+      rate_limit: "10/tick"
+      required_scope: "swarm:debug"
+      subject_source: drone_id
+      replay_class: read_replay_safe
+      visibility_filter: owner
+      rate_limit_key: per_drone
+
     # =========================================================================
     # Admin (6 tools)
     # =========================================================================
@@ -1181,6 +1268,75 @@ mcp_tools:
         abi_version: string
         min_engine_version: string
       rate_limit: "5/min"
+      required_scope: "swarm:read"
+      subject_source: world
+      replay_class: read_replay_safe
+      visibility_filter: none
+      rate_limit_key: global
+
+    # =========================================================================
+    # Arena (4 tools)
+    # =========================================================================
+    - name: swarm_tournament_create
+      category: Arena
+      input_schema:
+        name: string
+        rules: TournamentRules
+        start_at: u64?
+      output_schema:
+        tournament_id: string
+        status: string
+      rate_limit: "10/h"
+      required_scope: "swarm:admin"
+      subject_source: admin_id
+      replay_class: admin_critical
+      visibility_filter: admin_scope
+      rate_limit_key: per_admin
+
+    - name: swarm_tournament_precommit
+      category: Arena
+      input_schema:
+        tournament_id: string
+        player_id: PlayerId
+        wasm_hash: string
+      output_schema:
+        accepted: bool
+        precommit_id: string
+      rate_limit: "1/tick"
+      required_scope: "swarm:deploy"
+      subject_source: player_id
+      replay_class: idempotent_mutation
+      visibility_filter: owner
+      rate_limit_key: per_player
+
+    - name: swarm_tournament_status
+      category: Arena
+      input_schema:
+        tournament_id: string
+      output_schema:
+        tournament_id: string
+        status: string
+        players: u32
+        tick: u64
+        brackets: "[Bracket]"
+      rate_limit: "10/tick"
+      required_scope: "swarm:read"
+      subject_source: world
+      replay_class: read_replay_safe
+      visibility_filter: none
+      rate_limit_key: global
+
+    - name: swarm_match_result
+      category: Arena
+      input_schema:
+        match_id: string
+      output_schema:
+        match_id: string
+        winner: PlayerId?
+        scores: "{PlayerId: u32}"
+        duration_ticks: u32
+        replay_url: string?
+      rate_limit: "10/tick"
       required_scope: "swarm:read"
       subject_source: world
       replay_class: read_replay_safe
@@ -1660,6 +1816,14 @@ persistence:
 # Changelog
 # =============================================================================
 changelog:
+  - version: "0.4.0"
+    date: "2026-06-18"
+    changes:
+      - "MCP tools: Add 10 engine-native tools to IDL registry (Onboarding +2, Play +2, Deploy +1, Debug +1, Arena +4)"
+      - "New Arena category with 4 tournament/match tools"
+      - "MCP tools total: 46 → 56 active"
+      - "Add arena capability profile"
+      - "Remove v0.3.0 inline version markers (changelog retained)"
   - version: "0.3.0"
     date: "2026-06-18"
     changes:
