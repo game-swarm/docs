@@ -254,7 +254,7 @@ TransferDelay: u32             # 延迟 (tick)
 - Global transfer fee: `amount * global_deposit_fee / 10000`（存入） / `amount * global_withdraw_fee / 10000`（提取）
 - Allied transfer fee: `amount * allied_transfer_fee / 10000`
 - Storage tax: tiered 公式见 §2.2
-- Recycle refund: lifespan 10%-50% 公式见 §2.3
+- Recycle refund: lifespan 10%-50% 公式见 §2.5
 
 ### Empire Upkeep（帝国维护费）
 
@@ -268,7 +268,7 @@ room_soft_cap = 10 (Standard) / 15 (Vanilla) / 20 (Tutorial)
 
 维护费在 Resource Ledger 执行顺序中位于第 1 步（`UpkeepDeduction`），从玩家全局存储扣除。若全局存储不足，扣至 0 并记录 `UpkeepDeficit` 到 TickTrace。维护费 deficit 累积——连续 3 tick deficit 触发 drone 饥饿惩罚（效率 −50%），连续 10 tick deficit 触发 drone 强制死亡（age 加速 ×10）。
 
-**Recycle 权威公式见 §2.3**。回收退还比例 = `max(recycle_refund_min, remaining_lifespan / total_lifespan × recycle_refund_base)`，全部使用 basis points 定点计算。新手保护（Tutorial 前 500 tick）退还 100%，由 world.toml `tutorial_recycle_refund_full_ticks` 控制。
+**Recycle 权威公式见 §2.5**。回收退还比例 = `max(recycle_refund_min, remaining_lifespan / total_lifespan × recycle_refund_base)`，全部使用 basis points 定点计算。新手保护（Tutorial 前 500 tick）退还 100%，由 world.toml `tutorial_recycle_refund_full_ticks` 控制。
 
 ---
 

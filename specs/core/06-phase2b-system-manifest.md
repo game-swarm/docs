@@ -185,7 +185,7 @@ Serial Spine:
 - **Processing pipeline (R22 B3 — 完整执行表)**:
   1. **Parallel collect**: S11-S13 产生的特殊攻击 intent（Hack/Drain/Overload/Debilitate/Disrupt/Fortify）写入 per-system sub-buffer
   2. **Merge sort**: 收集所有 sub-buffer → 按 `(priority_class, intent_source.entity_id, intent_target.entity_id)` 确定性归并排序（serial collector，禁止依赖 nondeterministic push order）
-  3. **Reducer resolve**: 同一 target 的多个 intent 按优先级链裁决（Hack > Drain > Overload > Debilitate > Disrupt > Fortify）；冲突 intent 降级记录
+  3. **Reducer resolve**: 同一 target 的多个 intent 按**唯一权威优先级链**裁决：**Hack > Drain > Overload > Debilitate > Disrupt > Fortify**（此为 Swarm 引擎中该优先级链的唯一定义——`02-command-validation.md` 已删除旧优先级表）；冲突 intent 降级记录
   4. **Deliver to S22**: 排序+裁决后的 intents 交付 `status_advance_system` 统一推进
   5. **Status advance (S22)**: 统一读入 intents → 更新 StatusState（duration--, expire, apply）→ 触发 damage/application
   6. **Damage application (S15)**: 特殊攻击产生的 damage 通过 `damage_application` 统一应用

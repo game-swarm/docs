@@ -403,7 +403,7 @@ drone age 维护由两层设施构成：
 | Spawn drone | Sink | -200 ~ -5,000 / drone（取决于 body 复杂度） | 一次性沉没成本 |
 | 建筑建造 | Lockup | 0（资源锁定在建筑中） | 可回收 50%（摧毁时返还） |
 | Controller 升级 (RCL 进贡) | Lockup | 0（资源锁定） | 不可回收——永久锁定在 Controller 中 |
-| 帝国维护费 (empire-upkeep) | Sink | -40 ~ -3,150 / tick（按规模） | 默认启用的超线性 anti-snowball 机制 |
+| 帝国维护费 (empire-upkeep) | Sink | 超线性（见 Resource Ledger §Empire Upkeep + Balance Sheet） | 默认启用的 anti-snowball 机制；前 1 controller + 3 drone 在 free_upkeep_ticks 内免维护费 |
 | 全局存储税 | Sink | 0 ~ 20 bp / tick（按存储利用率阶梯） | 防止无限囤积 |
 | 资源衰减 (resource-decay) | Sink | 按 decay_rate × 存储量 / tick | 可选模组，默认禁用 |
 | 代码部署费 | Sink | 0 ~ 500 Energy / 次 | 默认免费，服主可配置 |

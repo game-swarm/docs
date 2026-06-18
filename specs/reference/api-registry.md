@@ -551,9 +551,9 @@ WASM 模块通过 host function import 调用引擎服务。以下为权威签�
 | **Max single transfer** | **100,000 units** | Maximum resource units in a single transfer operation |
 | **Max per-tick income** | **1,000,000 units/tick** | Hard cap on total resource income per player per tick |
 | **Max per-tick expense** | **1,000,000 units/tick** | Hard cap on total resource deductions per player per tick |
-| **Storage tax tier 1 threshold** | **10,000 units** | Threshold at which tier-1 storage tax (1 bp) begins |
-| **Storage tax tier 2 threshold** | **100,000 units** | Threshold at which tier-2 storage tax (5 bp) begins |
-| **Storage tax tier 3 threshold** | **1,000,000 units** | Threshold at which tier-3 storage tax (20 bp) begins |
+| **Storage tax tier 1 threshold** | **30% capacity** | Tier-1 storage tax begins at 30% of max storage capacity (1 bp). 权威定义见 Resource Ledger §2.2 |
+| **Storage tax tier 2 threshold** | **60% capacity** | Tier-2 storage tax begins at 60% of max storage capacity (5 bp) |
+| **Storage tax tier 3 threshold** | **85% capacity** | Tier-3 storage tax begins at 85% of max storage capacity (20 bp) |
 | **Max active alliances** | **10** | Maximum number of active alliances per player |
 
 ### 5.8 Auth 限制

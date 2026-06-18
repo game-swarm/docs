@@ -432,17 +432,9 @@ Drone 在 Phase 2b spawn_system 中创建——位于 death_mark（释放 room c
 
 #### 同 tick 多命中优先级
 
-同一 tick 内同一目标被多个特殊攻击命中时，按以下优先级执行（高优先级先执行，低优先级可能被高优先级效果覆盖或拒绝）：
+> **R24 B3-GAP 修复**：特殊攻击优先级以 `06-phase2b-system-manifest.md` §S14 为唯一权威。此处不再重列可冲突的优先级顺序。
 
-| 优先级 | 攻击类型 | 理由 |
-|:--:|------|------|
-| 1 | **Disrupt** | 打断效果必须先于所有持续性效果——确保 Disrupt 能清除同 tick 施加的 Hack/Drain |
-| 2 | **Fortify** | 净化效果先于施加——若同 tick 被 Fortify 和 Debilitate 同时命中，先净化再判断是否可施加新 Debilitate |
-| 3 | **Debilitate** | 易伤在伤害类攻击前生效——放大后续 Hack/Drain/Overload/Leech 效果 |
-| 4 | **Hack** | 夺取控制权在资源攻击前——Hack 成功后 target 可能失去 owner 保护 |
-| 5 | **Drain / Leech** | 资源窃取 | 
-| 6 | **Overload** | fuel 压制——若有同 tick Disrupt 则无效，若有同 tick Fortify 则清除 |
-| 7 | **Fabricate** | 构造——在 combat 之前完成，但不受伤害类攻击影响 |
+同一 tick 内同一目标被多个特殊攻击命中时，优先级由 `special_attack_reducer` (S14) 按 canonical priority sort 裁决。**权威优先级链见 `specs/core/06-phase2b-system-manifest.md` §1（System Schedule 注释）和 §S14 reducer 实现**。实现者必须以此为准，不得从本文档复制/粘贴优先级链。测试覆盖要求见 `06-phase2b-system-manifest.md` §同 tick 多特殊攻击命中测试样例。
 
 #### 同类型多次命中
 
