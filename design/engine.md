@@ -262,89 +262,123 @@ Swarm:     Move = Action  → 每 tick 移动 OR 采集 OR 攻击 OR 建造
 
 **两阶段快照架构**：阶段一不再为每个玩家独立序列化世界状态。改为：(1) tick 开始时一次性构建完整世界快照，按房间分片；(2) 每个玩家根据其 drone 所在位置，拼接可见房间的分片（默认 ≤9 个）。复杂度从 `O(玩家数 × 实体数)` 降为 `O(实体数 + 玩家数 × 可见房间数)`，消除每玩家重复序列化开销。快照构建在玩家 WASM 执行前完成，与玩家顺序无关，天然确定。
 
-**快照扩展路线（三级规模模型）**：
-
-| 规模 | 目标 | 快照策略 | Snapshot 预算 | 状态 |
-|------|------|---------|:--:|:--:|
-| **Tier 1 — MVP** | 50 players × 10 drones = 500 total，≤50 房间，单节点 | Bevy World 深拷贝全量快照 | ≤16MB / tick，≤50ms 构建 | 当前设计目标，specs/core/01 已覆盖 |
-| **Tier 2 — 中等规模** | ≤5,000 drone，≤500 房间，单节点 | 增量快照 + modification-set tracking + copy-on-write 实体分页 | ≤64MB / tick，≤200ms 构建 | 需补充完整 spec（增量差异协议、CoW 实体页大小、modification-set 合并策略、truncation 在增量模式下的语义） |
-| **Tier 3 — 大规模** | >5,000 drone，多节点 | 按房间分片 + 跨节点 snapshot 路由 + 跨分片 combat 协议 | 每分片 ≤64MB / tick | 需补充完整 spec（分片键设计、跨分片实体引用、分布式 combat 结算、FDB 多区域部署） |
-
-Tier 2 和 Tier 3 的完整 spec 必须在 Phase 1 实现前完成——不得作为远期声明模糊处理。Tier 1 的深拷贝全量快照仅在 MVP 阶段有效；Tier 2 的增量快照 spec 必须定义从 Tier 1 深拷贝的迁移路径。
-
-#### Tier Entry Gate 矩阵
-
-以下矩阵明确每个 Tier 冻结什么、延后什么，防止 MVP 实现被未来扩展污染：
-
-| 能力 | Tier 1 (MVP) | Tier 2 | Tier 3 |
-|:--|:--:|:--:|:--:|
-| **Core IDL**（Move/Harvest/Build/Attack/Heal/Spawn/Recycle/Transfer/Withdraw/ClaimController） | ✅ 冻结 | — | — |
-| **6 种特殊攻击**（Hack/Drain/Overload/Debilitate/Disrupt/Fortify） | ✅ 冻结（Standard+ 可用，Tutorial/Novice 禁用） | — | — |
-| **Leech / Fabricate** | ❌ Tier 2+（通过 `[[custom_actions]]` 注册） | ✅ 冻结 | — |
-| **8 种 body part**（Move/Work/Carry/Attack/RangedAttack/Heal/Claim/Tough） | ✅ 冻结 | — | — |
-| **Vanilla Ruleset 默认值** | ✅ 冻结 | world.toml 可覆盖 | — |
-| **Dynamic CommandAction**（world.toml `[[custom_actions]]` 注册新 action） | ❌ future-disabled | ✅ | — |
-| **Rhai custom handler**（`actions.add_body_part_type` 等动态注册） | ❌ future-disabled | ✅ | — |
-| **World-specific SDK artifact**（ABI hash + dynamic manifest） | ❌ future-disabled | ✅ | — |
-| **全量 Bevy 快照** | ✅ 冻结（≤16MB/tick） | — | — |
-| **增量快照 + modification-set** | ❌ | ✅ 冻结 | — |
-| **按房间分片** | ❌ | ❌ | ✅ 冻结 |
-| **跨分片 combat** | ❌ | ❌ | ✅ 冻结 |
-| **FDB 多区域部署** | ❌ | ❌ | ✅ 冻结 |
-| **Gateway 无状态水平扩展** | ✅ | — | — |
-| **Admin rollback** | ⚠️ gated（需双人审计） | — | — |
-| **WASM sandbox worker pool** | ✅（每玩家独立进程） | — | — |
-
-**规则**：
-- Tier 1 的 `future-disabled` 项在引擎编译期通过 feature flag 排除——不在二进制中
-- Tier 2/3 启用对应 feature flag 后，相关 spec 必须已冻结
-- 跨 Tier 的文档引用（如 specs/future/）不阻塞 Tier 1 实现
-
 **WASM 预编译**：玩家上传 WASM 模块时，引擎在部署阶段立即编译为原生码并存储（非 tick 时 JIT）。tick 时只需实例化已编译模块，消除首次加载的编译延迟。编译后的模块按 `(module_hash, wasmtime_version)` 缓存，Wasmtime 版本升级时自动重编译。
 
-### 3.3 确定性保证
+### 3.3 确定性保证与回放
 
-```
-确定性需要：
+**确定性要求**：
 1. 相同的初始世界状态
-2. 相同的 Command 输入（已排序）
-3. ECS System 执行顺序固定（.chain()）
-4. 所有随机数来自确定种子 PRNG（不用 OS 熵源）
+2. 相同的 Command 输入（已排序，canonical order 见 [interface.md §4](interface.md)）
+3. ECS System 执行顺序固定（`.chain()`）
+4. 所有随机数来自确定种子 PRNG——shuffle seed 公式 `Blake3("shuffle" || world_seed || tick.to_le_bytes())`；per-entity stream seed `Blake3(stream_name || world_seed || entity_id.to_le_bytes() || tick.to_le_bytes())`
 
-反作弊：
+**回放输入封套**（`TickInputEnvelope`，每 tick 持久化）：
+- `module_hash`, `wasmtime_version`, `effective_tick`
+- `wasm_status`（ok/timeout/trap/fuel_exhausted）
+- `snapshot_hash`, `commands_hash`（canonical order）
+- `deploy_events`, `rollback_events`, `admin_events`
+- `world_config_hash`, `mods_lock_hash`, `engine_abi_version`
+
+**反作弊**：
 - 全量回放：任意房间状态可完整重现
 - 异常检测：玩家 tick 间的世界变化超过物理上限 → 标记
 - WASM 编译时静态分析：扫描可疑系统调用
-```
 
-### 3.4 Tier1 性能预算注册表
+### 3.4 性能与容量合同
 
-以下为 Tier1 硬性能预算——是实现必须满足的合约，不是估算。全部指标在 CI 中回归测试。
+以下为 deadline-driven 硬性能合同——是实现必须满足的合约，全部指标在 CI 中回归测试。
+
+#### 3.4.1 Tick Pipeline 预算
+
+| 阶段 | World 预算 | Arena 预算 | 说明 |
+|------|-----------|-----------|------|
+| **Tick interval** | 3000ms | 300ms | 目标 tick 间隔 |
+| **SNAPSHOT build** | ≤50ms (p99) | ≤20ms (p99) | 构建全量世界快照并按房间分片 |
+| **COLLECT (sandbox dispatch)** | ≤2500ms | ≤200ms | 并行分发 WASM 执行，含 sandbox deadline |
+| **EXECUTE (2a+2b)** | ≤400ms | ≤50ms | 命令应用 + ECS systems |
+| **COMMIT (FDB)** | ≤50ms (p99) | ≤20ms (p99) | FDB 原子提交 |
+| **BROADCAST** | ≤50ms | ≤10ms | Delta 广播 + 缓存更新 |
+| **Per-player sandbox deadline** | 2500ms | 200ms | 超时 → deterministic no-op / timeout rejection，不拖延整个 tick |
+
+#### 3.4.2 容量合同（单节点，World 模式）
 
 | 指标 | 硬值 | 说明 |
-|---|---|---|
-| **Tick interval** | 3000ms (World) / 300ms (Arena) | 目标 tick 间隔 |
-| **COLLECT budget** | 2500ms (World) / 200ms (Arena) | Phase 1 收集阶段时限 |
-| **EXECUTE budget** | 剩余至 tick 截止 | Phase 2a+2b 时限 |
-| **WASM per-tick budget** | 2500ms per player | 单玩家 WASM tick() 时限 |
-| **Active players (Tier1)** | 500 (World) / 10 (Arena) | 目标并发玩家数 |
-| **Total drones/entities** | 50,000 hard cap | 全局上限 |
-| **Per-player drone cap** | 100 (Tier1 default) | 可配置，服主调参 |
-| **Snapshot per-player** | 256KB | WASM tick() 输入上限 |
-| **Snapshot total (COLLECT)** | 128MB | 全量快照上限（500 players × 256KB） |
-| **FDB transaction size** | 16MB | 单 tick 状态写入上限 |
-| **WASM instances** | 池化，min=10 / max=500 | 预编译模块池，不每 tick fork/kill |
-| **Auth p99 latency** | 10ms (cache hit) / 50ms (cache miss) | 证书验证延迟预算 |
-| **Pathfinding cache** | 10,000 entries per player, LRU | 寻路缓存大小与淘汰 |
-| **Visibility cache** | 50,000 entries per player, TTL=1 tick | 可见性计算结果缓存 |
+|------|------|------|
+| **Active players** | target 500 / hard cap 1000 | 活跃玩家数 |
+| **Active drones** | target 5000 / hard cap 10000 | 活跃 drone 总数 |
+| **Total entities** | hard cap 50000 | 含 drones、structures、NPC、resources |
+| **Per-player drone cap** | 100 (default) | 可配置 |
+| **Snapshot per-player (WASM)** | 256KB | tick() 输入；fog_of_war 过滤后的可见实体 |
+| **Snapshot player display** | 分页传输 | 展示用，非 WASM 输入；不受 fog_of_war 限制 |
+| **Commands per player per tick** | max 1000 | 可配置拒绝策略 |
+| **Pathfinding requests** | max 100 per player per tick | 超出排队或拒 |
+| **FDB transaction** | 小事务（head/manifest/hash/pointer） | tick 内世界 head 推进；大 blob 进入对象存储 |
+| **TickTrace/keyframe retention** | 7d (hot) / 30d (warm) / 180d (cold) | 可配置 |
 
-**Arena 与 World 分离**：Arena 使用独立的 tick/collect/simulate budget，不继承 World 的 2500ms COLLECT 预算。Arena pathfinding 和 visibility 缓存大小减半（5,000 / 25,000）。
+**Arena 独立预算**：Arena 使用独立的 tick/collect/simulate budget，不继承 World 的 3s 模型。Arena pathfinding 和 visibility 缓存大小减半（5,000 / 25,000）。
 
-**WASM 沙箱生命周期**：WASM 实例使用预编译池，不采用每玩家每 tick fork/kill 模型。池大小按 `max(min_pool, active_players)` 动态伸缩，空闲实例 5min 后回收。
+#### 3.4.3 Sandbox 生命周期
 
-**热路径 ABI**：JSON 保留为调试/SDK/compat 格式。tick 内 snapshot 和 CommandIntent 的实时传输使用 binary canonical encoding（FlatBuffers），确保 < 1ms 序列化/反序列化延迟。
+WASM 实例使用 **long-lived worker pool + per-tick clean Store/Instance reset**：
 
-**FDB 写入策略**：Tier1 每日写入预算 ≤ 500GB（按 500 players × 3s tick × 24h × 16MB 估算，含 keyframe）。每 K=100 tick 写入一次 keyframe，其余 tick 写入 delta。
+- **Pool**：大小按 `max(min_pool, active_players)` 动态伸缩；空闲实例 5min 后回收
+- **Per-tick reset**：memory 清零、fuel 重置、WASI 全部关闭后重新按需开启
+- **WASI 默认全部关闭**，仅开启确定性子集（由 engine 编译期固定）
+- **禁用的 WASI**：clock、random、filesystem、network、env、process、threads、atomics、SIMD
+- **Worker 边界**：每个 worker 有独立 uid/cgroup；seccomp profile 限制 syscall；OOM score adj；rlimit（nproc、nofile、memlock）
+- **Recycle 策略**：每 worker 最多服务 1000 tick 后强制替换；OOM/trap/timeout 后立即替换并记入 audit log
+- **Wasmtime version 固定**：编译期锁定，升级后重编译所有缓存模块
+
+#### 3.4.4 WASM Snapshot Truncation
+
+WASM tick() 输入 snapshot 受 per-player 256KB cap 约束：
+
+| 状态 | 语义 | 处理 |
+|------|------|------|
+| **正常** | snapshot ≤ cap | 完整传入 |
+| **Truncated** | snapshot > cap | 按 priority bucket + stable entity_id order 截断；`snapshot.truncated=true`；暴露 `omitted_counts` 和 bucket 统计 |
+| **Rejected** | 保护性拒绝（如 OOM 攻击） | 返回 deterministic empty input + `over_budget_rejected` 错误码 |
+
+**Priority bucket 顺序**：自机 > 友方 drone > 敌方 drone > 建筑 > NPC > 资源
+
+截断不依赖 ECS query 原始顺序——使用 stable `entity_id` sort 保证确定性 replay。给玩家的展示层 snapshot 走分页传输，不在 WASM cap 约束内。
+
+**Anti-abuse**：可见实体造成的 snapshot 压力纳入 room/entity cap、density tax 和 attacker cost 策略。敌对方可通过堆叠实体增加受害方 snapshot 压力——此行为不被禁止，但 snapshot truncation 不会因此泄露更多信息。
+
+#### 3.4.5 Controller 维修公式
+
+Controller repair 降低 drone age。公式使用定点整数（basis points, × 10000）：
+
+```
+age_reduction = min(repair_per_drone, drone.age)
+total_reduction = Σ age_reduction per drone serviced (up to repair_capacity)
+
+// 硬上限：每 tick 总 age 回退 ≤ 自然增长 (+1/tick) 的 50%
+global_cap = floor(active_drones × 0.5)
+actual_reduction = min(total_reduction, global_cap)
+```
+
+**维修距离**：Controller RCL1=1 格，RCL8=5 格。相邻格只有 6 个——大量 drone 排队形成物流拥挤。
+
+#### 3.4.6 Phase 2b DeathMark 读写语义
+
+`death_mark_system` 在 Phase 2b 开头标记待死亡 entity 并释放 room cap 槽位。在其之后的 `regeneration_system` 和 `decay_system` 必须跳过 `DeathMark` 标记的 entity——两者的所有读写操作在查询时过滤 `Without<DeathMark>`。`death_cleanup_system` 在 2b 末尾执行实际 despawn。
+
+#### 3.4.7 FDB 写入策略
+
+- FDB 存 head/manifest/hash/pointer——小事务推进 world head
+- 大型 TickTrace/keyframe 进入对象存储或 append-only log
+- 每 K=100 tick 写入一次 keyframe，其余 tick 写入 delta
+- 每日写入预算：按 target load 估算（非 16MB/tick 全量写入）
+- `state_checksum`：覆盖 WorldState + mod_state/action_log + tick_metrics + config hash + manifest pointer
+
+#### 3.4.8 数值溢出与舍入
+
+所有资源/年龄/伤害/进度使用 `u64` 或 `i64` 定点整数。overflow 行为：
+- 资源加减：saturating（不得超过 `u64::MAX`，不得低于 0）
+- 乘除：中间结果使用 `u128` 或 checked math
+- 舍入：一律 floor（向下取整）
+- 比例计算：`amount * basis_points / 10000`（basis points 精度）
 
 ---
 

@@ -21,7 +21,7 @@ Swarm 提供两种**并行核心玩法**。引擎统一，规则可配置。
 | **关注点** | 持久性、创造力、涌现玩法 | 算法对抗、策略测试、演示观赏 |
 | **胜利条件** | 无——类似 MMO 持续沙盒，玩家自行设定目标（建造、控制、经济、社交）。不存在"游戏结束"状态 | 一方 drone=0 > 一方认输 > tick 到上限按剩余资产判定（drone数→建筑数→资源量）> 平局 |
 | **PvE** | ✅ 世界生态层（中立 NPC、资源据点、世界事件、NPC 掉落） | ✅ 挑战模式（PvE scenario，计时评分） |
-| **领土平衡** | ⚠️ Phase 1+ deferred — 不提供硬编码 empire upkeep。World 不设竞争榜单，领土平衡由社区/模组解决。服主可通过 world.toml 自定义扩张成本 | N/A |
+| **领土平衡** | Empire upkeep 默认启用（protocol hook + Vanilla 公式），服主可关闭/替换。World 不设竞争榜单 | N/A |
 
 ### 9.0 World PvE 生态层
 
@@ -128,7 +128,8 @@ map_symmetry = "rotational"      # rotational | mirror
 | map_seed | 随机 | 地图种子（相同种子 = 相同地图，可复现对决） |
 | visibility | public | public（列表可见）/ unlisted（有链接可进）/ private（仅受邀） |
 | allow_spectate | true | 是否允许旁观 |
-| spectate_delay | 100 tick | 旁观延迟 |
+| spectate_delay | 100 tick | 旁观延迟（实时旁观 vs 延迟播放） |
+| spectate_privacy | public | public（任何人可旁观）/ participants（仅参与者）/ private（仅房主） |
 
 #### 9.1.3 比赛流程
 
@@ -144,6 +145,8 @@ Create -> Configure -> Ready -> Play -> Finish -> Replay
 #### 9.1.4 回放
 
 赛后自动生成回放（TickTrace JSONL）。房间 `public` 则回放公开可访问；`unlisted/private` 则仅参与者可见。回放播放器支持速度控制、双视角切换、tick 定位、指令展开。
+
+> **社区传播（RFC）**：分享 URL、战报卡（highlight card）、自动摘要、社区 replay 排行榜为产品扩展项——不阻塞当前设计冻结。
 
 #### 9.1.5 PvE 挑战模式
 

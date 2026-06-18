@@ -16,55 +16,65 @@ AI：  MCP 看世界 → 生成 WASM → 部署 ───┘
 
 ### 4.1 MCP 工具分类
 
-| 类别 | 工具 | 用途 |
-|------|------|------|
-| **世界查看** | `swarm_get_snapshot` | 获取可见世界状态 |
-| | `swarm_get_terrain` | 查看地形 |
-| | `swarm_get_objects_in_range` | 查看范围内的实体 |
-| | `swarm_get_world_rules` | 获取世界规则配置 |
-| **部署** | `swarm_deploy` | 上传 WASM 模块 |
-| | `swarm_validate_module` | 上传前预检 |
-| | `swarm_rollback` | 回滚到之前版本 |
-| | `swarm_list_modules` | 列出已部署的 WASM 模块 |
-| **调试** | `swarm_explain_last_tick` | 解释上 tick 发生了什么 |
-| | `swarm_inspect_entity` | 检查实体完整状态 |
-| | `swarm_inspect_room` | 查看有视野的房间概况 |
-| | `swarm_profile` | 策略性能指标 |
-| | `swarm_dry_run_commands` | 干跑 Command JSON |
-| | `swarm_get_replay` | 获取 tick 范围回放数据 |
-| **学习** | `swarm_get_docs` | API 参考和游戏规则 |
-| | `swarm_get_schema` | 游戏 API JSON Schema |
-| | `swarm_get_available_actions` | 当前可用的 API 函数 |
-| | `swarm_simulate` | 离线模拟：给定快照预测未来 N tick |
-| **经济** | `swarm_get_economy` | 当前 tick 经济全貌（收入/支出/存储/税率） |
-| | `swarm_get_drone_efficiency` | 每 drone 效率统计（最近 N tick） |
-| | `swarm_get_economy_trend` | 经济趋势线（energy/drones/rooms/storage） |
-| **认证** | `swarm_get_server_trust` | 获取 server_id 与 Swarm CA fingerprint |
-| | `swarm_register_challenge` | 获取注册/CSR PoW 挑战 |
-| | `swarm_submit_csr` | 提交 CSR 并按设备 profile 签发应用层证书 |
-| | `swarm_renew_certificate` | 续签应用层证书 |
-| | `swarm_list_certificates` | 列出当前账号证书 |
-| | `swarm_revoke_certificate` | 吊销证书 |
-| | `swarm_token_refresh` | 刷新 Web session 兼容 token |
-| | `swarm_auth_revoke` | 吊销 session/certificate/key |
-| | `swarm_change_password` | 修改 recovery password |
-| | `swarm_request_password_reset` | 请求恢复链接 |
-| | `swarm_admin_create_password_reset` | 管理员生成恢复链接 |
-| | `swarm_confirm_password_reset` | 确认恢复并签发新证书 |
-| | `swarm_register_passkey` | 绑定 passkey 恢复因子 |
-| | `swarm_recover_with_passkey` | 使用 passkey 恢复并签发新证书 |
-| | `swarm_bind_email` | 绑定邮箱 |
-| | `swarm_delete_account` | 删除账号 |
-| | `swarm_restore_account` | 恢复已删除账号（grace period 内） |
-| | `swarm_cancel_account_deletion` | 取消账号删除（同 restore） |
-| | `swarm_federated_login` | 外部证书 bootstrap，本地重签证书 |
-| | `swarm_update_profile` | 修改显示名称 |
-| **锦标赛** | `swarm_tournament_precommit` | 锁定 WASM 模块 |
-| | `swarm_tournament_create` | 创建 bracket |
-| | `swarm_tournament_status` | 查询状态 |
-| | `swarm_match_result` | 查询比赛结果 |
-| **资源管理** | `resources/list` | 列出可用资源类型 |
-| | `resources/read` | 读取资源定义 |
+| 类别 | 工具 | 用途 | replay_class |
+|------|------|------|-------------|
+| **世界查看** | `swarm_get_snapshot` | 获取可见世界状态 | read_replay_safe |
+| | `swarm_get_terrain` | 查看地形 | read_replay_safe |
+| | `swarm_get_objects_in_range` | 查看范围内的实体 | read_replay_safe |
+| | `swarm_get_world_rules` | 获取世界规则配置 | read_replay_safe |
+| **部署** | `swarm_deploy` | 上传 WASM 模块 | idempotent_mutation |
+| | `swarm_validate_module` | 上传前预检 | read_replay_safe |
+| | `swarm_rollback` | 回滚到之前版本 | idempotent_mutation |
+| | `swarm_list_modules` | 列出已部署的 WASM 模块 | read_replay_safe |
+| **调试** | `swarm_explain_last_tick` | 解释上 tick 发生了什么 | read_replay_safe |
+| | `swarm_inspect_entity` | 检查实体完整状态 | read_replay_safe |
+| | `swarm_inspect_room` | 查看有视野的房间概况 | read_replay_safe |
+| | `swarm_profile` | 策略性能指标 | read_replay_safe |
+| | `swarm_dry_run_commands` | 干跑 Command JSON | read_replay_safe |
+| | `swarm_get_replay` | 获取 tick 范围回放数据 | read_replay_safe |
+| **学习** | `swarm_get_docs` | API 参考和游戏规则 | read_replay_safe |
+| | `swarm_get_schema` | 游戏 API JSON Schema | read_replay_safe |
+| | `swarm_get_available_actions` | 当前可用的 API 函数 | read_replay_safe |
+| | `swarm_simulate` | 离线模拟：给定快照预测未来 N tick | read_replay_safe |
+| **经济** | `swarm_get_economy` | 当前 tick 经济全貌（收入/支出/存储/税率） | read_replay_safe |
+| | `swarm_get_drone_efficiency` | 每 drone 效率统计（最近 N tick） | read_replay_safe |
+| | `swarm_get_economy_trend` | 经济趋势线（energy/drones/rooms/storage） | read_replay_safe |
+| **认证** | `swarm_get_server_trust` | 获取 server_id 与 Swarm CA fingerprint | read_replay_safe |
+| | `swarm_register_challenge` | 获取注册/CSR PoW 挑战 | read_replay_safe |
+| | `swarm_submit_csr` | 提交 CSR 并按设备 profile 签发应用层证书 | non_idempotent_mutation |
+| | `swarm_renew_certificate` | 续签应用层证书 | non_idempotent_mutation |
+| | `swarm_list_certificates` | 列出当前账号证书 | read_replay_safe |
+| | `swarm_revoke_certificate` | 吊销证书 | admin_critical |
+| | `swarm_token_refresh` | 刷新 Web session 兼容 token | non_idempotent_mutation |
+| | `swarm_auth_revoke` | 吊销 session/certificate/key | admin_critical |
+| | `swarm_change_password` | 修改 recovery password | non_idempotent_mutation |
+| | `swarm_request_password_reset` | 请求恢复链接 | non_idempotent_mutation |
+| | `swarm_admin_create_password_reset` | 管理员生成恢复链接 | admin_critical |
+| | `swarm_confirm_password_reset` | 确认恢复并签发新证书 | non_idempotent_mutation |
+| | `swarm_register_passkey` | 绑定 passkey 恢复因子 | non_idempotent_mutation |
+| | `swarm_recover_with_passkey` | 使用 passkey 恢复并签发新证书 | non_idempotent_mutation |
+| | `swarm_bind_email` | 绑定邮箱 | non_idempotent_mutation |
+| | `swarm_delete_account` | 删除账号 | admin_critical |
+| | `swarm_restore_account` | 恢复已删除账号（grace period 内） | admin_critical |
+| | `swarm_cancel_account_deletion` | 取消账号删除（同 restore） | admin_critical |
+| | `swarm_federated_login` | 外部证书 bootstrap，本地重签证书 | non_idempotent_mutation |
+| | `swarm_update_profile` | 修改显示名称 | non_idempotent_mutation |
+| **锦标赛** | `swarm_tournament_precommit` | 锁定 WASM 模块 | read_replay_safe |
+| | `swarm_tournament_create` | 创建 bracket | read_replay_safe |
+| | `swarm_tournament_status` | 查询状态 | read_replay_safe |
+| | `swarm_match_result` | 查询比赛结果 | read_replay_safe |
+
+### 4.1a MCP Capability Profiles
+
+MCP 工具按 capability profile 分组，`swarm_get_schema(profile=...)` 返回最小集：
+
+| Profile | 包含工具 | 适用场景 |
+|---------|---------|---------|
+| onboarding | swarm_get_server_trust, swarm_register_challenge, swarm_submit_csr, swarm_sdk_fetch, swarm_get_docs | AI agent 首次接入 |
+| play | swarm_get_snapshot, swarm_get_terrain, swarm_get_objects_in_range, swarm_get_world_rules, swarm_deploy, swarm_validate_module | 日常游戏操作 |
+| deploy | swarm_deploy, swarm_validate_module, swarm_rollback, swarm_list_modules | 代码部署管理 |
+| debug | swarm_explain_last_tick, swarm_inspect_entity, swarm_inspect_room, swarm_profile, swarm_dry_run_commands, swarm_get_replay, swarm_simulate, swarm_get_economy, swarm_get_drone_efficiency, swarm_get_economy_trend | 调试与性能分析 |
+| admin | swarm_revoke_certificate, swarm_admin_create_password_reset, swarm_list_certificates, 资源管理工具 | 服务器管理 |
 
 ### 4.2 明确不在 MCP 中
 
@@ -116,5 +126,103 @@ fn host_get_world_rules(out_ptr: i32, out_len: i32) -> i32;
 - ❌ `host_spawn` / `host_recycle`
 
 > **设计合同**: WASM 模块不直接调用 mutating host function。所有状态变更通过 `tick() → JSON` 延迟模型提交。
+
+### 5.3 swarm_sdk_fetch — AI Agent 自举入口
+
+`swarm_sdk_fetch` 是 AI agent 首次接入的关键工具——返回 SDK 代码和类型定义。
+
+- Input: `{ language: "typescript" | "rust", include_examples: bool }`
+- Output: `{ sdk_code: string, type_definitions: string, examples: string[], abi_version: string, min_engine_version: string }`
+- Error: `SDKNotFound`, `UnsupportedLanguage`, `RateLimited`
+- Rate Limit: 5/min
+- Replay Class: read_replay_safe
+
+### 5.4 Command Schema 与 RejectionReason
+
+Command enum（core IDL，冻结）：
+
+| Command | 参数 | 说明 |
+|---------|------|------|
+| Move | direction (N/S/E/W/NE/NW/SE/SW) | 移动到相邻格 |
+| Harvest | target_id | 采集资源 |
+| Build | structure_type, x, y | 建造建筑 |
+| Attack | target_id | 近战攻击 |
+| RangedAttack | target_id | 远程攻击 |
+| Heal | target_id | 治疗 |
+| Spawn | body_parts: Vec<BodyPart> | 生成 drone |
+| Recycle | target_id | 回收 drone |
+| Transfer | target_id, resource, amount | 转移资源 |
+| Withdraw | target_id, resource, amount | 提取资源 |
+| ClaimController | — | 宣称房间主权 |
+| Hack | target_id | 特殊攻击：黑客 |
+| Drain | target_id | 特殊攻击：吸取 |
+| Overload | target_id | 特殊攻击：过载 |
+| Debilitate | target_id | 特殊攻击：虚弱 |
+| Disrupt | target_id | 特殊攻击：干扰 |
+| Fortify | — | 特殊攻击：加固自身 |
+| Leech | target_id | 特殊攻击：生命吸取 |
+| Fabricate | structure_type, x, y | 特殊攻击：构造 |
+| SendMessage | target_id, payload (max 256B) | drone 间消息 |
+
+RejectionReason enum:
+
+| 原因 | 说明 |
+|------|------|
+| InvalidCommand | 命令格式错误 |
+| OutOfRange | 目标超出范围 |
+| InsufficientResources | 资源不足 |
+| TargetNotFound | 目标不存在或不可见 |
+| CooldownActive | 冷却中 |
+| RoomCapReached | 房间容量已满 |
+| NotAuthorized | 无权限 |
+| FuelExhausted | WASM fuel 耗尽 |
+| TimeoutExceeded | 超过 per-tick deadline |
+| SnapshotOverBudget | Snapshot 超 cap |
+
+### 5.5 Host Function 成本模型
+
+所有 host function 返回 `i32`（0=成功，负数=错误码）。每函数定义 per-tick 资源约束：
+
+| Host Function | Call Limit | Max Output | CPU Cost Units | 错误码 |
+|--------------|-----------|------------|----------------|--------|
+| host_get_terrain | unlimited | 4B | 1 | -1=OOB |
+| host_get_objects_in_range | 50/tick | 4KB | 10 + 1/entity | -2=range_too_large, -3=buffer_overflow |
+| host_path_find | 10/tick | 1KB | 50 + 1/node (max 500 nodes) | -2=dest_unreachable, -3=node_limit_exceeded, -4=timeout |
+| host_get_world_config | 5/tick | 256B | 5 | -2=key_not_found |
+| host_get_world_rules | 1/tick | 2KB | 20 | — |
+
+Fuel deduction: 1 CPU cost unit = 1 wasmtime fuel unit。host call budget 独立于 WASM compute budget——两者均计入 per-tick 总量。
+
+Pathfinding 确定性要求：固定 neighbor order（NESW 顺时针）、cost type（均一 1）、tie-break（最小 room_id+entity_id）、cache key（from, to）、cache hit/miss 等价性。
+
+### 5.6 SwarmError / JSON-RPC Error Envelope
+
+统一错误格式（JSON-RPC）：
+
+{
+  "jsonrpc": "2.0",
+  "error": {
+    "code": -32000,
+    "message": "描述",
+    "data": {
+      "swarm_error": "InsufficientResources",
+      "details": { "required": 200, "available": 50 },
+      "retry_allowed": false,
+      "idempotency_key": null
+    }
+  },
+  "id": 1
+}
+
+SwarmError 分类：
+- retry_allowed=true: TimeoutExceeded, RateLimited, ConflictRetry
+- retry_allowed=false: InvalidCommand, InsufficientResources, NotAuthorized
+- idempotent: deploy/validate 等可用 idempotency_key 安全重试
+
+### 5.7 swarm_simulate 与 swarm_deploy
+
+**swarm_simulate**: 给定 snapshot 离线模拟 N tick。不执行其他玩家 WASM——使用 NPC-only world。最大 50 tick，资源配额独立于热路径。输出 deterministic replay。
+
+**swarm_deploy 幂等性**: 同 module_hash 重试只扣费一次（idempotency_key = module_hash）。module 保留策略：最近 10 个版本保留，旧版本在无引用后 GC。
 
 ---

@@ -33,7 +33,7 @@
 
 ### 选择: Wasmtime
 
-三个硬需求决定了选择：(1) fuel metering 原生支持——能精确计费每 tick 的 CPU 消耗；(2) epoch interruption——超时即杀，配合 2500ms 硬截止；(3) per-tick fork 生命周期——每 tick 新 fork，执行完 kill，tick 间无状态保留。这三个在 Wasmtime 中是一等公民 API，其他备选需要自己实现至少一项。
+三个硬需求决定了选择：(1) fuel metering 原生支持——能精确计费每 tick 的 CPU 消耗；(2) epoch interruption——超时即杀，配合 2500ms 硬截止；(3) long-lived worker pool + per-tick clean Store/Instance reset——预编译模块池复用，每 tick 重置 WASM 状态，tick 间无状态泄漏。这三个在 Wasmtime 中是一等公民 API，其他备选需要自己实现至少一项。
 
 ---
 
@@ -147,16 +147,11 @@ tick delta 的特点：(1) 每 3s 推一次，数据量小；(2) 错过可以回
 | ChaCha20 | ~2 GB/s | 最高 | 慢，需额外依赖 |
 | AES-256-CTR | ~5/0.15 GB/s | 最高 | 无 AES-NI 时退化 30×，不可用于跨平台 |
 
-**代码签名**:
+**代码签名**: Ed25519 用于代码签名（非对称，见 §9），不在此表内。
 
-| 方案 | 签名大小 | 速度 | 选择理由 |
-|------|---------|------|---------|
-| Blake3 MAC | 32 B | ~6 GB/s | **选择** — 与哈希/PRNG 同原语 |
-| Ed25519 | 64 B | 快 | 用于证书签发（标准非对称） |
+### 选择: Blake3 覆盖哈希和 PRNG；代码签名使用 Ed25519（见 §9）
 
-### 选择: Blake3 全覆盖
-
-技术栈中有三个独立需求刚好被同一个原语覆盖：哈希（Blake3）、确定随机数（Blake3 XOF）、代码签名（Blake3 keyed hash / MAC）。统一为 Blake3 后：(1) 依赖栈减少一个 crate（ChaCha）；(2) 审计面减半；(3) 纯软件 ~6 GB/s，无平台退化；(4) seed+offset XOF 模式天然适配 per-player per-tick 的确定性随机序列。
+技术栈中有两个独立需求被 Blake3 覆盖：哈希（Blake3）、确定随机数（Blake3 XOF）。Blake3 覆盖哈希和 PRNG 后：(1) 依赖栈减少一个 crate（ChaCha）；(2) 审计面减半；(3) 纯软件 ~6 GB/s，无平台退化；(4) seed+offset XOF 模式天然适配 per-player per-tick 的确定性随机序列。代码签名使用 Ed25519（见 §9）。
 
 `blake3::Hasher::update_with_seek(seed, player_id * 256 + counter)` 一行代码替代整个 ChaCha keystream 管理。
 
@@ -221,37 +216,3 @@ tick delta 的特点：(1) 每 3s 推一次，数据量小；(2) 错过可以回
 ### 选择: Monaco + PixiJS
 
 Monaco 的 TypeScript 智能提示直接对接 SDK 类型——玩家写 `drone.` 弹出 `harvest/move/transfer`。PixiJS 的 tilemap 渲染 `MAX_QUERY_RANGE` 内的可见实体，WebGL 加速下 500 drone 不卡。两者都是各自领域的第一梯队，且彼此无冲突。
-
----
-
-## 12. 快照扩展：Tier 2/3 技术选型
-
-Tier 1（MVP）使用 Bevy World 深拷贝全量快照，适用于 ≤500 drone / ≤50 房间的单节点部署。Tier 2/3 需按以下路线演进，spec 必须在 Phase 1 实现前完成。
-
-### Tier 2 — 增量快照策略对比
-
-| 方案 | 原理 | 优势 | 劣势 | 选择 |
-|------|------|------|------|:--:|
-| Modification-set tracking | 追踪每 tick 变更的 Component 集合，仅序列化差异 | 增量最小；直接映射 ECS 语义 | 需 Bevy change detection 集成 | **首选** |
-| Copy-on-Write 实体分页 | 将 World 分成固定大小实体页（如 256 entity/page），仅复制被修改的页 | 内存局部性好；truncation 可按页优先级排序 | 页内修改粒度粗（1 entity 改 = 整页复制） | 备选 |
-| 操作日志 + 重建 | 仅记录 Command 序列，replay 时重建状态 | 存储最小 | 重建延迟不可接受（tick 内需实时 snapshot） | 否决 |
-
-### Tier 3 — 分片方案对比
-
-| 方案 | 原理 | 优势 | 劣势 | 选择 |
-|------|------|------|------|:--:|
-| 按房间分片 | 以 Room 为分片键，每个分片独立运行 ECS | 分片边界清晰；跨分片仅出口/边境交互 | 跨分片 combat 需协议设计 | **首选** |
-| 按玩家分片 | 以 PlayerId 为分片键 | 单玩家数据局部性好 | 同一房间内多玩家需跨分片通信（热点） | 否决 |
-| 全局路由 + 无分片 ECS | 单节点 ECS + FDB 作为分布式状态层 | 实现简单 | FDB 事务延迟不适合每 tick 热路径 | 否决 |
-
-### 待定技术决策
-
-以下项已在 specs/10 和 specs/11 中收窄为候选方案，最终冻结需 Tier 2/3 实现前通过基准测试确认：
-
-| 决策点 | 状态 | 候选方案 |
-|--------|:--:|------|
-| CoW 页大小 vs modification-set 粒度 | 🟡 倾向 modification-set (specs/10 §3) | CoW=256 entity/page 备选 |
-| 增量 truncation 确定性排序键 | 🟡 倾向方案 A (specs/10 §4) | `(bucket, last_modified DESC, entity_id)` |
-| 跨分片实体引用格式 | 🟡 已定义 (specs/11 §3) | `shard_id:room_id:entity_id` |
-| 分布式 combat 结算协议 | 🟡 已设计 (specs/future/T3 §4) | 两阶段意图广播+确认 + 逻辑时钟 |
-| FDB 多区域部署与分片亲和性 | 🟡 候选策略 (specs/future/T3 §5) | zone-aware placement + 逻辑时钟排序 |

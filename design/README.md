@@ -14,7 +14,7 @@
 | **MCP 与 API** | [`design/interface.md`](interface.md) | MCP 接口架构、Game API deferred command model、SDK |
 | **用户认证** | [`design/auth.md`](auth.md) | 应用层证书、CSR、passkey/email/admin 恢复、联邦跨世界身份、账号生命周期 |
 | **技术选型** | [`design/tech-choices.md`](tech-choices.md) | 各子系统技术栈对比与选型理由 |
-| **技术规范** | [`specs/`](../specs/) | 11 个技术规范，按域分 core/security/gameplay/future |
+| **技术规范** | [`specs/`](../specs/) | 技术规范，按域分 core/security/gameplay/future |
 | **API 参考** | [`specs/reference/`](../specs/reference/) | 面向开发者的接口文档 |
 | **运维手册** | [`RUNBOOK.md`](../RUNBOOK.md) | 启动序列、降级模式、备份恢复、监控 |
 
@@ -32,7 +32,7 @@ Swarm 支持两种玩家：
 
 世界只认 WASM。不论代码是谁写的。
 
-Swarm 不是单个游戏，而是一个**可配置游戏引擎平台**。每个世界实例是一个独立 universe，有各自的规则集（world.toml）、资源体系、身体部件、建筑类型和特殊攻击——所有内容都是可配置的官方扩展，非引擎硬编码。世界之间形成**联邦宇宙**：玩家可跨世界拥有身份和资产，通过异步方式交互（转移资源、共享排名），但不同步执行实时操作（无跨世界 combat）。
+Swarm 不是单个游戏，而是一个**可配置游戏引擎平台**。每个世界实例是一个独立 universe，有各自的规则集（world.toml）、资源体系、身体部件、建筑类型和特殊攻击——所有内容都是可配置的官方扩展，非引擎硬编码。世界之间形成**联邦宇宙**：联邦仅 identity-only——玩家可在多个世界间使用同一身份认证。资源/排名跨世界不在当前设计范围内。
 
 ### 1.2 与 Screeps 的关键区别
 

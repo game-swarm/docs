@@ -305,9 +305,44 @@ Swarm 不提供服务器 timestamp authority，也不新增 timestamp 审计。`
 - 服务器可按风险策略拒绝为临时/托管设备签发 `CodeSigningCertificate` 或提升 admin scope
 - 在线 CRL 只需保留尚未过期和最近过期窗口内的证书吊销项；超过 `max_certificate_ttl + max_clock_skew + federation_revocation_cache_ttl + operational_grace` 后可从在线认证路径清理
 
-### 5.6 Canonical Request Signature
+### 5.6a 请求 Replay Class 分类
 
-每个敏感 MCP、deploy、admin 请求携带应用层证书链与请求签名：
+每个 MCP/REST/WS 方法必须标注 replay class，用于 nonce 验证策略：
+
+| Replay Class | 说明 | Nonce 策略 | 示例 |
+|-------------|------|-----------|------|
+| `read_replay_safe` | 纯查询，重复不影响状态 | 可选 nonce，time window 校验 | `swarm_get_snapshot` |
+| `idempotent_mutation` | 重复执行结果相同 | Dragonfly nonce + time window | `swarm_deploy`（同 module_hash） |
+| `non_idempotent_mutation` | 重复执行产生副作用 | FDB version counter 或一次性 challenge | `swarm_submit_csr` |
+| `admin_critical` | 安全敏感管理操作 | FDB 事务内消费 challenge + 双签审计 | `swarm_revoke_certificate`、CA 操作 |
+
+Dragonfly nonce 仅用于 `read_replay_safe` 和 `idempotent_mutation`。所有 `non_idempotent_mutation` 和 `admin_critical` 操作必须使用 FDB version counter、idempotency key 或一次性 challenge，并在事务内消费。
+
+### 5.6b 授权矩阵
+
+#### Auth / Gateway / Engine 权威边界
+
+| 组件 | 持有 | 不持有 | 职责 |
+|------|------|--------|------|
+| **Auth Service** | public keys, challenge state, password/passkey recovery, refresh token 兼容层, certificate audit, 证书签发, CRL | 用户私钥、Server Root CA 私钥 | 独立进程，所有签名和认证操作在此完成 |
+| **Gateway** | 无状态代理, canonical request 验签入口, rate limit, Principal 注入, transport 层 canonicalization | 认证状态, 用户私钥, 密码库 | 验签后将最小化 principal/certificate snapshot 传入 Engine |
+| **Engine** | trusted root fingerprints, certificate verifier, revoked certificate cache | 用户私钥, 密码, PoW challenge state, CA 私钥, 签发能力 | 仅消费已验证的 principal——不执行注册、CSR 审核或证书签发 |
+
+#### MCP/REST 方法授权矩阵
+
+每个 MCP 方法必须标注以下维度：
+
+| 方法 | Replay Class | Required Scope | Rate Limit | Visibility Filter | Admin Override |
+|------|-------------|----------------|------------|-------------------|----------------|
+| `swarm_get_snapshot` | read_replay_safe | swarm:read | 10/s | fog_of_war | no |
+| `swarm_deploy` | idempotent_mutation | swarm:deploy | 1/5s | owner | no |
+| `swarm_submit_csr` | non_idempotent_mutation | swarm:register | 1/30s | none | no |
+| `swarm_revoke_certificate` | admin_critical | swarm:admin | 1/10s | admin scope | required |
+| `swarm_admin_create_password_reset` | admin_critical | swarm:admin:recovery | 1/60s | admin scope | dual-audit |
+
+完整矩阵见 `interface.md` MCP 工具表。
+
+### 5.6c Canonical Request Signature
 
 ```
 Swarm-Certificate-Chain: <base64 leaf + intermediate>
@@ -372,8 +407,12 @@ HTTP 场景下：
 - 攻击者无法伪造服务器应用层证书链、用户签名或篡改已签名 body
 - 攻击者可以观察流量元数据、阻断请求、回放未过期请求，或在首次 pinning 前发起中间人攻击
 - nonce/timestamp 必须强制启用，重放窗口默认不超过 60 秒
-- 涉及恢复 token、私密邮箱、管理员恢复链接时，payload 应加密给服务器应用层证书 public key；HTTPS 仍可作为额外保护但不是身份根
+- 涉及恢复 token、私密邮箱、管理员恢复链接时，payload 应加密给服务器应用层证书 public key
 - 服务端域名真实性由 `server_id / root fingerprint pinning` 保证，不由外部 TLS 证书保证
+
+**安全评审结论 (S-H1/S-H2)**：
+- 浏览器端 token/certificate material 禁止存 localStorage。使用 HttpOnly Secure cookie + WebCrypto non-extractable key 或 OS keychain。若必须存 localStorage，写入威胁模型并注明 XSS 风险
+- Server Intermediate CA 私钥保护从 advisory 升级为 **mandatory**：启动时检查私钥文件权限（0600 或 HSM 可访问性），不满足则拒绝启动；补充强制轮换（90 天）与审计合同
 
 ---
 
@@ -434,6 +473,8 @@ fn verify_password(password: &str, hash: &str) -> Result<bool, McpError> {
 ```
 
 > **实现者注意**：不得使用 `Argon2::default()`。必须显式构造 `Params` 并测试 PHC 字符串包含 `m=19456,t=2,p=1`。
+>
+> **安全评审要求 (S-H4)**：Argon2id 验证为 CPU 密集型操作（~100ms × 19MiB）。必须在 Auth Service 中部署全局 argon2 semaphore/worker pool——限制并发验证数为 `min(cpu_cores, 4)`。启动时预分配固定大小线程池，超出的请求排队等待（超时返回 `rate_limited`）。配合已有的 dummy PHC 和 per-IP 限流形成三层防护，防止分布式 DoS 放大攻击。
 
 ### 6.2 Auth 存储：FoundationDB
 
@@ -997,13 +1038,14 @@ POST /mcp (JSON-RPC)
 
 Response:
 {
-  "reset_url": "https://<host>/auth/reset?token=abc123...",
+  "created": true,
   "expires_in_seconds": 900
 }
 ```
 
 **权限与安全合同**：
 - 调用者必须持有 admin scope；非 admin 返回 `forbidden`
+- **管理员恢复链接不得直接返回给管理员**。`swarm_admin_create_password_reset` 返回 `{created: true}`，实际 `reset_url` 发送到用户已验证的邮箱或 out-of-band 用户验证通道。离线部署需双 admin + 用户短码/签名 challenge
 - 只接受 `login_username`，不按 email 查询，避免 admin recovery 路径扩大邮箱枚举面
 - 生成的 `reset_token` 与邮箱恢复使用同一 `auth/reset/<token_hash>` 存储和确认流程
 - token 有效期 15 分钟、一次性使用；确认恢复后签发新证书并吊销该用户所有现有 refresh token
