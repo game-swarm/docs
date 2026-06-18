@@ -21,7 +21,7 @@ WASM 模块通过 `tick(snapshot) → CommandIntent[]` JSON 返回指令。
 
 ## 指令列表 — 21 指令（11核心+2Global+8特殊）— 见 [API Registry](api-registry.md) §1
 
-以下 13 种指令对应 `CommandAction` enum 的 13 个具体变体。第 14 个变体 `CommandAction::Custom(type)` 通过 `CustomActionRegistry` 路由到特殊攻击（见下方「特殊攻击」节）。**权威指令清单见 [API Registry](api-registry.md) §1**（21 指令：11核心+2Global+8特殊攻击）。
+以下 13 种指令对应 `CommandAction` enum 的 13 个核心/Global 变体；8 种特殊攻击通过 `CommandAction::Custom(type)` 路由到 `CustomActionRegistry`（见下方「特殊攻击」节）。**权威指令清单见 [API Registry](api-registry.md) §1**（21 指令：11核心+2Global+8特殊攻击）。
 
 ### Move
 移动 drone 到目标方向。
@@ -78,10 +78,10 @@ WASM 模块通过 `tick(snapshot) → CommandIntent[]` JSON 返回指令。
 - 校验：drone 有 HEAL body part，target 为友方，3 格内，未满血
 - 治疗量：`HEAL parts × 12`
 
-### SpawnDrone
+### Spawn
 创建新 drone。
 ```json
-{ "sequence": 8, "action": { "type": "Spawn", "spawn_id": "s1", "body": ["MOVE", "WORK", "CARRY"] } }
+{ "sequence": 8, "action": { "type": "Spawn", "spawn_id": "s1", "body_parts": ["MOVE", "WORK", "CARRY"] } }
 ```
 - 校验：spawn 是玩家的 Spawn，cooldown = 0，body 长度 ≤ 50，能量足够，房间有空槽位
 - 消耗：BODY_PART_COST 累加 → 从 Spawn 扣除
@@ -114,7 +114,7 @@ WASM 模块通过 `tick(snapshot) → CommandIntent[]` JSON 返回指令。
 ### Recycle
 回收 drone，退还 50% body part 资源。
 ```json
-{ "sequence": 14, "action": { "type": "Recycle", "object_id": "d1", "spawn_id": "s1" } }
+{ "sequence": 12, "action": { "type": "Recycle", "object_id": "d1", "target_id": "d1" } }
 ```
 - 校验：drone 在 Spawn 1 格内
 - 退还：`body_cost(body) × 0.5`
@@ -122,7 +122,7 @@ WASM 模块通过 `tick(snapshot) → CommandIntent[]` JSON 返回指令。
 ### ClaimController
 占领敌方 Controller。
 ```json
-{ "sequence": 15, "action": { "type": "ClaimController", "object_id": "d1", "controller_id": "c1" } }
+{ "sequence": 13, "action": { "type": "ClaimController", "object_id": "d1", "target_id": "c1" } }
 ```
 - 校验：drone 有 CLAIM body part，target 是 Controller，1 格内
 - 每 CLAIM part → 1 占领进度
@@ -136,7 +136,7 @@ WASM 模块通过 `tick(snapshot) → CommandIntent[]` JSON 返回指令。
 ### Disrupt
 打断目标持续动作，不造成 HP 伤害。
 ```json
-{ "sequence": 16, "action": { "type": "Disrupt", "object_id": "d1", "target_id": "e5" } }
+{ "sequence": 14, "action": { "type": "Disrupt", "object_id": "d1", "target_id": "e5" } }
 ```
 - 校验：drone 有 ATTACK body part，敌方 drone，1 格内，fatigue = 0
 - 冷却：50 tick | 消耗：100 Energy | 抗性：Sonic | special_effect: `disrupt`
@@ -144,7 +144,7 @@ WASM 模块通过 `tick(snapshot) → CommandIntent[]` JSON 返回指令。
 ### Fortify
 自身/友方护盾 + 净化负面状态。
 ```json
-{ "sequence": 17, "action": { "type": "Fortify", "object_id": "d1", "target_id": "f2" } }
+{ "sequence": 15, "action": { "type": "Fortify", "object_id": "d1", "target_id": "f2" } }
 ```
 - 校验：drone 有 TOUGH body part，自身或友方，1 格内，fatigue = 0
 - 效果：所有抗性×0.5，清除负面状态，持续 100 tick
@@ -153,7 +153,7 @@ WASM 模块通过 `tick(snapshot) → CommandIntent[]` JSON 返回指令。
 ### Hack
 夺取敌方 drone——5 tick 渐进控制后转为 Neutral。
 ```json
-{ "sequence": 18, "action": { "type": "Hack", "object_id": "d1", "target_id": "e5" } }
+{ "sequence": 16, "action": { "type": "Hack", "object_id": "d1", "target_id": "e5" } }
 ```
 - 校验：drone 有 CLAIM body part，敌方 drone，1 格内，未被 hack，fatigue = 0
 - 进度：tick 1-2 减速 50%，tick 3-4 无法移动，tick 5 夺取成功
@@ -162,7 +162,7 @@ WASM 模块通过 `tick(snapshot) → CommandIntent[]` JSON 返回指令。
 ### Drain
 从目标建筑/存储窃取资源。
 ```json
-{ "sequence": 19, "action": { "type": "Drain", "object_id": "d1", "target_id": "b1" } }
+{ "sequence": 17, "action": { "type": "Drain", "object_id": "d1", "target_id": "b1" } }
 ```
 - 校验：drone 有 WORK + CARRY body part，敌方建筑，1 格内，fatigue = 0
 - 效果：每 tick 转移 `carry_capacity` 单位资源，持续至移动或被打断
@@ -171,7 +171,7 @@ WASM 模块通过 `tick(snapshot) → CommandIntent[]` JSON 返回指令。
 ### Overload
 消耗目标 fuel budget。必须满足可见性约束——仅可攻击可见玩家。
 ```json
-{ "sequence": 20, "action": { "type": "Overload", "object_id": "d1", "target_id": 42 } }
+{ "sequence": 18, "action": { "type": "Overload", "object_id": "d1", "target_id": "e5" } }
 ```
 - 校验：drone 有 RANGED_ATTACK body part，目标玩家可见（`is_visible_to`），fatigue = 0
 - 效果：target fuel -500k，下限 MAX_FUEL×0.2。全局冷却：同一目标每 50 tick 最多被 Overload 一次（不限攻击者数量）。反馈通过 `OverloadPressure` 组件暴露（见 `design/gameplay.md` §Overload 反馈透明度）
@@ -180,7 +180,7 @@ WASM 模块通过 `tick(snapshot) → CommandIntent[]` JSON 返回指令。
 ### Debilitate
 给目标附加易伤状态。
 ```json
-{ "sequence": 21, "action": { "type": "Debilitate", "object_id": "d1", "target_id": "e5", "damage_type": "Thermal" } }
+{ "sequence": 19, "action": { "type": "Debilitate", "object_id": "d1", "target_id": "e5", "damage_type": "Thermal" } }
 ```
 - 校验：drone 有 WORK body part，敌方，3 格内，fatigue = 0，无同类型叠加
 - 效果：指定伤害类型抗性×2，持续 50 tick
@@ -189,7 +189,7 @@ WASM 模块通过 `tick(snapshot) → CommandIntent[]` JSON 返回指令。
 ### Leech ⏳ Tier 2
 吸血攻击——伤害的 50% 治疗自身。
 ```json
-{ "sequence": 22, "action": { "type": "Leech", "object_id": "d1", "target_id": "e5" } }
+{ "sequence": 20, "action": { "type": "Leech", "object_id": "d1", "target_id": "e5" } }
 ```
 - 校验：drone 有对应 body part，敌方，1 格内
 - 伤害：Corrosive 15 dmg，治疗自身 50%
@@ -198,7 +198,7 @@ WASM 模块通过 `tick(snapshot) → CommandIntent[]` JSON 返回指令。
 ### Fabricate ⏳ Tier 2
 将敌方 drone 转化为己方建筑。
 ```json
-{ "sequence": 23, "action": { "type": "Fabricate", "object_id": "d1", "target_id": "e5" } }
+{ "sequence": 21, "action": { "type": "Fabricate", "object_id": "d1", "target_id": "e5" } }
 ```
 - 校验：drone 有对应 body part，敌方 drone，1 格内
 - 冷却：500 tick | 消耗：2000 Energy + 500 Matter | special_effect: `fabricate`

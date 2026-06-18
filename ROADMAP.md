@@ -12,7 +12,7 @@
 
 | 类别 | 差距数 | 说明 |
 |------|--------|------|
-| MCP 工具 | 46 缺失 | Registry 64 工具, 代码仅 26 ToolInfo |
+| MCP 工具 | 待审计 | Registry 56 个 Game API 活跃工具 + 11 个 Auth API 工具；代码 ToolInfo 数需按最新 registry 重新审计 |
 | RejectionReason | 29 缺失 | Registry 47 canonical codes, 代码 45 (含 19 非 canonical) |
 | 遗留 MCP 工具 | 8 待删 | 代码有但 registry 已移除 |
 | CommandAction | 1 命名 | `SpawnDrone` → `Spawn` |
@@ -23,7 +23,7 @@
 
 ## MCP 工具缺口 (G-MCP)
 
-### 在 Registry 但不在代码中 (46 tools)
+### 在 Registry 但不在代码中（待按 56 Game API + 11 Auth API 重新审计）
 
 **World View (15):**
 - [ ] swarm_get_drone
@@ -59,10 +59,17 @@
 - [ ] swarm_get_deploy_status
 - [ ] swarm_list_deployments
 
-**Leaderboard & Market (3):**
+**Leaderboard / SDK / Arena / Resources:**
 - [ ] swarm_get_leaderboard
-- [ ] swarm_list_market_orders
 - [ ] swarm_sdk_fetch
+- [ ] swarm_tournament_create
+- [ ] swarm_tournament_precommit
+- [ ] swarm_tournament_status
+- [ ] swarm_match_result
+- [ ] resources/list
+- [ ] resources/read
+
+> `swarm_list_market_orders` 已移至 Future RFC，不计入 active registry。
 
 **Admin (6):**
 - [ ] swarm_admin_ban_player
@@ -203,5 +210,5 @@
 
 ### 🔵 P3 — 文档对齐
 10. RejectionReason debug_detail 迁移 — 将 19 个非 canonical 变体移入 debug_detail
-11. commands.md / mcp-tools.md 刷新
-12. api-registry.md header 数字验证
+11. commands.md / mcp-tools.md 刷新（已对齐 API Registry 0.4.0 数字）
+12. api-registry.md header 数字验证（56 Game API active tools + 11 Auth API tools）

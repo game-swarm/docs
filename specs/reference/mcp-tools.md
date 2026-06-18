@@ -2,7 +2,7 @@
 
 > 权威源: [game_api.idl.yaml](game_api.idl.yaml) → [api-registry.md](api-registry.md) (生成)
 
-> **权威工具清单见 [API Registry](api-registry.md) §3** — 56 工具。本文档提供使用模式和安全约束说明。
+> **权威工具清单见 [API Registry](api-registry.md) §3** — 56 个 Game API 活跃工具 + 11 个 Auth API 工具。本文档提供使用模式和安全约束说明。
 >
 > MCP 是 AI agent 的操作界面——与人类玩家的 Web UI 完全同级。
 > MCP **不做游戏动作**。AI agent 必须编写 WASM 代码来操作世界。
@@ -10,35 +10,58 @@
 
 ## 使用模式
 
+## 工具总览（同步自 API Registry 0.4.0）
+
+| 分组 | Game API 工具数 | 说明 |
+|------|-----------------|------|
+| Onboarding | 10 | 信息、快照、房间、drone、文档与 schema 查询 |
+| Auth | 2 | `swarm_auth_login` / `swarm_auth_refresh` 简化形态 |
+| Play | 16 | 世界读取、回放、可见性、controller/structure/economy 查询 |
+| Deploy | 7 | 部署、校验、状态、模块、世界配置与规则读取 |
+| Debug | 8 | TickTrace、模拟、dry-run、sandbox/profile、最后 tick 解释 |
+| Admin | 6 | 管理挑战、配置、回滚、封禁、GC、审计日志 |
+| SDK | 1 | `swarm_sdk_fetch` |
+| Arena | 4 | 锦标赛创建、precommit、状态、比赛结果 |
+| Resources | 2 | `resources/list` / `resources/read` |
+| **Game API 小计** | **56** | `game_api.idl.yaml` active tools |
+| **Auth API** | **11** | `auth_api.idl.yaml` lifecycle + cert/device 工具 |
+
 ### 部署
 
-> 权威定义见 [API Registry](api-registry.md) §3.2 Deploy (6 工具)。
+> 权威定义见 [API Registry](api-registry.md) §3.2 Deploy (7 工具)。
 
 部署 WASM 模块的标准流程：
 1. `swarm_validate_module` — 上传前预检 WASM 合法性
 2. `swarm_deploy` — 上传并部署（需 Ed25519 签名，使用 deploy_mutation 模式）
 3. `swarm_get_deploy_status` — 查询部署状态
 4. `swarm_list_deployments` — 列出已部署模块
+5. `swarm_list_modules` — 列出玩家模块清单
+6. `swarm_get_world_config` — 读取世界配置
+7. `swarm_get_world_rules` — 读取规则模块参数
 
 ### 世界查看
 
-> 权威定义见 [API Registry](api-registry.md) §3.2 Onboarding (8) + Play (14)。
+> 权威定义见 [API Registry](api-registry.md) §3.2 Onboarding (10) + Play (16)。
 
 核心快照与实体查询按 `fog_of_war` / `owner` / `owner_or_visible` 可见性过滤。`swarm_get_snapshot` 每 tick 一次，返回与 WASM `tick()` 输入完全相同的结构化数据。
 
+0.4.0 新增的查询入口包括 `swarm_get_docs`、`swarm_get_schema`、`swarm_profile`、`swarm_get_available_actions`。
+
 ### 调试
 
-> 权威定义见 [API Registry](api-registry.md) §3.2 Debug (7 工具)。
+> 权威定义见 [API Registry](api-registry.md) §3.2 Debug (8 工具)。
 
-调试工具需要 `swarm:debug` scope，限制 30/tick。包括 `swarm_get_tick_trace`、`swarm_simulate`、`swarm_dry_run` 等。
+调试工具需要 `swarm:debug` scope，限制 30/tick。包括 `swarm_get_tick_trace`、`swarm_simulate`、`swarm_dry_run`、`swarm_explain_last_tick` 等。
 
 ### 认证
 
-> 权威定义见 [auth_api.idl.yaml](auth_api.idl.yaml) → [API Registry](api-registry.md) §3.2 Auth (2 工具)。
+> 权威定义见 [API Registry](api-registry.md) §3.2 Auth (2 个 Game API 简化工具) 与 §3.3 Auth API 工具 (11 个完整 auth 工具)。
 
 ### 锦标赛 / SDK / Resources
 
-> 权威定义见 [API Registry](api-registry.md) §3.2。
+> 权威定义见 [API Registry](api-registry.md) §3.2 Arena (4)、SDK (1)、Resources (2)。
+
+Arena 工具包括 `swarm_tournament_create`、`swarm_tournament_precommit`、`swarm_tournament_status`、`swarm_match_result`。SDK/Resources 工具分别提供 SDK 拉取与资源定义读取。
 
 ## 认证模型
 
