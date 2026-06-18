@@ -36,7 +36,7 @@ docs/
 │   ├── gameplay/          游戏规范 (反馈循环/API IDL)
 │   ├── future/            扩展路线 (T2 增量快照/T3 分片)
 │   ├── reference/         API 参考 (commands/host-functions/mcp-tools)
-│   └── 12-gateway-protocol.md  Gateway 协议
+│   └── gateway-protocol.md  Gateway 协议
 ├── AGENTS.md              AI agent 约定
 ├── RUNBOOK.md             运维手册
 ├── GETTING-STARTED.md     入门指南
