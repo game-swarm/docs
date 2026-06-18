@@ -91,8 +91,8 @@ config.cranelift_opt_level(wasmtime::OptLevel::Speed);  // 生产: Speed
 
 // === 线程 ===
 config.wasm_threads(false);                    // 禁用多线程
-config.wasm_simd(world_config.simd_enabled);       // SIMD 由 world.toml 控制：World 默认 true（性能），Arena 默认 false（确定性/公平）
-config.wasm_relaxed_simd(false);                    // 不允许 relaxed SIMD
+config.wasm_simd(world_config.simd_enabled);       // SIMD 由 world.toml 控制：**默认禁用**，仅显式 opt-in `deterministic_subset` 时启用
+config.wasm_relaxed_simd(false);                    // 不允许 relaxed SIMD（始终禁用）
 
 // === Epoch 中断 ===
 config.epoch_interruption(true);               // 超时即杀

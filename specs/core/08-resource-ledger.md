@@ -111,7 +111,51 @@ storage_tax(tick) = Σ over each tier i where storage_pct > tier_threshold[i]:
 - Tier 2 (60-75%): 150,000 × 5 bp = 75
 - **总税 = 105 / tick**
 
-### 2.3 Recycle 权威公式
+### 2.3 Starting Resources & Free Upkeep Waiver
+
+> **R23 D1/A 裁决**：第一个 controller 和前 N 个 drone 免维护费（数量可配置）。
+
+**World 启动经济**：Standard World 的 1-room balance sheet 长期为负——若无初始资源与免维护期，新玩家将在 safe/soft_launch 期间陷入 upkeep deficit 死亡螺旋。
+
+#### 新增配置参数
+
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `starting_resources` | `{Energy: 5000, Minerals: 2000}` | 新玩家进入世界时获得的初始资源包 |
+| `free_upkeep_controllers` | 1 | 免维护费的 controller 数量 |
+| `free_upkeep_drones` | 3 | 免维护费的 drone 数量 |
+| `free_upkeep_ticks` | 2000 | 免维护费持续 tick 数（自首次 spawn 起） |
+
+**结算规则**：
+- 前 `free_upkeep_controllers` 个 controller 和前 `free_upkeep_drones` 个 drone 在 `free_upkeep_ticks` 内免 `UpkeepDeduction`
+- 超过免维护数量的 drone/controller 正常扣费
+- 免维护到期后，最后一个免维护 tick 结束时一次性重算剩余容量，无追溯扣费
+- 反 smurf 约束：免维护绑定 player identity，同一身份（证书）只享受一次；新身份需等待 `new_player_transfer_lock` 满后方可接收任何资源
+
+#### Growth Path 示例（Standard World，1 room → RCL3 → 5 rooms）
+
+| Tick 范围 | 阶段 | Faucet | Sink | Break-even? |
+|-----------|------|--------|------|-------------|
+| 0–500 | Tutorial / Safe mode | starting_resources + Controller income (50/tick) | 0（免维护） | ✅ 净增长 |
+| 500–1500 | Soft launch | Controller + Harvester (2×) | 2 drone upkeep | ✅ 轻微盈余 |
+| 1500–2000 | RCL 升级 | Controller + Harvester (3×) + PvE | RCL2 升级成本 + 3 drone | ⚠️ 接近平衡 |
+| 2000+ | Full economy | 完整 faucet | Empire upkeep | ✅ 自维持 |
+
+**说明**：免维护到期（tick 2000）时，玩家应有 ≥2 rooms + 5 drones + 完整 faucer 管道。实际 break-even tick 取决于玩家 build 效率。
+
+### 2.4 Controller Repair 权威公式
+
+> **R23 D4/A 裁决**：Controller repair 免费比例降至 30–35%，加入距离衰减。
+
+```
+repair_cost = body_cost × (1 - repair_cap / 10000) × (1 + distance_from_nearest_controller × distance_decay_bp / 10000)
+repair_cap = 3500 bp (35%)
+distance_decay_bp = 500 bp (5% per tile)
+```
+
+即最近 controller 距离 0 tile → repair 仅 65% cost；距离 10 tile → repair 为 65% × 1.5 = 97.5% cost。
+
+### 2.5 Recycle 权威公式
 
 ```
 recycle_refund = body_cost × remaining_lifespan / total_lifespan × recycle_refund_base / 10000
@@ -150,16 +194,17 @@ PvE 资源产出通过 4 维账本控制，防止 faucet 无限放大：
 每 tick 的资源操作按以下顺序执行（在 apply 阶段内）：
 
 ```
-1. UpkeepDeduction     (所有 drone/建筑维护费)
-2. StorageTax          (仓库存储税)
-3. PvEAward            (NPC spawn/drop → 按预算裁决)
-4. LocalTransfer       (drone 间转移)
-5. GlobalDeposit       (本地→全局)
-6. GlobalWithdraw      (全局→本地)
-7. AlliedTransfer      (联盟转移 → 按预算裁决)
-8. BuildCost           (建造消耗)
-9. SpawnCost           (生成消耗)
-10. RecycleRefund      (回收退还)
+1. WorldStartupSubsidy   (starting_resources 注入，首次进入时一次性)
+2. UpkeepDeduction     (所有 drone/建筑维护费；免维护期内前 N 个 controller/drone 跳过)
+3. StorageTax          (仓库存储税)
+4. PvEAward            (NPC spawn/drop → 按预算裁决)
+5. LocalTransfer       (drone 间转移)
+6. GlobalDeposit       (本地→全局)
+7. GlobalWithdraw      (全局→本地)
+8. AlliedTransfer      (联盟转移 → 按预算裁决)
+9. BuildCost           (建造消耗)
+10. SpawnCost           (生成消耗)
+11. RecycleRefund      (回收退还)
 ```
 
 同 tick 内同一玩家的多个同类型操作，按 Command sequence 顺序执行。

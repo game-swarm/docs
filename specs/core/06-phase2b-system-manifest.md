@@ -47,7 +47,7 @@ Serial Spine:
   │ [S17] drain_system          │                        │
   │ [S18] overload_system       ├─ parallel              │
   │ [S19] debilitate_system     │  (disjoint targets)    │
-  │ [S20] disrupt_system        │                        │
+  │ [S20] disrupt_system        │  (body part match req) │
   │ [S21] fortify_system        │                        │
   │ [S22] status_advance_system ┘                        │
   ├─────────────────────────────────────────────────────┤
@@ -207,7 +207,7 @@ Serial Spine:
 | drain_system | `drain` | DrainState, ResourceAmount | ResourceAmount (drain) |
 | overload_system | `overload` | OverloadState, FuelBudget | FuelBudget (reduce) |
 | debilitate_system | `debuff` | DebilitateState, Entity (efficiency) | Entity (efficiency) |
-| disrupt_system | `disrupt` | DisruptState, Entity (action) | Entity (interrupted) |
+| disrupt_system | `disrupt` | DisruptState, Entity (action), Entity (body_parts) | Entity (interrupted) — **要求 body part match**（R23 D3/A） |
 | fortify_system | `fort` | FortifyState, Entity (armor) | Entity (armor) |
 | status_advance_system | `status_adv` | All StatusState components, pending_intents (from S14) | StatusState (duration--, expire, apply intents) |
 

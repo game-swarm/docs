@@ -337,16 +337,55 @@ TickTrace {
 
 ---
 
-## 8. 实现约束
+## 8. Room-Partition FDB 事务策略
 
-| 约束 | 要求 |
-|------|------|
-| FDB 事务大小 | 单 tick 事务 < 10KB（仅 tick_head + manifest + hash_chain row + small mutations） |
-| 对象存储异步写入超时 | 5s；超时 → 重试 3 次（指数退避 1s/2s/4s）；3 次均失败 → `upload_status = failed`，不阻塞 tick 循环 |
-| 对象存储读取 | 延迟 < 100ms p99 |
-| Keyframe 写入 | 异步，不阻塞 tick 循环 |
-| WAL 写入 | 同步，在 Apply 阶段每步写入 |
-| 内存 buffer | TickTrace 序列化后最大 10MB buffer；超限 → tick 放弃 + metric 告警 |
+> **R23 D6/B 裁决**：FDB room-partition transaction 纳入 Phase 1 合同。单事务 MVP 仅支持小规模验证；500/1000-player 场景必须使用 room-level partition。
+
+### 8.1 分区策略
+
+```
+单事务 MVP (默认):
+  适用: ≤ 50 active players, ≤ 100 rooms
+  策略: 整个 world 单 FDB 事务
+  热区: tick_head + state_checksum + manifest (shared)
+  
+Room-Partition (500+ players):
+  适用: > 50 active players 或 > 100 rooms
+  策略: 每个 room 独立 FDB 事务分区
+  Key layout: /swarm/{shard}/{room_id}/{tick}/{...}
+  Conflict range: per-room transaction 不跨 room 冲突
+  Cross-room operations: 2-phase commit（source room → target room）
+```
+
+### 8.2 实现约束
+
+| 约束 | 单事务 MVP | Room-Partition |
+|------|-----------|---------------|
+| FDB 事务大小 | 单 tick < 10KB | 每 room < 2KB |
+| 对象存储异步写入超时 | 5s；3 次重试 | 5s；3 次重试 |
+| 对象存储读取 | 延迟 < 100ms p99 | 不变 |
+| Keyframe 写入 | 异步，不阻塞 tick 循环 | 不变 |
+| WAL 写入 | 同步 | per-room WAL |
+| 内存 buffer | TickTrace 10MB max | 不变 |
+| Cross-room conflict | N/A | 2PC，超时 3s，fallback to best-effort |
+
+### 8.3 Synthetic Benchmark 要求
+
+为证明容量声明，实现 Phase 需交付以下 benchmark gate：
+
+| Benchmark | 目标 | 判定标准 |
+|-----------|------|---------|
+| Command validate loop | 100k commands/tick | p99 < 50ms |
+| Command apply loop | 100k commands/tick | p99 < 100ms |
+| Entity snapshot clone | 50k entities | p99 < 20ms |
+| Entity snapshot restore | 50k entities | p99 < 30ms |
+| Snapshot stitching | 1000 × 256KB snapshots | p99 < 100ms |
+| FDB single-tx commit | 500 active players | p99 < 200ms, conflict rate < 1% |
+| FDB room-partition commit | 1000 active players, 200 rooms | p99 < 500ms, per-room conflict rate < 1% |
+| Pathfinding | 50×50 A* nodes, 100 concurrent ops | p99 < 10ms/node, fair-share guarantee |
+| Rollback Bevy snapshot/restore | 500 entities, all components | p99 < 50ms, entity ID allocator verified |
+
+Gate 失败 → 对应容量声明不可信，需降级规模或优化实现。
 
 ---
 

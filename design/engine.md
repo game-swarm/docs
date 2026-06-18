@@ -304,7 +304,7 @@ Swarm:     Move = Action  → 每 tick 移动 OR 采集 OR 攻击 OR 建造
 | **Active players** | target 500 / hard cap 1000 | 活跃玩家数 |
 | **Active drones** | target 5000 / hard cap 10000 | 活跃 drone 总数 |
 | **Total entities** | hard cap 50000 | 含 drones、structures、NPC、resources |
-| **Per-player drone cap** | 50 (default, world.toml configurable; R22 D3/A) | 可配置 |
+| **Per-player drone cap** | 50 (per-room per-player baseline, world.toml configurable; R23 D2/B 三层 cap) | per-room / per-player / per-world 三层取较小值 |
 | **Snapshot per-player (WASM)** | 256KB | tick() 输入；fog_of_war 过滤后的可见实体 |
 | **Snapshot player display** | 分页传输 | 展示用，非 WASM 输入；不受 fog_of_war 限制 |
 | **Commands per player per tick** | max 100 | 可配置拒绝策略 |
@@ -404,7 +404,7 @@ WASM 实例使用 **long-lived worker pool + per-tick clean Store/Instance reset
 - **Pool**：大小按 `min(MAX_POOL, active_players)` 动态伸缩（见 §3.4.2 Worker Pool 推导）；空闲实例 5min 后回收
 - **Per-tick reset**：memory 清零、fuel 重置、WASI 全部关闭后重新按需开启
 - **WASI 默认全部关闭**，仅开启确定性子集（由 engine 编译期固定）
-- **禁用的 WASI**：clock、random、filesystem、network、env、process、threads、atomics、SIMD
+- **禁用的 WASI**：clock、random、filesystem、network、env、process、threads、atomics、SIMD（默认禁用；允许 opt-in deterministic integer subset，需跨架构验证）
 - **Worker 边界**：每个 worker 有独立 uid/cgroup；seccomp profile 限制 syscall；OOM score adj；rlimit（nproc、nofile、memlock）
 - **Recycle 策略**：每 worker 最多服务 1000 tick 后强制替换；OOM/trap/timeout 后立即替换并记入 audit log
 - **Wasmtime version 固定**：编译期锁定，升级后重编译所有缓存模块

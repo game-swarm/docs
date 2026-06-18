@@ -48,7 +48,7 @@ upkeep = base_upkeep × rooms × (1 + rooms / room_soft_cap)
 |--------|:------:|
 | **净亏损** | **-30** |
 
-> 1 房间阶段需要初始资源包支撑。Controller 升级到 RCL 2-3 后可达收支平衡。
+> 1 房间阶段需要初始资源包支撑（`starting_resources`，见 Resource Ledger §2.3）。免维护期内前 1 controller + 3 drone 免维护费，Tutorial/safe_mode 结束时应有 ≥2 rooms + 5 drones 自维持。Controller 升级到 RCL 2-3 后可达收支平衡。
 
 ### 2.2 Standard 模式 — 5 房间
 
@@ -116,7 +116,7 @@ upkeep = base_upkeep × rooms × (1 + rooms / room_soft_cap)
 
 ## 3. 模式差异
 
-| 参数 | Tutorial | Vanilla (Novice) | Standard |
+| | Tutorial | Vanilla (Novice) | Standard |
 |------|:--------:|:----------------:|:--------:|
 | `base_upkeep` | 10 | 30 | 50 |
 | `room_soft_cap` | 20 | 15 | 10 |
@@ -126,6 +126,12 @@ upkeep = base_upkeep × rooms × (1 + rooms / room_soft_cap)
 | `allied_transfer_enabled` | true | false | false (默认) |
 | `storage_tax` | 免税 | tiered (0/1/5/20 bp) | tiered (0/1/5/20 bp) |
 | `safe_mode_duration` | 2000 | 500 | 500 |
+| `starting_resources` | `{Energy: 10000, Minerals: 5000}` | `{Energy: 5000, Minerals: 2000}` | `{Energy: 5000, Minerals: 2000}` |
+| `free_upkeep_controllers` | 3 | 1 | 1 |
+| `free_upkeep_drones` | 5 | 3 | 3 |
+| `free_upkeep_ticks` | 3000 | 2000 | 2000 |
+| `repair_cap` | 5000 bp (50%) | 3500 bp (35%) | 3500 bp (35%) |
+| `repair_distance_decay` | 0 bp | 500 bp (5%/tile) | 500 bp (5%/tile) |
 
 > **存储税权威源**：tier 定义见 `design/gameplay.md` §8「累进存储税」和 `specs/core/08-resource-ledger.md` §StorageTax。Tutorial 全免，Vanilla/Standard 使用相同 tier 结构（税率由 `global_storage_tax_tiers` 配置）。
 
