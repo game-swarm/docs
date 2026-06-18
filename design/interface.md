@@ -36,6 +36,9 @@ AI：  MCP 看世界 → 生成 WASM → 部署 ───┘
 | | `swarm_get_schema` | 游戏 API JSON Schema |
 | | `swarm_get_available_actions` | 当前可用的 API 函数 |
 | | `swarm_simulate` | 离线模拟：给定快照预测未来 N tick |
+| **经济** | `swarm_get_economy` | 当前 tick 经济全貌（收入/支出/存储/税率） |
+| | `swarm_get_drone_efficiency` | 每 drone 效率统计（最近 N tick） |
+| | `swarm_get_economy_trend` | 经济趋势线（energy/drones/rooms/storage） |
 | **认证** | `swarm_get_server_trust` | 获取 server_id 与 Swarm CA fingerprint |
 | | `swarm_register_challenge` | 获取注册/CSR PoW 挑战 |
 | | `swarm_submit_csr` | 提交 CSR 并按设备 profile 签发应用层证书 |
