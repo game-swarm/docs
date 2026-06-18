@@ -100,8 +100,6 @@ enums:
     - AuthContextInvalid
     - GlobalStorageDisabled
     - TransferInProgress
-    - TerminalRequired
-    - OrderNotFound
     - UnknownAction { action: String }
     - AlreadyHacked
     - InvalidDamageType

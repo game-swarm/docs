@@ -71,7 +71,7 @@
 ### Market / Trading 完整实现
 
 - **来源**: B5 — Speaker 要求显式 deferral
-- **状态**: Phase 2 候选特性。当前仅保留接口占位（`CreateMarketOrder`、`BuyMarketOrder`、`CancelMarketOrder`）
+- **状态**: Phase 2 候选特性。当前从 IDL/默认 SDK 移除，仅保留 RFC 文档。Market 未来方向为 Transfer + Alliance 资源池的上层抽象（与 D3 裁决一致）。
 - **触发时机**: Phase 1 经济系统稳定后，独立经济模拟验证通过
 - **决策**:
   - 价格发现机制（order book vs AMM vs 双边协商）

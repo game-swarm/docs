@@ -107,20 +107,6 @@ WASM 模块通过 `tick(snapshot) → CommandIntent[]` JSON 返回指令。
 - 校验：全局存储有足够余额，transfer_time_remaining = 0
 - 延迟：N tick 到账（默认 5），5% 手续费
 
-### CreateMarketOrder
-创建市场订单。
-```json
-{ "sequence": 12, "action": { "type": "CreateMarketOrder", "object_id": "d1", "resource": "Energy", "amount": 1000, "price_resource": "Matter", "price_amount": 500 } }
-```
-- 校验：market_requires_terminal 为 true 时需 Terminal 建筑
-
-### BuyMarketOrder
-购买市场订单。
-```json
-{ "sequence": 13, "action": { "type": "BuyMarketOrder", "object_id": "d1", "order_id": 42 } }
-```
-- 校验：订单存在且未过期，购买者有足够资源
-
 ### Recycle
 回收 drone，退还 50% body part 资源。
 ```json
@@ -272,7 +258,7 @@ WASM 模块通过 `tick(snapshot) → CommandIntent[]` JSON 返回指令。
 >
 > 注：`SourceNotAllowed` 和 `UnknownAction` **在** `RejectionReason` enum 内——它们在上表已列出，当在管线早期触发时同属管线级拒绝。
 
-> **子系统拒绝**（由各自模块独立校验，非 Command 校验管线）：`GlobalStorageDisabled`、`TransferInProgress`、`OrderNotFound`、`TerminalRequired`。MCP 层另有 `RateLimited`。
+> **子系统拒绝**（由各自模块独立校验，非 Command 校验管线）：`GlobalStorageDisabled`、`TransferInProgress`。MCP 层另有 `RateLimited`。
 
 ## 校验流程
 

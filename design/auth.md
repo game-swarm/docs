@@ -411,7 +411,7 @@ HTTP 场景下：
 - 服务端域名真实性由 `server_id / root fingerprint pinning` 保证，不由外部 TLS 证书保证
 
 **安全评审结论 (S-H1/S-H2)**：
-- 浏览器端 token/certificate material 禁止存 localStorage。使用 HttpOnly Secure cookie + WebCrypto non-extractable key 或 OS keychain。若必须存 localStorage，写入威胁模型并注明 XSS 风险
+- 浏览器端 token/certificate material 禁止存 localStorage。使用 HttpOnly Secure cookie + WebCrypto non-extractable key 或 OS keychain（见 §14.3）。
 - Server Intermediate CA 私钥保护从 advisory 升级为 **mandatory**：启动时检查私钥文件权限（0600 或 HSM 可访问性），不满足则拒绝启动；补充强制轮换（90 天）与审计合同
 
 ---
