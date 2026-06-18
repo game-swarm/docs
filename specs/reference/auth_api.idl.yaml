@@ -1,0 +1,682 @@
+# =============================================================================
+# Auth API IDL — Machine-Readable Single Source of Truth
+# =============================================================================
+# Canonical source for auth subsystem codegen / SDK / CI. All other auth docs
+# derive from this file. This file is validated by CI — do not edit Markdown
+# tables directly.
+# =============================================================================
+
+api_version: "0.1.0"
+
+# =============================================================================
+# 1. Auth Lifecycle Tools — 5 core session-management tools
+# =============================================================================
+auth_lifecycle_tools:
+  description: >
+    Core authentication session lifecycle tools. All clients must authenticate
+    via swarm_auth_login before accessing any protected resources. Sessions are
+    tracked server-side and can be revoked individually or in bulk.
+  total_tools: 5
+
+  rate_limits:
+    login: "10/min"
+    refresh: "5/min"
+    logout: "20/min"
+    check: "100/min"
+    revoke: "5/min"
+
+  tools:
+    # --- 1.1 Login ---
+    - name: swarm_auth_login
+      index: 1
+      category: lifecycle
+      input_schema:
+        credential: Credential
+        challenge_response: string
+        device_id: string
+        device_name: string
+      output_schema:
+        token: string
+        refresh_token: string
+        expiry: u64
+        scope: string
+        player_id: PlayerId
+        session_id: string
+      rate_limit: "10/min"
+      required_scope: "swarm:auth"
+      subject_source: none
+      replay_class: non_replayable
+      visibility_filter: none
+      rate_limit_key: per_ip
+      description: >
+        Authenticate a client using a credential and challenge-response proof.
+        Returns a short-lived access token, a long-lived refresh token, and the
+        assigned scope. Device registration is verified during login; unknown
+        devices are rejected unless allow_unregistered_devices is enabled.
+
+    # --- 1.2 Refresh ---
+    - name: swarm_auth_refresh
+      index: 2
+      category: lifecycle
+      input_schema:
+        refresh_token: string
+      output_schema:
+        token: string
+        expiry: u64
+      rate_limit: "5/min"
+      required_scope: "swarm:auth"
+      subject_source: player_id
+      replay_class: non_replayable
+      visibility_filter: owner
+      rate_limit_key: per_player
+      description: >
+        Exchange a valid refresh token for a new short-lived access token.
+        Refresh tokens are single-use; each successful refresh also issues a
+        new refresh token (rotation). Reuse of an already-consumed refresh
+        token triggers RefreshTokenInvalid rejection and revokes the entire
+        token family.
+
+    # --- 1.3 Logout ---
+    - name: swarm_auth_logout
+      index: 3
+      category: lifecycle
+      input_schema:
+        token: string
+        session_id: string
+      output_schema:
+        revoked: bool
+        affected_sessions: u32
+      rate_limit: "20/min"
+      required_scope: "swarm:auth"
+      subject_source: player_id
+      replay_class: non_replayable
+      visibility_filter: owner
+      rate_limit_key: per_player
+      description: >
+        Terminate an active session. Revokes the access token and all associated
+        refresh tokens. If session_id is omitted, revokes all sessions for the
+        authenticated player.
+
+    # --- 1.4 Check ---
+    - name: swarm_auth_check
+      index: 4
+      category: lifecycle
+      input_schema:
+        token: string
+      output_schema:
+        valid: bool
+        player_id: PlayerId
+        scope: string
+        expiry: u64
+        session_id: string
+        device_id: string
+      rate_limit: "100/min"
+      required_scope: "swarm:auth"
+      subject_source: player_id
+      replay_class: read_replay_safe
+      visibility_filter: owner
+      rate_limit_key: per_player
+      description: >
+        Validate an access token and return its associated metadata. Lightweight
+        check that does not extend the session. Used by internal services for
+        token introspection.
+
+    # --- 1.5 Revoke ---
+    - name: swarm_auth_revoke
+      index: 5
+      category: lifecycle
+      input_schema:
+        target_player_id: PlayerId
+        target_session_id: string
+        reason: string
+      output_schema:
+        revoked: bool
+        affected_sessions: u32
+        audit_log_id: string
+      rate_limit: "5/min"
+      required_scope: "swarm:admin"
+      subject_source: admin_id
+      replay_class: admin_critical
+      visibility_filter: admin_scope
+      rate_limit_key: per_admin
+      description: >
+        Administrative session revocation. Can target a specific session, all
+        sessions for a player, or all sessions globally. Writes an audit log
+        entry with the revocation reason. Requires admin scope.
+
+# =============================================================================
+# 2. Auth MCP Tools — Cert Management & Device Registration
+# =============================================================================
+auth_mcp_tools:
+  description: >
+    Certificate management and device registration tools for the auth subsystem.
+    These tools manage the PKI infrastructure: certificate lifecycle (issue,
+    rotate, revoke) and device trust registry (register, unregister, list).
+  total_tools: 6
+
+  rate_limits:
+    cert: "10/h"
+    device: "30/min"
+
+  tools:
+    # --- 2.1 Cert Rotation ---
+    - name: swarm_auth_cert_rotate
+      index: 1
+      category: cert_management
+      input_schema:
+        cert_id: string
+        reason: string
+      output_schema:
+        new_cert_id: string
+        new_cert_fingerprint: string
+        old_cert_revoked: bool
+        rotation_time: u64
+        expiry: u64
+      rate_limit: "10/h"
+      required_scope: "swarm:admin"
+      subject_source: admin_id
+      replay_class: admin_critical
+      visibility_filter: admin_scope
+      rate_limit_key: per_admin
+      description: >
+        Rotate a TLS/mTLS certificate. Generates a new key pair and certificate,
+        atomically revokes the old certificate, and distributes the new cert to
+        the trust store. Supports scheduled rotation (date-based) and emergency
+        rotation (compromise-based, reason=compromised).
+
+    # --- 2.2 Cert Issue ---
+    - name: swarm_auth_cert_issue
+      index: 2
+      category: cert_management
+      input_schema:
+        subject: string
+        san_dns_names: "[string]"
+        san_ip_addresses: "[string]"
+        validity_days: u32
+        key_type: string
+      output_schema:
+        cert_id: string
+        certificate: string
+        fingerprint: string
+        issued_at: u64
+        expiry: u64
+      rate_limit: "10/h"
+      required_scope: "swarm:admin"
+      subject_source: admin_id
+      replay_class: admin_critical
+      visibility_filter: admin_scope
+      rate_limit_key: per_admin
+      description: >
+        Issue a new certificate from the internal CA. Supports RSA and ECDSA
+        key types. The certificate is automatically added to the trust store
+        and becomes active immediately.
+
+    # --- 2.3 Cert Revoke ---
+    - name: swarm_auth_cert_revoke
+      index: 3
+      category: cert_management
+      input_schema:
+        cert_id: string
+        reason: string
+      output_schema:
+        revoked: bool
+        revocation_time: u64
+        crl_updated: bool
+      rate_limit: "10/h"
+      required_scope: "swarm:admin"
+      subject_source: admin_id
+      replay_class: admin_critical
+      visibility_filter: admin_scope
+      rate_limit_key: per_admin
+      description: >
+        Revoke a certificate and update the Certificate Revocation List (CRL).
+        Connections using the revoked certificate are terminated within the
+        next grace period (default: 60s).
+
+    # --- 2.4 Cert List ---
+    - name: swarm_auth_cert_list
+      index: 4
+      category: cert_management
+      input_schema:
+        status: string
+      output_schema:
+        certificates: "[{cert_id, subject, fingerprint, issued_at, expiry, status}]"
+      rate_limit: "30/min"
+      required_scope: "swarm:admin"
+      subject_source: admin_id
+      replay_class: read_replay_safe
+      visibility_filter: admin_scope
+      rate_limit_key: per_admin
+      description: >
+        List all certificates in the trust store, optionally filtered by status
+        (active, expired, revoked). Returns fingerprint, validity window, and
+        current status for each certificate.
+
+    # --- 2.5 Device Register ---
+    - name: swarm_auth_device_register
+      index: 5
+      category: device_registration
+      input_schema:
+        player_id: PlayerId
+        device_id: string
+        device_name: string
+        device_fingerprint: string
+        public_key: string
+        metadata: DeviceMetadata
+      output_schema:
+        registered: bool
+        device_id: string
+        registration_time: u64
+        requires_approval: bool
+      rate_limit: "30/min"
+      required_scope: "swarm:auth"
+      subject_source: player_id
+      replay_class: idempotent_mutation
+      visibility_filter: owner
+      rate_limit_key: per_player
+      description: >
+        Register a new device for a player. Devices must be registered before
+        they can authenticate. The device fingerprint and public key are stored
+        in the device trust registry. Device count is bounded by the per-player
+        device limit (default: 10).
+
+    # --- 2.6 Device List ---
+    - name: swarm_auth_device_list
+      index: 6
+      category: device_registration
+      input_schema:
+        player_id: PlayerId
+      output_schema:
+        devices: "[{device_id, device_name, registered_at, last_seen, status}]"
+      rate_limit: "30/min"
+      required_scope: "swarm:auth"
+      subject_source: player_id
+      replay_class: read_replay_safe
+      visibility_filter: owner
+      rate_limit_key: per_player
+      description: >
+        List all registered devices for a player. Includes registration time,
+        last authentication time, and device status (active, suspended, revoked).
+        Players can only view their own devices.
+
+# =============================================================================
+# 3. RejectionReason — 12 canonical auth codes
+# =============================================================================
+rejection_reason:
+  description: >
+    All auth-specific rejection reasons. These 12 canonical codes form the
+    stable wire enum for authentication failures. Additional contextual
+    information goes into the `debug_detail` field, NOT into additional
+    RejectionReason variants. This keeps the wire enum stable while providing
+    rich debugging data. Auth rejections are layered on top of the core 35
+    codes in game_api.idl.yaml; auth codes use the auth-specific namespace
+    (1000+ index range) to avoid collision.
+  total_canonical_codes: 12
+  namespace_offset: 1000
+  debug_detail:
+    description: >
+      Non-canonical, human-readable detail string providing context beyond the
+      12 canonical codes. Examples: "CertExpired: certificate expired 3h ago,
+      fingerprint=abc123", "SessionLimitReached: 5/5 active sessions, cannot
+      create new one". This field is NOT part of the RejectionReason wire
+      enum — it is a separate string payload.
+    max_length: 512
+    unit: "bytes"
+
+  variants:
+    - code: InvalidCertificate
+      index: 1001
+      layer: auth
+      description: "Client certificate is invalid, untrusted, or malformed"
+      debug_detail_example: "InvalidCertificate: leaf cert signed by unknown CA, fingerprint=abc123"
+
+    - code: NotAuthorized
+      index: 1002
+      layer: auth
+      description: "Authenticated principal lacks required scope for this operation"
+      note: "Auth-layer scope check; distinct from game-layer NotOwner"
+      debug_detail_example: "NotAuthorized: required scope=swarm:admin, granted scope=swarm:read"
+
+    - code: CertExpired
+      index: 1003
+      layer: auth
+      description: "Client certificate has expired"
+      debug_detail_example: "CertExpired: certificate expired at 2026-06-17T12:00:00Z (3h ago)"
+
+    - code: DeviceNotRegistered
+      index: 1004
+      layer: auth
+      description: "Device is not registered in the device trust registry"
+      debug_detail_example: "DeviceNotRegistered: device_id=dev-unknown-abc, player_id=p42"
+
+    - code: SessionLimitReached
+      index: 1005
+      layer: auth
+      description: "Player has reached the maximum number of concurrent sessions"
+      debug_detail_example: "SessionLimitReached: 5/5 active sessions, cannot create new session"
+
+    - code: RefreshTokenInvalid
+      index: 1006
+      layer: auth
+      description: "Refresh token is invalid, expired, or already consumed (replay detected)"
+      debug_detail_example: "RefreshTokenInvalid: token already consumed at tick 98765, token family revoked"
+
+    - code: ScopeInsufficient
+      index: 1007
+      layer: auth
+      description: "Token scope does not include the required permission for the requested operation"
+      debug_detail_example: "ScopeInsufficient: token has swarm:read, operation requires swarm:deploy"
+
+    - code: TokenRevoked
+      index: 1008
+      layer: auth
+      description: "Access or refresh token has been explicitly revoked"
+      debug_detail_example: "TokenRevoked: session_id=sess-xyz revoked by admin at tick 12345, reason=compromise"
+
+    - code: RateLimited
+      index: 1009
+      layer: auth
+      description: "Auth endpoint rate limit exceeded; retry after the specified window"
+      debug_detail_example: "RateLimited: login rate limit 10/min exceeded, retry after 47s"
+
+    - code: MultiDeviceConflict
+      index: 1010
+      layer: auth
+      description: "Device registration or session creation conflicts with existing device policy"
+      debug_detail_example: "MultiDeviceConflict: player_id=p42 has 10/10 devices, cannot register dev-new"
+
+    - code: UnknownCredential
+      index: 1011
+      layer: auth
+      description: "Credential type is not recognized or not supported by this auth provider"
+      debug_detail_example: "UnknownCredential: credential type=oidc not configured for this realm"
+
+    - code: InternalAuthError
+      index: 1012
+      layer: auth
+      description: "Internal auth subsystem error (e.g., token store unavailable, CA unreachable)"
+      debug_detail_example: "InternalAuthError: token store query timeout after 5s, retry may succeed"
+
+  naming_conventions:
+    InvalidCertificate: "Certificate validation failure (untrusted, malformed, or revoked by CRL)"
+    NotAuthorized: "Auth-layer authorization (scope check); distinct from game-layer NotOwner"
+    CertExpired: "Certificate past its notAfter date"
+    DeviceNotRegistered: "Device not found in trust registry"
+    SessionLimitReached: "Per-player concurrent session cap hit"
+    RefreshTokenInvalid: "Refresh token replay, expiry, or consumption detected"
+    ScopeInsufficient: "Token scope narrower than required for operation"
+    TokenRevoked: "Explicit administrative or self-service revocation"
+    RateLimited: "Auth endpoint rate limiter triggered"
+    MultiDeviceConflict: "Device registration or session policy conflict"
+    UnknownCredential: "Unrecognized or unsupported credential type"
+    InternalAuthError: "Auth subsystem internal failure; transient or persistent"
+
+# =============================================================================
+# 4. Auth Tick Trace Events
+# =============================================================================
+auth_trace_events:
+  description: >
+    Auth-specific events emitted into the tick trace stream. These events are
+    serialized alongside game events in the TickTrace envelope and are subject
+    to the same replay determinism guarantees. Auth events do NOT affect game
+    state but are recorded for audit, security monitoring, and replay integrity.
+  total_event_types: 8
+
+  events:
+    - name: auth_login
+      index: 1
+      fields:
+        - { name: tick, type: u64, description: "Tick when login occurred" }
+        - { name: player_id, type: PlayerId, description: "Authenticated player" }
+        - { name: session_id, type: string, description: "New session identifier" }
+        - { name: device_id, type: string, description: "Device used for login" }
+        - { name: credential_type, type: string, description: "Type of credential used" }
+        - { name: ip_address, type: string, description: "Client IP address (hashed for privacy)" }
+        - { name: success, type: bool, description: "Whether login succeeded" }
+        - { name: rejection_code, type: string, description: "RejectionReason code if failed (nullable)" }
+      replay_class: non_replayable
+      description: "Emitted when a client attempts authentication via swarm_auth_login"
+
+    - name: auth_logout
+      index: 2
+      fields:
+        - { name: tick, type: u64, description: "Tick when logout occurred" }
+        - { name: player_id, type: PlayerId, description: "Player who logged out" }
+        - { name: session_id, type: string, description: "Terminated session" }
+        - { name: initiator, type: string, description: "self, admin, or system" }
+      replay_class: non_replayable
+      description: "Emitted when a session is terminated via logout or revocation"
+
+    - name: auth_token_refresh
+      index: 3
+      fields:
+        - { name: tick, type: u64, description: "Tick when refresh occurred" }
+        - { name: player_id, type: PlayerId, description: "Player refreshing token" }
+        - { name: session_id, type: string, description: "Session being refreshed" }
+        - { name: success, type: bool, description: "Whether refresh succeeded" }
+        - { name: rejection_code, type: string, description: "RejectionReason if failed (nullable)" }
+      replay_class: non_replayable
+      description: "Emitted when a client refreshes an access token via swarm_auth_refresh"
+
+    - name: auth_token_revoke
+      index: 4
+      fields:
+        - { name: tick, type: u64, description: "Tick when revocation occurred" }
+        - { name: actor_id, type: string, description: "Admin or player who performed revocation" }
+        - { name: target_player_id, type: PlayerId, description: "Player whose tokens were revoked" }
+        - { name: target_session_id, type: string, description: "Specific session revoked (nullable = all)" }
+        - { name: reason, type: string, description: "Revocation reason" }
+        - { name: affected_sessions, type: u32, description: "Number of sessions terminated" }
+      replay_class: admin_critical
+      description: "Emitted when tokens are revoked via swarm_auth_revoke"
+
+    - name: auth_cert_rotate
+      index: 5
+      fields:
+        - { name: tick, type: u64, description: "Tick when rotation occurred" }
+        - { name: old_cert_id, type: string, description: "Revoked certificate ID" }
+        - { name: new_cert_id, type: string, description: "New certificate ID" }
+        - { name: new_fingerprint, type: string, description: "New certificate fingerprint" }
+        - { name: reason, type: string, description: "Rotation reason (scheduled, compromised)" }
+      replay_class: admin_critical
+      description: "Emitted when a certificate is rotated via swarm_auth_cert_rotate"
+
+    - name: auth_device_register
+      index: 6
+      fields:
+        - { name: tick, type: u64, description: "Tick when registration occurred" }
+        - { name: player_id, type: PlayerId, description: "Player registering device" }
+        - { name: device_id, type: string, description: "Registered device ID" }
+        - { name: device_name, type: string, description: "Human-readable device name" }
+        - { name: device_fingerprint, type: string, description: "Device hardware fingerprint" }
+      replay_class: idempotent_mutation
+      description: "Emitted when a device is registered via swarm_auth_device_register"
+
+    - name: auth_rate_limit_hit
+      index: 7
+      fields:
+        - { name: tick, type: u64, description: "Tick when rate limit was hit" }
+        - { name: endpoint, type: string, description: "Rate-limited endpoint name" }
+        - { name: key_type, type: string, description: "per_ip, per_player, per_admin, global" }
+        - { name: key_value, type: string, description: "Hashed key that triggered the limit" }
+        - { name: current_count, type: u32, description: "Request count in current window" }
+        - { name: limit, type: u32, description: "Configured limit for this window" }
+      replay_class: non_replayable
+      description: "Emitted when an auth endpoint rate limit is exceeded"
+
+    - name: auth_security_alert
+      index: 8
+      fields:
+        - { name: tick, type: u64, description: "Tick when alert was raised" }
+        - { name: alert_type, type: string, description: "brute_force, token_replay, cert_anomaly, device_anomaly" }
+        - { name: severity, type: string, description: "info, warning, critical" }
+        - { name: player_id, type: PlayerId, description: "Affected player (nullable)" }
+        - { name: ip_address, type: string, description: "Source IP (hashed)" }
+        - { name: detail, type: string, description: "Alert-specific detail" }
+      replay_class: non_replayable
+      description: "Emitted when the auth subsystem detects a security-relevant anomaly"
+
+# =============================================================================
+# 5. Auth Rate Limits
+# =============================================================================
+auth_rate_limits:
+  description: "Authoritative rate limits for all auth endpoints and operations."
+  
+  endpoint_limits:
+    login:
+      limit: "10/min"
+      key: per_ip
+      burst: 15
+      description: "Login attempts per IP address"
+    refresh:
+      limit: "5/min"
+      key: per_player
+      burst: 8
+      description: "Token refresh attempts per player"
+    logout:
+      limit: "20/min"
+      key: per_player
+      burst: 30
+      description: "Logout requests per player"
+    check:
+      limit: "100/min"
+      key: per_player
+      burst: 150
+      description: "Token validation checks per player"
+    revoke:
+      limit: "5/min"
+      key: per_admin
+      burst: 10
+      description: "Administrative revocations per admin"
+  
+  cert_limits:
+    rotate: "10/h"
+    issue: "10/h"
+    revoke: "10/h"
+    list: "30/min"
+    key: per_admin
+    description: "Certificate management operations are throttled to prevent abuse"
+  
+  device_limits:
+    register: "30/min"
+    list: "30/min"
+    key: per_player
+    max_devices_per_player: 10
+    description: "Device registration bounded by per-player device cap"
+
+  global_auth_limits:
+    max_concurrent_sessions_per_player: 5
+    session_idle_timeout: "30m"
+    session_absolute_timeout: "24h"
+    refresh_token_lifetime: "7d"
+    access_token_lifetime: "15m"
+    cert_validity_max: "365d"
+    failed_login_lockout_threshold: 10
+    failed_login_lockout_window: "15m"
+    failed_login_lockout_duration: "30m"
+
+# =============================================================================
+# 6. Auth Token Envelope
+# =============================================================================
+auth_token_envelope:
+  description: >
+    Structure of auth tokens issued by the auth subsystem. Access tokens are
+    short-lived JWTs; refresh tokens are opaque strings stored server-side.
+    All tokens are signed with the auth server's private key.
+  access_token:
+    format: JWT
+    signing_algorithm: EdDSA
+    header:
+      alg: EdDSA
+      typ: JWT
+    payload:
+      sub: PlayerId
+      sid: string
+      scope: string
+      did: string
+      iat: u64
+      exp: u64
+      jti: string
+  refresh_token:
+    format: opaque
+    storage: server_side
+    entropy: "256 bits"
+    encoding: base64url
+    rotation: "single-use; each refresh issues a new refresh token and revokes the old one"
+    family_tracking: >
+      Refresh tokens belong to a token family (per session). Reuse of any token
+      in the family triggers revocation of the entire family to prevent replay
+      attacks.
+
+# =============================================================================
+# 7. Security Columns — Reference
+# =============================================================================
+security_columns:
+  description: >
+    Every MCP/auth tool declaration includes these five security columns.
+    This section defines the canonical values and their semantics.
+  
+  columns:
+    - name: required_scope
+      description: "OAuth2-style scope required to invoke the tool"
+      values:
+        - "swarm:auth — base authentication scope (login, refresh, logout, check, device ops)"
+        - "swarm:read — read-only game data access"
+        - "swarm:deploy — WASM deployment permission"
+        - "swarm:debug — debug and introspection tools"
+        - "swarm:admin — administrative operations (revocation, cert management, bans)"
+      enforcement: "Token introspection validates scope at request time; ScopeInsufficient rejection if mismatch"
+
+    - name: subject_source
+      description: "How the tool derives the subject (principal) for authorization"
+      values:
+        - "none — no subject (pre-auth endpoints like login)"
+        - "player_id — subject is the authenticated player"
+        - "admin_id — subject is the authenticated administrator"
+        - "world — subject is the world/server itself"
+        - "drone_id — subject is a specific drone"
+      enforcement: "Extracted from validated token claims"
+
+    - name: replay_class
+      description: "Replay determinism classification for this tool"
+      values:
+        - "non_replayable — auth events excluded from game-state replay (login, logout, refresh)"
+        - "read_replay_safe — read-only, safe to replay (check, list operations)"
+        - "idempotent_mutation — mutation with stable result across replays (device register)"
+        - "admin_critical — admin operations that MUST be replayed deterministically (revoke, cert rotate)"
+      enforcement: "Replay engine skips non_replayable events; replays admin_critical events in strict order"
+
+    - name: visibility_filter
+      description: "How output data is filtered based on the caller's visibility"
+      values:
+        - "none — no filtering; output is fully visible"
+        - "owner — only the authenticated player's own data is visible"
+        - "admin_scope — only visible to administrators"
+        - "fog_of_war — filtered by game fog-of-war rules"
+        - "owner_or_visible — owner sees full data; others see only visible portions"
+      enforcement: "Server-side output redaction before response serialization"
+
+    - name: rate_limit_key
+      description: "Key used for rate limit tracking"
+      values:
+        - "per_ip — rate limit tracked by client IP address"
+        - "per_player — rate limit tracked by authenticated player ID"
+        - "per_admin — rate limit tracked by admin ID"
+        - "per_device — rate limit tracked by device ID"
+        - "per_session — rate limit tracked by session ID"
+        - "global — global rate limit shared across all callers"
+      enforcement: "Token bucket algorithm per key; RateLimited rejection on exhaustion"
+
+# =============================================================================
+# Changelog
+# =============================================================================
+changelog:
+  - version: "0.1.0"
+    date: "2026-06-18"
+    changes:
+      - "Initial auth API IDL with 5 lifecycle tools"
+      - "6 cert management and device registration MCP tools"
+      - "12 canonical auth RejectionReason codes (namespace offset 1000+)"
+      - "8 auth-specific tick trace event types"
+      - "Comprehensive auth rate limits and token envelope specification"
+      - "5 security columns (required_scope, subject_source, replay_class, visibility_filter, rate_limit_key)"

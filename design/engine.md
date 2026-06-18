@@ -339,18 +339,25 @@ effective_per_player_quota = min(per_player_cpu_quota, MAX_FUEL)
 Sandbox worker pool 动态伸缩，公式：
 
 ```
-worker_pool_size = min(MAX_POOL, active_players)
+worker_pool_size = min(worker_pool_max, active_players)
+worker_pool_size = clamp(worker_pool_size, 0, worker_pool_hard_cap)
 
 其中:
-  MAX_POOL = 1000（hard cap，编译期常量）
+  worker_pool_max = 256（运行期默认，见 game_api.idl.yaml §limits.worker_pool）
+  worker_pool_hard_cap = 1000（编译期硬上限，见 game_api.idl.yaml §limits.worker_pool）
   active_players = 当前活跃玩家数（有 WASM 模块部署 + 至少 1 个存活 drone）
 ```
 
-**450 player scenario**: pool = min(1000, 450) = 450 workers
-**750 player scenario**: pool = min(1000, 750) = 750 workers
-**1000 player scenario**: pool = min(1000, 1000) = 1000 workers（pool 饱和）
+**256 worker default scenario (500 active players)**:
+  pool = min(256, 500) = 256 workers → 每个 worker 处理约 2 个玩家
+  CPU budget per worker: aggregate 核心时间 / 256
+  Admission control: active_players > 256 → graceful queuing, fair-share slot allocation
 
-空闲 worker 保留 5min 后回收（见 §3.4.3）。新玩家连接时若 pool 未满且 `active_players < MAX_POOL`，fork 新 worker（若池中有空闲则复用）。
+**1000 worker hard cap scenario (1000 active players)**:
+  pool = min(1000, 1000) = 1000 workers（pool 饱和）
+  需要运营商显示启用 worker_pool_max > 256 并承担容量证明
+
+空闲 worker 保留 5min 后回收（见 §3.4.3）。新玩家连接时若 pool 未满且 `active_players < worker_pool_max`，fork 新 worker（若池中有空闲则复用）。
 
 ##### 500/1000 Player Capacity Derivation
 

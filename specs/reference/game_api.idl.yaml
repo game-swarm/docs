@@ -8,6 +8,51 @@
 api_version: "0.3.0"
 
 # =============================================================================
+# Type Registry — fixed-point integer types replacing f64
+# =============================================================================
+# All f64 fields have been replaced with fixed-point integer representations
+# to guarantee deterministic cross-platform behavior.
+#
+#   ResourceRate_i64  — i64, units of 1e-6 resources per tick  (micro_rate)
+#   ProgressBps_i64   — i64, basis points (1 bp = 0.01%)         (bps)
+#   BasisPoints       — u32, 0–10000 = 0%–100%                   (fixed-point %)
+#   EfficiencyBps     — u32, 0–10000 = 0%–100%                   (fixed-point %)
+#   ConfidenceBps     — u32, 0–10000                              (fixed-point %)
+#   milli_distance     — i64, units of 1e-3 cells                 (distance)
+#   micro_cost         — u64, units of 1e-6 resource units        (cost)
+#
+type_registry:
+  fixed_point_types:
+    ResourceRate_i64:
+      base_type: i64
+      scale: 1_000_000  # 1e6
+      description: "Resource rate in micro-units per tick (1.0 = 1_000_000)"
+    ProgressBps_i64:
+      base_type: i64
+      scale: 10_000   # basis points
+      description: "Progress in basis points (100.00% = 10_000)"
+    BasisPoints:
+      base_type: u32
+      range: "0..10000"
+      description: "Percentage in basis points (50% = 5000)"
+    EfficiencyBps:
+      base_type: u32
+      range: "0..10000"
+      description: "Efficiency in basis points"
+    ConfidenceBps:
+      base_type: u32
+      range: "0..10000"
+      description: "Confidence in basis points"
+    milli_distance:
+      base_type: i64
+      scale: 1_000  # 1e3
+      description: "Distance in milli-cell units (1 cell = 1000)"
+    micro_cost:
+      base_type: u64
+      scale: 1_000_000  # 1e6
+      description: "Cost in micro resource units (1.0 = 1_000_000)"
+
+# =============================================================================
 # 1. CommandAction — all 19 variants
 # =============================================================================
 command_action:
@@ -481,7 +526,7 @@ mcp_tools:
       output_schema:
         resources: "[Resource]"
         storage: StorageInfo
-        income_rate: f64
+        income_rate: ResourceRate_i64
       rate_limit: "10/tick"
       required_scope: "swarm:read"
       subject_source: player_id
@@ -672,8 +717,8 @@ mcp_tools:
         player_id: PlayerId
       output_schema:
         path: "[Position]"
-        distance: f64
-        cost: f64
+        distance: i64  # milli_distance units (1e-3 cells)
+        cost: u64  # micro_cost units (1e-6 resource units)
       rate_limit: null  # host fn only
       required_scope: "swarm:read"
       subject_source: player_id
@@ -715,7 +760,7 @@ mcp_tools:
       output_schema:
         room: RoomId
         level: u32
-        progress: f64
+        progress: ProgressBps_i64
         owner: PlayerId
         downgrade_timer: u32
       rate_limit: "10/tick"
@@ -775,10 +820,10 @@ mcp_tools:
       input_schema:
         player_id: PlayerId
       output_schema:
-        income: f64
-        expenses: f64
-        storage_tax: f64
-        maintenance: f64
+        income: ResourceRate_i64
+        expenses: ResourceRate_i64
+        storage_tax: BasisPoints  # u32, 0-10000 = 0%-100%
+        maintenance: ResourceRate_i64
       rate_limit: "10/tick"
       required_scope: "swarm:read"
       subject_source: player_id
@@ -791,7 +836,7 @@ mcp_tools:
       input_schema:
         drone_id: DroneId
       output_schema:
-        efficiency: f64
+        efficiency: EfficiencyBps  # u32, 0-10000 = 0%-100%
         factors: "[EfficiencyFactor]"
       rate_limit: "10/tick"
       required_scope: "swarm:read"
@@ -833,7 +878,7 @@ mcp_tools:
       rate_limit: "10/h"
       required_scope: "swarm:deploy"
       subject_source: player_id
-      replay_class: idempotent_mutation
+      replay_class: deploy_mutation
       visibility_filter: owner
       rate_limit_key: per_player
       notes: >
@@ -1005,7 +1050,7 @@ mcp_tools:
         trace: TickTrace
         authoritative: false
         assumptions: Assumptions
-        confidence: f64
+        confidence: ConfidenceBps  # u32, 0-10000
       rate_limit: "50/tick"
       required_scope: "swarm:debug"
       subject_source: player_id
@@ -1165,7 +1210,7 @@ mcp_tools:
         type: ResourceType
         name: string
         category: string
-        base_value: f64
+        base_value: u64
         rarity: string
       rate_limit: "50/tick"
       required_scope: "swarm:read"
@@ -1373,7 +1418,8 @@ limits:
     hard_cap_players: 1000
     hard_cap_behavior: "exceeding triggers degraded mode with admission gating"
     worker_pool_size: "min(max_pool, active_players)"
-    worker_pool_max: 256
+    worker_pool_max: 256  # runtime default
+    worker_pool_hard_cap: 1000  # compile-time hard cap
     degraded_mode: "refuse new WASM execution when over hard cap; already-ticking players continue"
 
   fair_share_admission:

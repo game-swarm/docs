@@ -77,6 +77,8 @@ i32 host_get_world_rules(out_ptr: i32, out_len: i32) -> i32
 
 ## 安全约束
 
+> 权威容量限制见 [API Registry](api-registry.md) §5。
+
 | 约束 | 值 |
 |------|-----|
 | 模块大小上限 | 5 MB |

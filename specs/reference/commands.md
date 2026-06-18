@@ -217,54 +217,13 @@ WASM 模块通过 `tick(snapshot) → CommandIntent[]` JSON 返回指令。
 
 > **Future RFC**: `SendMessage` 指令（drone 间消息传递）为 Future RFC，不在当前核心定义中。详见 [API Registry](api-registry.md) §1。
 
-## 拒绝原因 — 35 变体 — 见 [API Registry](api-registry.md) §2
+## 拒绝原因 — 见 [API Registry](api-registry.md) §2
 
-> `RejectionReason` enum 共 35 个变体（权威定义见 [API Registry](api-registry.md) §2）。以下为主管线校验拒绝原因。
+> 权威 `RejectionReason` enum 共 35 个 canonical code（定义见 [API Registry §2](api-registry.md)）。分为 Pipeline、Validation、MCP、Runtime 四层。
 
-| 拒绝原因 | 说明 |
-|----------|------|
-| `ObjectNotFound` | object 或 target 不存在 |
-| `NotOwner` | 不是实体的拥有者 |
-| `NotMovable` | 目标实体不可移动（非 Drone） |
-| `Fatigued` | drone 疲劳值 > 0，无法行动 |
-| `MissingBodyPart` | 缺少必需身体部件（含缺失的 part 名） |
-| `TileBlocked` | 目标格被阻挡（Wall / 敌对占据） |
-| `InvalidDirection` | 非法的移动方向 |
-| `StillSpawning` | drone 仍在孵化中 |
-| `OutOfRoom` | 目标不在当前房间 |
-| `NoPath` | 无可达路径 |
-| `PathTooLong` | 路径超过最大长度限制 |
-| `InsufficientMoveParts` | MOVE 部件不足以消除 fatigue |
-| `CarryFull` | drone 携带容量已满 |
-| `NotSource` | 目标不是资源点 |
-| `SourceEmpty` | 资源点已枯竭 |
-| `OutOfRange` | 目标超出有效距离（含实际距离和最大距离） |
-| `InsufficientResource` | 指定资源不足（含资源名、需求量、可用量） |
-| `TargetFull` | 目标资源存储已满 |
-| `TargetEmpty` | 目标无可提取资源 |
-| `NotYourRoom` | 不在你控制的房间内 |
-| `TileOccupied` | 目标格已被占据 |
-| `InvalidTerrain` | 地形不支持该操作 |
-| `TooManyConstructionSites` | 在建工程数已达上限 |
-| `AlreadyFullHealth` | 目标已满血 |
-| `FriendlyTarget` | 目标是友方（不允许攻击） |
-| `NotYourSpawn` | Spawn 不属于你 |
-| `SpawnOnCooldown` | Spawn 在冷却中 |
-| `BodyTooLarge` | body part 数量超过上限 |
-| `ExceedsRoomCapacity` | 超出房间能量/槽位上限 |
-| `RoomDroneCapReached` | 房间 drone 数量已达上限 |
-| `NotFriendly` | 目标不是友方（不允许治疗/buff） |
-| `AlreadyHacked` | 目标已被其他玩家 Hack 中 |
-| `InvalidDamageType` | damage_type 不在注册的 DamageType 枚举中 |
-| `AlreadyDebilitated` | 目标已有同类型 Debilitate 效果（含 damage_type） |
-| `NotVisibleOrNotFound` | 目标不可见或不存在——替代 `PlayerNotFound`。Overload 等使用等价拒绝类 |
+> **D2/B 设计决策**：35 canonical code 为 wire enum。详细上下文信息（如 fatigue 状态、特定目标容量、body part 缺失等）放入 `debug_detail` 字段，而非增加 RejectionReason enum 变体。这保持 wire enum 稳定，同时提供丰富的调试数据。
 
-> **管线级拒绝**（在 Command 校验之前触发，不计入 `RejectionReason` enum 的仅有）：
-> `InvalidJson`、`SchemaViolation`。
->
-> 注：`SourceNotAllowed` 和 `UnknownAction` **在** `RejectionReason` enum 内——它们在上表已列出，当在管线早期触发时同属管线级拒绝。
-
-> **子系统拒绝**（由各自模块独立校验，非 Command 校验管线）：`GlobalStorageDisabled`、`TransferInProgress`。MCP 层另有 `RateLimited`。
+> 旧文档中出现的 `NotMovable`、`Fatigued`、`SourceEmpty`、`TargetFull`、`TargetEmpty`、`AlreadyHacked`、`MissingBodyPart`、`TileBlocked`、`CarryFull`、`NotYourRoom`、`BodyTooLarge` 等代码已被统一合并至 canonical 35 码或降级为 `debug_detail`。详见 [API Registry §2 命名规范](api-registry.md#命名规范)。
 
 ## 校验流程
 

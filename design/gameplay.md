@@ -855,7 +855,7 @@ Contribution {
 | 决策 | 结论 | 理由 |
 |---|---|---|
 | 历史存储 | 只保留当前 tick | 历史由 TickTrace/replay 覆盖，不增加状态存储 |
-| contribution 精度 | `u32`，不暴露小数 | 攻击公式内部可用 f64，对外只暴露整数 |
+| contribution 精度 | `u32`，不暴露小数 | 攻击公式内部使用 BasisPoints 定点（见 economy.idl.yaml §type_registry），对外只暴露整数 |
 | 隐藏攻击者 | 不可见则不出现在 contribution 列表 | 防止反向定位 |
 | 总压力是否区分来源 | 是，完整保留 contribution 列表 | 不区分来源则无法做反制决策 |
 
@@ -1958,7 +1958,7 @@ if (rules.get("empire-upkeep").config.onshortfall.value === "damage") {
 | Hash | **Blake3** | 固定实现。不用 std::hash / SipHash（跨版本可变）。 |
 | 种子洗牌 | `Blake3("shuffle" \\|\\| world_seed \\|\\| tick.to_le_bytes())` | 每 tick 确定但不可预测的玩家顺序。shuffle 后 TickTrace 记录 seed epoch + 活跃玩家集快照以支持回放。域名分离前缀 `"shuffle"` 防止与其他 Blake3 用途碰撞 |
 | ECS 顺序 | `.chain()` + `.before()/.after()` | 有数据依赖的串行（death→spawn→combat→death_cleanup），无依赖的并行（regeneration, decay）。Bevy 依赖图保证偏序不变，确定性不依赖并行度 |
-| 数值 | 整数 + 定点数 | 禁 f64（跨平台/编译器非确定）。游戏引擎数值用 `i64 × 精度因子`。**Rhai 模组脚本同样禁用浮点**——所有模组参数必须声明为 `u32`/`i64`/`fixed<u32,N>` 定点类型，Rhai 引擎侧关闭浮点运算能力。 |
+| 数值 | 整数 + 定点数 | 禁浮点（f64 跨平台/编译器非确定）。所有游戏引擎数值使用定点整数类型（ResourceRate_i64, BasisPoints, EfficiencyBps, ConfidenceBps, MilliUnits 等，见 game_api.idl.yaml §type_registry 和 economy.idl.yaml §type_registry）。Rhai 模组脚本同样禁用浮点——所有模组参数必须声明为 `u32`/`i64`/`fixed<u32,N>` 定点类型，Rhai 引擎侧关闭浮点运算能力。 |
 | 排序 | `(priority_class, shuffle_index, sequence, source)` | 分层排序键——相同 seed + 相同玩家集 + 相同指令 → 相同顺序。详见 `01-tick-protocol.md` §9.1 |
 | HashMap 顺序 | `indexmap` | 不用 std::HashMap（迭代顺序非确定） |
 

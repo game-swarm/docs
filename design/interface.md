@@ -171,7 +171,7 @@ Pathfinding 确定性要求：固定 neighbor order（NESW 顺时针）、cost t
     "code": -32000,
     "message": "描述",
     "data": {
-      "swarm_error": "InsufficientResources",
+      "swarm_error": "InsufficientResource",
       "details": { "required": 200, "available": 50 },
       "retry_allowed": false,
       "idempotency_key": null
@@ -182,7 +182,7 @@ Pathfinding 确定性要求：固定 neighbor order（NESW 顺时针）、cost t
 
 SwarmError 分类：
 - retry_allowed=true: TimeoutExceeded, RateLimited, ConflictRetry
-- retry_allowed=false: InvalidCommand, InsufficientResources, NotAuthorized
+- retry_allowed=false: InvalidCommand, InsufficientResource, NotAuthorized
 - idempotent: deploy/validate 等可用 idempotency_key 安全重试
 
 ### 5.7 swarm_simulate 与 swarm_deploy

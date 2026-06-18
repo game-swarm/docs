@@ -1,0 +1,506 @@
+# =============================================================================
+# Economy IDL — Machine-Readable Economy Specification
+# =============================================================================
+# Independent economy specification. Fixed-point types only.
+# All rates expressed as integer BasisPoints (bp). No f64.
+# =============================================================================
+
+api_version: "0.1.0"
+
+# =============================================================================
+# 1. Fixed-Point Types
+# =============================================================================
+types:
+  description: >
+    All economy types use fixed-point integer arithmetic. Floating-point (f64)
+    is prohibited for deterministic replay. BasisPoints provide hundredths-of-a-percent
+    precision (1 bp = 0.01% = 1/10000).
+
+  BasisPoints:
+    description: >
+      Fixed-point rate type. 1 bp = 0.01% = 1/10000.
+      All percentages, tax rates, and refund fractions are expressed in bp.
+    underlying: u32
+    unit: "basis points (bp)"
+    range: "0 .. 10000 (0% .. 100%)"
+    example: "5000 bp = 50.00%"
+
+  ResourceRate_i64:
+    description: >
+      Signed resource flow rate. Positive = income, negative = expense.
+      Used for per-tick delta calculations that can be negative (e.g., net income
+      after deductions).
+    underlying: i64
+    unit: "resource units per tick"
+    range: "-2^63 .. 2^63-1"
+
+  MilliUnits:
+    description: >
+      Sub-unit precision for fractional resource amounts during intermediate
+      calculations. 1 unit = 1000 mU. Final amounts are always floored to integer
+      units before state commit.
+    underlying: i64
+    unit: "milliunits (1/1000 of a resource unit)"
+    range: "-2^63 .. 2^63-1"
+    rounding: "floor to integer units on state commit"
+
+# =============================================================================
+# 2. ResourceOperation Definitions
+# =============================================================================
+resource_operation:
+  description: >
+    Economy resource operations. These are engine-side computations, not player
+    CommandActions. All amounts are integer (u64/u32), all rates are BasisPoints.
+
+  operations:
+    # -------------------------------------------------------------------------
+    # 2.1 RecycleRefund — lifespan-based partial refund
+    # -------------------------------------------------------------------------
+    - name: RecycleRefund
+      category: lifecycle
+      description: >
+        Refund a fraction of the original body cost when recycling a drone or
+        structure. The refund is proportional to remaining lifespan.
+        Minimum refund: 10% (1000 bp). Maximum refund: 50% (5000 bp).
+      trigger: "Recycle command (CommandAction index 10)"
+      parameters:
+        - name: total_lifespan
+          type: u32
+          unit: ticks
+          description: "Maximum lifespan of the entity at creation time"
+        - name: remaining_lifespan
+          type: u32
+          unit: ticks
+          description: "Remaining lifespan at the time of recycling"
+        - name: body_cost
+          type: u64
+          unit: resource units
+          description: "Total resource cost of the body parts at creation time"
+      computation:
+        refund_rate_bp:
+          formula: "max(1000, (remaining_lifespan * 5000) / total_lifespan)"
+          description: "Proportional rate clamped to [1000, 5000] bp (10%–50%)"
+          output_type: BasisPoints
+        refund_amount:
+          formula: "(refund_rate_bp * body_cost) / 10000"
+          description: "Integer floor of refunded resource units"
+          output_type: u64
+      example:
+        total_lifespan: 1500
+        remaining_lifespan: 900
+        body_cost: 10000
+        refund_rate_bp: 3000  # (900 * 5000) / 1500 = 3000 bp = 30%
+        refund_amount: 3000   # (3000 * 10000) / 10000 = 3000 units
+
+    # -------------------------------------------------------------------------
+    # 2.2 StorageTax — tiered tax on global storage holdings
+    # -------------------------------------------------------------------------
+    - name: StorageTax
+      category: taxation
+      description: >
+        Per-tick tax assessed on resources held in global storage. Tax rate
+        depends on the total quantity stored (all resource types combined).
+        Assessed before any other per-tick deductions.
+      trigger: "every tick, per player"
+      parameters:
+        - name: stored_total
+          type: u64
+          unit: resource units
+          description: "Sum of all resources currently in global storage"
+      tax_schedule:
+        description: "Tiered tax rates in BasisPoints"
+        tiers:
+          - tier: 0
+            label: "tax-free"
+            threshold: "0 .. 9999 units"
+            rate_bp: 0
+            description: "No tax for small stockpiles"
+          - tier: 1
+            label: "low"
+            threshold: "10000 .. 99999 units"
+            rate_bp: 1
+            description: "0.01% per tick"
+          - tier: 2
+            label: "medium"
+            threshold: "100000 .. 999999 units"
+            rate_bp: 5
+            description: "0.05% per tick"
+          - tier: 3
+            label: "high"
+            threshold: "1000000+ units"
+            rate_bp: 20
+            description: "0.20% per tick"
+      computation:
+        tax_deduction:
+          formula: "(stored_total * applicable_rate_bp) / 10000"
+          description: "Floor division; minimum deduction of 1 unit if rate > 0 and stored_total > 0"
+          output_type: u64
+      minimum_deduction:
+        description: "If applicable_rate_bp > 0 and stored_total > 0, min deduction is 1 unit"
+
+    # -------------------------------------------------------------------------
+    # 2.3 UpkeepDeduction — per-tick maintenance cost
+    # -------------------------------------------------------------------------
+    - name: UpkeepDeduction
+      category: maintenance
+      description: >
+        Per-tick upkeep cost deducted from player resources. Covers drone
+        maintenance, structure maintenance, and room controller upkeep.
+        Deducted after StorageTax.
+      trigger: "every tick, per player"
+      parameters:
+        - name: drone_count
+          type: u32
+          description: "Number of active drones owned by the player"
+        - name: structure_count
+          type: u32
+          description: "Number of completed structures owned by the player"
+        - name: controller_count
+          type: u32
+          description: "Number of claimed room controllers"
+        - name: controller_levels
+          type: "[u32]"
+          description: "Array of controller levels (one per claimed room)"
+      cost_schedule:
+        drone_upkeep:
+          per_unit: 0
+          unit: "bp of drone body cost"
+          description: "Drones have no passive upkeep; cost is embedded in lifespan/spawn"
+        structure_upkeep:
+          per_unit: 1
+          unit: "resource units per tick per structure"
+          description: "Flat per-structure maintenance cost"
+        controller_upkeep:
+          formula: "controller_level * controller_level * 10"
+          unit: "resource units per tick per controller"
+          description: "Quadratic in controller level"
+      computation:
+        total_upkeep:
+          formula: "(structure_count * structure_upkeep_per_unit) + sum(level^2 * 10 for level in controller_levels)"
+          output_type: u64
+
+    # -------------------------------------------------------------------------
+    # 2.4 PvEAward — resource grant for defeating NPC entities
+    # -------------------------------------------------------------------------
+    - name: PvEAward
+      category: reward
+      description: >
+        Resource award granted when a player defeats a PvE (NPC) entity.
+        Award amount depends on entity type and difficulty.
+      trigger: "on NPC entity destruction by player action"
+      parameters:
+        - name: entity_type
+          type: string
+          description: "Type of the defeated NPC entity"
+        - name: entity_tier
+          type: u32
+          description: "Difficulty tier of the NPC (1-5)"
+      award_schedule:
+        description: "Base award rates per tier"
+        tiers:
+          - tier: 1
+            base_award: 100
+            description: "Trivial NPC"
+          - tier: 2
+            base_award: 500
+            description: "Easy NPC"
+          - tier: 3
+            base_award: 2000
+            description: "Medium NPC"
+          - tier: 4
+            base_award: 10000
+            description: "Hard NPC"
+          - tier: 5
+            base_award: 50000
+            description: "Boss NPC"
+      computation:
+        award_amount:
+          formula: "base_award + (entity_type_modifier * base_award) / 10000"
+          description: "Entity type modifier (in bp) adjusts base award"
+          output_type: u64
+      entity_type_modifiers:
+        description: "Type-specific modifiers in BasisPoints (0 bp = 0%, 5000 bp = +50%)"
+        default: 0
+
+    # -------------------------------------------------------------------------
+    # 2.5 BuildCost — resource cost to build structures
+    # -------------------------------------------------------------------------
+    - name: BuildCost
+      category: construction
+      description: >
+        Resource cost to build a structure. Deducted at the start of construction.
+        Costs vary by structure type.
+      trigger: "Build command (CommandAction index 5)"
+      parameters:
+        - name: structure_type
+          type: StructureType
+          description: "Type of structure being built"
+      cost_schedule:
+        description: "Base build costs per structure type in resource units"
+        structures:
+          - type: Spawn
+            cost: 300
+            description: "Drone spawn point"
+          - type: Extension
+            cost: 200
+            description: "Capacity extension"
+          - type: Road
+            cost: 10
+            description: "Movement infrastructure"
+          - type: Wall
+            cost: 50
+            description: "Defensive wall"
+          - type: Rampart
+            cost: 100
+            description: "Fortified wall"
+          - type: Storage
+            cost: 500
+            description: "Local resource storage"
+          - type: Tower
+            cost: 800
+            description: "Defensive tower"
+          - type: Link
+            cost: 400
+            description: "Energy transfer link"
+          - type: Extractor
+            cost: 600
+            description: "Resource extractor"
+          - type: Lab
+            cost: 1000
+            description: "Research laboratory"
+          - type: Terminal
+            cost: 1200
+            description: "Trade terminal"
+          - type: Observer
+            cost: 500
+            description: "Observation post"
+      computation:
+        build_cost:
+          formula: "structure_base_cost * controller_level_discount_factor"
+          description: "Controller level may reduce build cost (implemented as a multiplier in bp)"
+          output_type: u64
+      controller_discount:
+        description: "Per controller level, build costs are multiplied by a discount factor in bp"
+        levels:
+          - level: 1
+            discount_factor_bp: 10000  # 100% = no discount
+          - level: 2
+            discount_factor_bp: 9500   # 95%
+          - level: 3
+            discount_factor_bp: 9000   # 90%
+          - level: 4
+            discount_factor_bp: 8500   # 85%
+          - level: 5
+            discount_factor_bp: 8000   # 80%
+          - level: 6
+            discount_factor_bp: 7500   # 75%
+          - level: 7
+            discount_factor_bp: 7000   # 70%
+          - level: 8
+            discount_factor_bp: 6500   # 65%
+
+    # -------------------------------------------------------------------------
+    # 2.6 SpawnCost — resource cost to spawn drones
+    # -------------------------------------------------------------------------
+    - name: SpawnCost
+      category: lifecycle
+      description: >
+        Resource cost to spawn a drone. Cost is the sum of individual body part
+        costs. Deducted at the start of spawning.
+      trigger: "Spawn command (CommandAction index 9)"
+      parameters:
+        - name: body_parts
+          type: "[BodyPart]"
+          description: "Array of body parts to assemble the drone"
+      cost_schedule:
+        description: "Base cost per body part type in resource units"
+        body_parts:
+          - part: MOVE
+            cost: 50
+            description: "Movement capability"
+          - part: WORK
+            cost: 100
+            description: "Work/harvest capability"
+          - part: CARRY
+            cost: 50
+            description: "Carrying capacity"
+          - part: ATTACK
+            cost: 80
+            description: "Melee attack capability"
+          - part: RANGED_ATTACK
+            cost: 150
+            description: "Ranged attack capability"
+          - part: HEAL
+            cost: 250
+            description: "Healing/repair capability"
+          - part: CLAIM
+            cost: 600
+            description: "Controller claim capability"
+          - part: TOUGH
+            cost: 10
+            description: "Durability (hit points)"
+      computation:
+        spawn_cost:
+          formula: "sum(body_part.cost for each body_part)"
+          description: "Simple additive cost of all body parts"
+          output_type: u64
+      spawn_limits:
+        max_body_parts: 50
+        max_spawn_cost: null  # implicitly bounded by max_body_parts * max_part_cost
+
+    # -------------------------------------------------------------------------
+    # 2.7 AlliedTransfer — tax-free transfer between allies
+    # -------------------------------------------------------------------------
+    - name: AlliedTransfer
+      category: transfer
+      description: >
+        Resource transfer between allied players via global storage.
+        No tax or fee is applied. Both sender and receiver must have
+        an active alliance.
+      trigger: "TransferToGlobal + TransferFromGlobal (allied only)"
+      parameters:
+        - name: sender_id
+          type: PlayerId
+          description: "Player sending resources"
+        - name: receiver_id
+          type: PlayerId
+          description: "Player receiving resources"
+        - name: resource_type
+          type: ResourceType
+          description: "Type of resource being transferred"
+        - name: amount
+          type: u64
+          unit: resource units
+          description: "Amount to transfer"
+      constraints:
+        allied_only: true
+        alliance_requirement: "Both players must share an active alliance"
+        tax_exempt: true
+        cooldown: null  # no cooldown for allied transfers
+      computation:
+        sender_deduction:
+          formula: "amount"
+          description: "Exact amount deducted from sender global storage"
+          output_type: u64
+        receiver_credit:
+          formula: "amount"
+          description: "Exact amount credited to receiver global storage"
+          output_type: u64
+        net_tax: 0
+
+# =============================================================================
+# 3. Formulas — canonical computation references
+# =============================================================================
+formulas:
+  description: >
+    Canonical formula definitions used across economy operations.
+    All formulas operate on integer types only. Intermediate results
+    may use MilliUnits for precision; final results are u64.
+
+  recycle_refund:
+    description: "Lifespan-proportional refund for recycling"
+    steps:
+      - step: 1
+        operation: "refund_rate_bp = max(1000, (remaining_lifespan * 5000) / total_lifespan)"
+        types: "u32, u32 → u32 (BasisPoints)"
+        clamp: "[1000, 5000] bp → [10%, 50%]"
+      - step: 2
+        operation: "refund_amount = (refund_rate_bp * body_cost) / 10000"
+        types: "u32, u64 → u64"
+        rounding: floor
+
+  storage_tax:
+    description: "Tiered per-tick tax on global storage"
+    steps:
+      - step: 1
+        operation: "Determine tier from stored_total"
+        tier_thresholds:
+          - { max: 9999, rate_bp: 0 }
+          - { max: 99999, rate_bp: 1 }
+          - { max: 999999, rate_bp: 5 }
+          - { max: null, rate_bp: 20 }
+      - step: 2
+        operation: "tax_deduction = (stored_total * rate_bp) / 10000"
+        types: "u64, u32 → u64"
+        rounding: floor
+        minimum: "1 unit if rate_bp > 0 and stored_total > 0"
+
+  build_cost_discounted:
+    description: "Controller-level discounted build cost"
+    steps:
+      - step: 1
+        operation: "discounted_cost = (base_cost * discount_factor_bp) / 10000"
+        types: "u64, u32 → u64"
+        rounding: floor
+
+  spawn_cost_total:
+    description: "Total spawn cost from body parts"
+    steps:
+      - step: 1
+        operation: "total = sum(part_cost for each body_part)"
+        types: "[u64] → u64"
+
+# =============================================================================
+# 4. Economy-Specific Limits
+# =============================================================================
+limits:
+  description: "Economy-specific capacity limits. Complements game_api.idl.yaml §5."
+
+  storage_limits:
+    max_storage_per_player:
+      value: 1000000
+      unit: "resource units"
+      description: "Per-player global storage capacity"
+      note: "adjustable via world.toml"
+    global_resource_cap:
+      value: 100000000
+      unit: "resource units"
+      description: "World-wide total resource cap across all players"
+      note: "engine-enforced; new resource creation is rejected when cap is reached"
+
+  taxable_thresholds:
+    storage_tax_tier_1_min:
+      value: 10000
+      unit: "resource units"
+      description: "Threshold at which tier-1 storage tax (1 bp) begins"
+    storage_tax_tier_2_min:
+      value: 100000
+      unit: "resource units"
+      description: "Threshold at which tier-2 storage tax (5 bp) begins"
+    storage_tax_tier_3_min:
+      value: 1000000
+      unit: "resource units"
+      description: "Threshold at which tier-3 storage tax (20 bp) begins"
+
+  resource_flow_limits:
+    max_single_transfer:
+      value: 100000
+      unit: "resource units"
+      description: "Maximum resource units in a single transfer operation"
+    max_per_tick_income:
+      value: 1000000
+      unit: "resource units per tick"
+      description: "Hard cap on total resource income per player per tick"
+    max_per_tick_expense:
+      value: 1000000
+      unit: "resource units per tick"
+      description: "Hard cap on total resource deductions per player per tick"
+
+  enumeration:
+    max_active_alliances:
+      value: 10
+      description: "Maximum number of active alliances per player"
+
+# =============================================================================
+# Changelog
+# =============================================================================
+changelog:
+  - version: "0.1.0"
+    date: "2026-06-18"
+    changes:
+      - "Initial economy IDL with 7 resource operations"
+      - "Fixed-point types only: BasisPoints, ResourceRate_i64, MilliUnits"
+      - "StorageTax: 4-tier tax schedule (0/1/5/20 bp)"
+      - "RecycleRefund: lifespan-proportional 10-50% refund formula"
+      - "Economy-specific limits: max_storage_per_player, global_resource_cap"
+      - "All amounts in u64/u32 integer units"
