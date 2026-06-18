@@ -14,7 +14,7 @@
 3. **版本化**：每次 API 变更更新 `api_version`，TickTrace 记录 `api_version`。
 4. **完整闭合**：新增指令/错误码/工具/函数必须在此注册，未注册的 CI 拒绝。
 
-**当前 API 版本**: game_api `0.3.0`, auth_api `0.1.0`, economy `0.1.0`
+**当前 API 版本**: game_api `0.4.0`, auth_api `0.1.0`, economy `0.1.0`
 
 ---
 
@@ -40,7 +40,7 @@ All `f64` fields have been replaced with fixed-point integer representations to 
 Core CommandAction 是 WASM tick() 输出的 CommandIntent 中的 action type。所有 Vanilla action 定义于此。World Action Manifest 通过 `custom_actions` 扩展，但核心集合不变。
 
 **来源 IDL**: game_api.idl.yaml
-**变体总数**: 19
+**变体总数**: 21
 
 ### 1.1 核心指令 (11)
 
@@ -65,7 +65,9 @@ Core CommandAction 是 WASM tick() 输出的 CommandIntent 中的 action type。
 | 12 | `TransferToGlobal` | `resource: ResourceType, amount: u32` | global_storage | Deposit resources to global storage |
 | 13 | `TransferFromGlobal` | `resource: ResourceType, amount: u32` | global_storage | Withdraw resources from global storage |
 
-### 1.3 特殊攻击 (6)
+### 1.3 特殊攻击 (8)
+
+所有 8 个特殊攻击通过 `CommandAction::Custom(type)` 路由至 `CustomActionRegistry`，在引擎中以 `custom_action_def` 注册。每个关联一个同名的 `[[special_effects]]` handler。
 
 | # | Action | 参数 | 分类 | 说明 |
 |---|--------|------|------|------|
@@ -75,15 +77,10 @@ Core CommandAction 是 WASM tick() 输出的 CommandIntent 中的 action type。
 | 17 | `Debilitate` | `target_id: EntityId` | special_attack | Reduce target efficiency |
 | 18 | `Disrupt` | `target_id: EntityId` | special_attack | Interrupt target operation |
 | 19 | `Fortify` | `target_id: EntityId` | special_attack | Strengthen own defenses |
+| 20 | `Leech` ⏳ Tier 2 | `target_id: EntityId` | special_attack | Damage target, heal self 50% |
+| 21 | `Fabricate` ⏳ Tier 2 | `target_id: EntityId` | special_attack | Convert enemy drone to friendly structure |
 
-### 1.4 Custom Actions
-
-`Leech` 和 `Fabricate` 为 World Action Manifest 中的 `custom_actions`，非 Core enum 成员。每个 custom action 在 manifest 中声明 `action_id`、参数 schema、validator、handler。TickTrace 记录 `world_action_manifest_hash` 以确保 replay 确定性。
-
-| Action | action_id | 说明 |
-|--------|-----------|------|
-| `Leech` | custom | World Action Manifest custom_action |
-| `Fabricate` | custom | World Action Manifest custom_action |
+> `Leech` 和 `Fabricate` 为 Tier 2 特性——在引擎 `custom_action_def` 中已注册但标记 `⏳ Tier 2`。TickTrace 记录 `world_action_manifest_hash` 以确保 replay 确定性。
 
 ---
 

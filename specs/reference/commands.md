@@ -19,9 +19,9 @@ WASM 模块通过 `tick(snapshot) → CommandIntent[]` JSON 返回指令。
 
 `player_id`、`source`、`tick` 由服务端 Source Gate 注入后形成 RawCommand（见 `specs/core/02-command-validation` §2）。
 
-## 指令列表 — 19 指令（11核心+2Global+6特殊）— 见 [API Registry](api-registry.md) §1
+## 指令列表 — 21 指令（11核心+2Global+8特殊）— 见 [API Registry](api-registry.md) §1
 
-以下 15 种指令对应 `CommandAction` enum 的 15 个具体变体。第 16 个变体 `CommandAction::Custom(type)` 通过 `CustomActionRegistry` 路由到特殊攻击（见下方「特殊攻击」节）。**权威指令清单见 [API Registry](api-registry.md) §1**（19 指令：11核心+2Global+6特殊攻击）。
+以下 13 种指令对应 `CommandAction` enum 的 13 个具体变体。第 14 个变体 `CommandAction::Custom(type)` 通过 `CustomActionRegistry` 路由到特殊攻击（见下方「特殊攻击」节）。**权威指令清单见 [API Registry](api-registry.md) §1**（21 指令：11核心+2Global+8特殊攻击）。
 
 ### Move
 移动 drone 到目标方向。

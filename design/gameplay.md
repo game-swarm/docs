@@ -536,7 +536,7 @@ Swarm 是一个**可配置的游戏引擎平台**——每个世界实例（worl
 | **身体部件** | 8 种标准件：`MOVE`, `CARRY`, `WORK`, `ATTACK`, `RANGED_ATTACK`, `HEAL`, `CLAIM`, `TOUGH` | 每种部件的 cost/age_modifier/能力 见 `[[body_part_types]]` 默认定义 |
 | **伤害类型** | 6 种：`Kinetic`, `Thermal`, `EMP`, `Sonic`, `Corrosive`, `Psionic` | 默认抗性均为 1.0，详见 §8 伤害与武器类型定义 |
 | **物流模式** | **模式 B（轻物流）** | 全局传输 1% 损耗，本地建造 5% 损耗。模式 A（无损耗）和模式 C（重物流）为可选项 |
-| **特殊攻击** | 包含 6 种：`Hack`, `Drain`, `Overload`, `Debilitate`, `Disrupt`, `Fortify`。`Leech` 和 `Fabricate` 为核心能力（通过 `[[custom_actions]]` 注册）。Tutorial/Novice 默认禁用全部 6 种，Standard+ 全部可用 | 冷却时间与资源消耗见 §8 特殊攻击方式表格 |
+| **特殊攻击** | 包含 8 种：`Hack`, `Drain`, `Overload`, `Debilitate`, `Disrupt`, `Fortify`, `Leech`, `Fabricate`。Leech/Fabricate 为 Tier 2 特性。Tutorial/Novice 默认禁用全部 6 种（Leech/Fabricate ⏳ Tier 2），Standard+ 全部可用 | 冷却时间与资源消耗见 §8 特殊攻击方式表格 |
 | **Controller 维修** | 硬上限：每 tick 总 age 回退 ≤ 自然增长的 50% | 详见 §3.1 Controller 结构定义 |
 | **可见性** | `fog_of_war = true`，`player_view = drone`，`public_spectate = false` | 玩家仅可见自己 drone 视野内的内容；公开观战默认关闭 |
 | **核心数值** | Work harvest: 1 unit/tick；Spawn cooldown: 5 tick；Tower attack: 50 dmg/10 tick cooldown/range 5；Source capacity: 3000/tick regen 300 | 编码前必需的最小默认值，确保 MVP feedback loop 可平衡 |
