@@ -81,7 +81,10 @@ neutral ──Claim──→ reserved ──RCL 1──→ owned ←──→ co
                  │  ┌─────────────────────────┐     │
                  │  │ Phase 2b: ECS Systems     │     │
                  │  │ death_mark → spawn →     │     │
-                 │  │ combat → regen/decay →   │     │
+                 │  │ spawning_grace → regen → │     │
+                 │  │ combat → spec_atk_red →  │     │
+                 │  │ dmg_apply → status →     │     │
+                 │  │ aging → decay →          │     │
                  │  │ death_cleanup            │     │
                  │  └─────────────────────────┘     │
                  │  FDB 原子提交（全或无,权威源）   │
@@ -359,68 +362,17 @@ Source E1: energy = 5
 
 非法指令 → 拒绝，记录 RejectionReason，写入 TickTrace。
 
-### 3.4 ECS 系统执行顺序（Bevy）
+### 3.4 ECS 系统执行顺序
 
-> **权威 Phase 2b 系统调度见 [System Manifest](specs/core/06-phase2b-system-manifest.md)** — 27 systems, serial spine + 3 parallel sets。以下遗留代码待迁移至 manifest 权威定义。
+> **权威调度见 [Complete Tick Execution Manifest](specs/core/06-phase2b-system-manifest.md)** — 29 systems（Phase 2a inline 6 + Phase 2b deferred 23），serial spine + 3 parallel sets。Phase 2a inline 处理器（command_executor、controller_2a、build、recycle、transfer、spawn_validator）在命令循环中逐条 inline 应用。Phase 2b 被动系统按 manifest 定义的 serial spine 顺序执行：death_marker → spawn → spawning_grace → regeneration → combat (parallel set A) → special_attack_reducer → damage_application → status effects (parallel set B) → aging → decay → death_cleanup → pvp_block → room_state → controller_2b → resource_ledger。
 
-```rust
-// 条件系统
-app.add_systems(Update, code_propagation_system.before(spawn_system));
+**关键时序修复**（R16 B2）：
+- `death_marker` 在 `spawn` 之前：RoomCap 槽位同 tick 释放。
+- `spawning_grace` 在 combat 之前：新生 drone 获得出生 tick 免疫保护。
+- `regeneration` 在 `damage_application` 之前：自然回复先于伤害结算，防止 heal+regen 双倍回复。
+- `special_attack_reducer`：parallel intent 收集 → pending_intents buffer → canonical priority sort → 交付 status_advance_system。
 
-// 独立调度系统（与主线无数据竞争）
-app.add_systems(Update, spawning_grace_system.after(spawn_system).before(npc_combat_system));
-app.add_systems(Update, spawning_grace_expiry_system.after(combat_system).before(decay_system));
-app.add_systems(Update, (world_event_system, event_effect_system).chain().after(spawn_system).before(regeneration_system));
-app.add_systems(Update, stronghold_spawn_system.after(pvp_block_system).before(npc_spawn_system));
-app.add_systems(Update, stronghold_production_system.after(spawn_system).before(regeneration_system));
-app.add_systems(Update, npc_ai_system.after(room_state_system).before(npc_combat_system));
-app.add_systems(Update, npc_combat_system.after(npc_ai_system).before(combat_system));
-app.add_systems(Update, npc_spawn_system.after(pvp_block_system).before(spawn_system));
-
-// 主线 .chain() 串行
-app.add_systems(Update, (
-    rhai_rule_module_tick_start_system,
-    death_mark_system,
-    pvp_block_system,
-    spawn_system,
-    regeneration_system,
-    seed_rotation_system,
-    cargo_in_transit_system,
-    global_storage_system,
-    controller_system,
-    controller_repair_system,
-    depot_repair_system,
-    room_state_system,
-    combat_system,
-    decay_system,
-    memory_upkeep_system,
-    drone_env_var_system,
-    rhai_rule_module_tick_end_system,
-    death_cleanup_system,
-    onboarding_system,
-).chain());
-```
-
-#### Component/Resource 读写矩阵
-
-以下矩阵定义并行安全性的精确边界。矩阵中 `R`=只读，`W`=写入，`-`=不访问。
-
-| System | `Position` | `HitPoints` | `Fatigue` | `Energy/Carry` | `Cooldown` | `RoomCap` | `DeathMark` | `Owner` |
-|--------|-----------|-------------|-----------|----------------|------------|-----------|-------------|---------|
-| **death_mark** | R | - | - | - | - | W | W | R |
-| **spawn** | W | W | - | W | W | R | - | W |
-| **combat** | R | W | - | - | - | - | - | R |
-| **regeneration** | - | - | - | W | - | - | - | - |
-| **decay** | - | - | W | - | W | - | - | - |
-| **death_cleanup** | - | - | - | - | - | - | W | - |
-
-**并行安全证明**：
-- `regeneration` 只写 `Energy/Carry`（资源总量），与其并行的主线系统不读/写此字段 → 无数据竞争
-- `decay` 只写 `Fatigue` 和 `Cooldown`，与其并行的主线系统不访问这些字段 → 无数据竞争
-- 两个并行系统之间无共享数据访问 → 彼此独立
-- 所有系统在 `death_cleanup` 之前完成（`.before()` 约束）→ 不会操作已 despawn 的 entity
-
-确定性由数据独立 + Bevy 依赖图保证，不依赖并行度（同 input 同 output）。
+**Component R/W 矩阵**：见 [Complete Tick Execution Manifest §4](specs/core/06-phase2b-system-manifest.md) — 覆盖全部 29 systems 的读写关系、并行安全证明及 RoomCap 中间态保护。
 
 ### 3.5 Tick 原子性
 
@@ -486,12 +438,13 @@ FDB commit 失败:  world.restore(snapshot)      // 恢复所有 Component + Res
 
 #### COLLECT 结果跨重试缓存
 
-FDB commit 失败触发重试时，**复用同一 COLLECT 结果**（相同的命令序列 + fuel 扣费），不重新执行 WASM：
+FDB commit 失败触发重试时，**复用 canonical COLLECT buffer**（相同的命令序列 + fuel 扣费 + snapshot_hash + wasm_status），不重新执行 WASM：
 
-- COLLECT 阶段的结果（`Map<PlayerId, Vec<ValidatedCommand>>` + 各玩家的 fuel 扣费明细）在首次 COLLECT 后缓存
-- 重试跳过 COLLECT 阶段，直接进入 EXECUTE 阶段，使用缓存的命令列表
+- COLLECT 阶段的结果（`Map<PlayerId, Vec<ValidatedCommand>>` + 各玩家的 fuel 扣费明细）在首次 COLLECT 后缓存，产生 `collect_id = Blake3(tick || snapshot_hash || commands_hash)`
+- 重试跳过 COLLECT 阶段，直接进入 EXECUTE 阶段，使用缓存的命令列表。`collect_id` 保持不变，`attempt_id` 递增。
 - 跨重试 fuel 消耗上限 = `1 × MAX_FUEL`（首次 COLLECT 时的扣费即为最终扣费，重试不追加）
 - 若连续 3 次 FDB commit 失败后 tick 放弃，已扣除的 fuel 退还玩家
+- FDB commit 成功后产生 `commit_id = Blake3(collect_id || attempt_id || state_checksum)`
 
 #### FDB 故障注入 CI 测试
 
@@ -878,15 +831,22 @@ RNG 流按 namespace 隔离：
 
 ### 9.6 ECS 调度权威顺序
 
-ECS system 必须在 manifest 中声明执行顺序。以下系统必须 `.chain()`（不可并行）：
+系统执行顺序的唯一权威定义见 [Complete Tick Execution Manifest](specs/core/06-phase2b-system-manifest.md) §1。Phase 2b 串行脊柱：
 
 ```
-death_mark → spawn → spawning_grace → combat → status_advance → aging → death_cleanup
+death_marker → spawn → spawning_grace → regeneration →
+combat (parallel set A: attack/ranged_attack/heal) →
+special_attack_reducer → damage_application →
+status effects (parallel set B: hack/drain/overload/debilitate/disrupt/fortify/status_advance) →
+aging → decay → death_cleanup → pvp_block → room_state → controller_2b → resource_ledger
 ```
 
-并行系统（regeneration, decay）仅操作独立数据，通过 `.before(death_cleanup)` 约束。
+所有特殊攻击的状态推进（Overload fuel 恢复、Hack stage 递增、Debilitate 计数递减、Fortify 护盾递减）由 `status_advance_system`（S22）统一处理，输入来源为 `special_attack_reducer`（S14）canonical sorted 的 `pending_intents` buffer。
 
-所有特殊攻击的状态推进（Overload fuel 恢复、Hack stage 递增、Debilitate 计数递减、Fortify 护盾递减）由 `status_advance_system` 统一处理，位置在 `combat_system` 之后、`aging_system` 之前。
+**关键变更**（R16 B2）：
+- `regeneration`（S10）移至 `damage_application`（S15）之前，防止 heal+regen 双倍回复。
+- `spawning_grace`（S09）移至 combat（S11-S13）之前，确保出生 tick 免疫保护。
+- `death_marker`（S07）在 `spawn`（S08）之前，RoomCap 同 tick 释放。
 
 ### 9.7 WASM output 截断
 

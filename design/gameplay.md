@@ -352,7 +352,7 @@ drone age 维护由两层设施构成：
 
 **2. 本地存储隐匿性（Stealth Advantage）**
 
-- **全局存储余额**：部分公开——排行榜可显示排名区间，市场挂单暴露部分余额
+- **全局存储余额**：部分公开——`showcase/world_stats` 可显示排名区间，市场挂单暴露部分余额
 - **本地存储**：完全私有——敌方无法获知你的建筑中存了多少资源，直到发起侦察或占领
 
 这使得囤积本地存储成为战略优势：敌方不知道你的真实经济实力。
@@ -540,7 +540,7 @@ Swarm 是一个**可配置的游戏引擎平台**——每个世界实例（worl
 | **Controller 维修** | 硬上限：每 tick 总 age 回退 ≤ 自然增长的 50% | 详见 §3.1 Controller 结构定义 |
 | **可见性** | `fog_of_war = true`，`player_view = drone`，`public_spectate = false` | 玩家仅可见自己 drone 视野内的内容；公开观战默认关闭 |
 | **核心数值** | Work harvest: 1 unit/tick；Spawn cooldown: 5 tick；Tower attack: 50 dmg/10 tick cooldown/range 5；Source capacity: 3000/tick regen 300 | 编码前必需的最小默认值，确保 MVP feedback loop 可平衡 |
-| **排行榜** | World 模式无排行榜，Arena 模式有排行榜 | 持久世界天然不公平（老玩家先发优势），竞技场模式为有限时间窗口的公平竞争 |
+| **展示/世界统计** | World 模式无排行榜；Arena 模式通过 `swarm_get_world_stats` 提供段位统计 | 持久世界天然不公平（老玩家先发优势），竞技场模式为有限时间窗口的公平竞争 |
 | **新玩家保护** | 首次 spawn 后 **500 tick safe_mode** | 房间内无敌，不可被攻击/Claim/Hack，详见 §3.1a 新手房间分配策略 |
 | **新手过渡期 (soft_launch)** | safe_mode 结束后 1500 tick `soft_launch_duration` | 仅 PvE 威胁（中立 NPC、资源潮、公共事件）。PvP 不可用。结束后 50 tick 前广播警告 |
 
@@ -634,7 +634,7 @@ swarm sdk publish world_v1        # 部署到目标世界（在线）
 
 任何使用 Layer 3 扩展（自定义 body part / damage type / Command）的世界实例**标记为非官方世界**：
 - 在世界列表中显示 `[MOD]` 标识
-- **不参与官方排名**（World 模式无排行榜，Arena 模式仅 Vanilla 世界计入排名）
+- **不参与官方排名**（World 模式无排行榜；Arena 模式仅 Vanilla 世界计入 `showcase/world_stats`）
 - 玩家加入时显示明确警告：「此世界使用非标准规则集，可能与官方 SDK 不兼容。请确认已安装对应的世界 SDK。」
 
 #### 战斗与 PvP

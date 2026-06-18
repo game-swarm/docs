@@ -358,51 +358,41 @@ TickTrace 中存储的审计日志受以下大小限制，防止磁盘 DoS：
 
 ---
 
-## 9. Sandbox OS 边界加固 Checklist
+## 9. Sandbox OS 边界加固 Checklist（统一表）
 
-每个 WASM sandbox worker 进程必须在以下 OS 边界受约束。以下为部署前必须逐项验证的 checklist。
+每个 WASM sandbox worker 进程必须在以下 OS 边界受约束。以下单表为部署前必须逐项验证的完整 checklist。
 
-### 9.1 seccomp 系统调用白名单
+### 9.1 统一 OS 加固表
 
-| 系统调用 | 允许？ | 理由 |
-|---------|:--:|------|
-| `read` | ✅ | WASM 线性内存读写所需 |
-| `write` | ✅ | 输出指令 JSON |
-| `mmap` | ✅ | Wasmtime 内存管理 |
-| `mprotect` | ✅ | Wasmtime JIT 代码页执行权限 |
-| `madvise` | ✅ | 内存优化提示 |
-| `futex` | ✅ | Wasmtime 内部同步 |
-| `sigaltstack` | ✅ | Wasmtime 信号处理 |
-| `clock_gettime` | ❌ | 禁止——确定性要求（时间由引擎提供） |
-| `getrandom` | ❌ | 禁止——随机数由 host function 提供 |
-| `open/openat` | ❌ | 禁止——无文件系统访问 |
-| `socket/connect/sendmsg/recvmsg` | ❌ | 禁止——无网络访问 |
-| `fork/vfork/clone` | ❌ | 禁止——无进程创建 |
-| `execve` | ❌ | 禁止——无程序执行 |
-| `ptrace` | ❌ | 禁止——无调试 |
-| `kill/tkill` | ❌ | 禁止——无信号发送 |
-| `mount/umount` | ❌ | 禁止——无文件系统操作 |
+| 维度 | 约束项 | 限制 | 验证命令 | 理由 |
+|------|--------|------|---------|------|
+| **seccomp** | `read` | ✅ 允许 | — | WASM 线性内存读写所需 |
+| | `write` | ✅ 允许 | — | 输出指令 JSON |
+| | `mmap` | ✅ 允许 | — | Wasmtime 内存管理 |
+| | `mprotect` | ✅ 允许 | — | Wasmtime JIT 代码页执行权限 |
+| | `madvise` | ✅ 允许 | — | 内存优化提示 |
+| | `futex` | ✅ 允许 | — | Wasmtime 内部同步 |
+| | `sigaltstack` | ✅ 允许 | — | Wasmtime 信号处理 |
+| | `clock_gettime` | ❌ 禁止 | seccomp BPF 检查 | 确定性要求（时间由引擎提供） |
+| | `getrandom` | ❌ 禁止 | seccomp BPF 检查 | 随机数由 host function 提供 |
+| | `open/openat` | ❌ 禁止 | seccomp BPF 检查 | 无文件系统访问 |
+| | `socket/connect/sendmsg/recvmsg` | ❌ 禁止 | seccomp BPF 检查 | 无网络访问 |
+| | `fork/vfork/clone` | ❌ 禁止 | seccomp BPF 检查 | 无进程创建 |
+| | `execve` | ❌ 禁止 | seccomp BPF 检查 | 无程序执行 |
+| | `ptrace` | ❌ 禁止 | seccomp BPF 检查 | 无调试 |
+| | `kill/tkill` | ❌ 禁止 | seccomp BPF 检查 | 无信号发送 |
+| | `mount/umount` | ❌ 禁止 | seccomp BPF 检查 | 无文件系统操作 |
+| **cgroup** | `memory.max` | 128 MB | `cgget -r memory.max /swarm-sandbox` | 防止 OOM 扩散 |
+| | `cpu.max` | `250000 3000000`（每 3s 周期 0.25s） | `cgget -r cpu.max /swarm-sandbox` | 限制 CPU 使用 |
+| | `pids.max` | 16 | `cgget -r pids.max /swarm-sandbox` | 防止进程爆炸 |
+| | `io.max` | `8:0 rbps=1048576 wbps=0`（仅 1MB/s 读，禁止写） | `cgget -r io.max /swarm-sandbox` | 限制磁盘 I/O |
+| **namespace** | `pid` | 独立 PID 空间 | `lsns -t pid` | sandbox 看不到宿主进程 |
+| | `net` | 独立网络栈 | `ip netns list` | 无网络接口 |
+| | `mnt` | 独立挂载点 | `findmnt` | `/proc` 只读绑定 |
+| | `ipc` | 独立 IPC | `lsns -t ipc` | 无共享内存/Semaphore |
+| | `uts` | 独立 hostname | `lsns -t uts` | 无宿主信息泄露 |
 
-### 9.2 cgroup 资源限制
-
-| 资源 | 限制 | 验证命令 |
-|------|------|---------|
-| `memory.max` | 128 MB | `cgget -r memory.max /swarm-sandbox` |
-| `cpu.max` | `250000 3000000`（每 3s 周期 0.25s） | `cgget -r cpu.max /swarm-sandbox` |
-| `pids.max` | 16 | `cgget -r pids.max /swarm-sandbox` |
-| `io.max` | `8:0 rbps=1048576 wbps=0`（仅 1MB/s 读，禁止写） | `cgget -r io.max /swarm-sandbox` |
-
-### 9.3 命名空间隔离
-
-| 命名空间 | 隔离内容 | 验证 |
-|---------|---------|------|
-| `pid` | 独立 PID 空间——sandbox 看不到宿主进程 | `lsns -t pid` |
-| `net` | 独立网络栈——无网络接口 | `ip netns list` |
-| `mnt` | 独立挂载点——`/proc` 只读绑定 | `findmnt` |
-| `ipc` | 独立 IPC——无共享内存/Semaphore | `lsns -t ipc` |
-| `uts` | 独立 hostname | `lsns -t uts` |
-
-### 9.4 CI 验证
+### 9.2 CI 验证
 
 ```bash
 # 每个 sandbox 部署前 CI 运行：
@@ -415,7 +405,7 @@ cargo test --test sandbox_boundary -- --test-threads=1
 # 5. 网络命名空间内 socket → 失败（EAFNOSUPPORT）
 ```
 
-### 9.5 加固例外
+### 9.3 加固例外
 
 以下场景允许放宽某些限制——仅限 `world.toml` 中显式声明 `sandbox.relaxed = true` 的开发/调试世界：
 

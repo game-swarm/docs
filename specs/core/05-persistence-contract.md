@@ -134,19 +134,81 @@ Replay verifier 以 **FDB commit 的 manifest/hash 为权威**，不重新扫描
 
 ---
 
-## 6. Commit Retry 对 Hash Chain 的影响
+## 6. Commit Retry 对 Hash Chain 的影响（R16 B3 修复）
 
 ```
 若 tick N 的 FDB commit 因瞬时错误（网络/锁冲突）失败：
   1. world state 回滚到 Pre-Apply 快照
   2. 不递增 tick 编号
-  3. 下次循环重新执行 tick N（重跑 COLLECT → apply）
-  4. 重新生成 TickTrace（可能不同，因为时间流逝）
-  5. 新的 TickTrace 产生新的 content_hash
-  6. 提交成功后，chain_hash 包含新 hash
+  3. 复用 canonical COLLECT buffer：
+     - snapshot_hash（相同——COLLECT 快照不变）
+     - commands（相同——相同的 WASM 输出序列）
+     - wasm_status（相同——WASM 不重跑）
+     - fuel_ledger（相同——不追加扣费）
+  4. ❌ 不重新执行 WASM（避免非确定性输出与双倍扣费）
+  5. 重新执行 EXECUTE phase + FDB commit（使用相同 COLLECT 结果）
+  6. 每次 retry attempt 产生新的 attempt_id（递增），但 collect_id 不变
+  7. 最终 commit 成功后，commit_id 关联到成功的 attempt_id
 ```
 
-这意味着：**同一 tick 编号的 tick_hash_chain 条目在重试后可能不同**。Replay 只关心最终 committed 的条目——hash chain 验证以 FDB 中实际存在的链为准。
+这意味着：**同一 tick 编号的 TickTrace 可能包含多个 attempt（attempt_id 递增），但 collect_id 始终不变**。Replay 只关心最终 committed 的 attempt——hash chain 验证以 FDB 中实际存在的链为准。跨 attempt 的燃料消耗上限 = `1 × MAX_FUEL`（首次 COLLECT 时的扣费即为最终扣费，重试不追加）。
+
+### 6.1 TickTrace 标识字段
+
+TickTrace 中新增以下标识字段以支持 attempt/collect/commit 追踪：
+
+| 字段 | 类型 | 语义 |
+|------|------|------|
+| `collect_id` | `Blake3(tick || snapshot_hash || commands_hash)` | COLLECT 阶段的唯一标识。同一 tick 的所有 retry 共享此值。首次 COLLECT 后确定，重试不变。 |
+| `attempt_id` | `u32`（从 0 开始递增） | 本次 commit 尝试的序号。首次尝试 = 0，每次 retry +1。仅当 commit 成功或 tick 放弃时终止。 |
+| `commit_id` | `Blake3(collect_id || attempt_id || state_checksum)` | 成功 commit 的唯一标识。仅在 FDB commit 成功后生成。失败 attempt 无 commit_id。 |
+
+**TickTrace 结构**（R16 B3 扩展）：
+
+```
+TickTrace {
+    tick: u64,
+    collect_id: Blake3,          // NEW — COLLECT 阶段唯一标识
+    attempt_id: u32,             // NEW — 本次 commit 尝试序号
+    commit_id: Option<Blake3>,   // NEW — commit 成功时填充
+    snapshot_hash: Blake3,
+    commands_hash: Blake3,
+    wasm_status: WasmStatus,
+    fuel_ledger: FuelLedger,
+    state_checksum: Blake3,
+    system_manifest_hash: Blake3,
+    // ... 其余字段不变
+}
+```
+
+### 6.2 Blob 损坏终端状态
+
+当对象存储中的 TickTrace blob 无法正常读取或验证时，引擎根据恢复能力将其归类为以下四种终端状态：
+
+| 终端状态 | 定义 | 触发条件 | 恢复能力 |
+|----------|------|---------|:--------:|
+| `verified` | Blob 完整可用，`Blake3(blob) == content_hash` | 正常读取 + hash 匹配 | ✅ 直接使用 |
+| `audit_gap` | Blob 缺失或部分损坏，但状态可从相邻 tick 重建 | content_hash 不匹配 OR 对象存储 404，但相邻 tick 的 state_checksum 链完整 | ⚠️ 审计记录缺失，游戏状态可重建（从前后 keyframe 插值） |
+| `unreplayable` | Blob 不可读且无法从相邻 tick 重建 | content_hash 不匹配 AND 前后 keyframe 均不可用 | ❌ 该 tick 范围永久不可回放。审计记录不可恢复。 |
+| `reconstructable` | Blob 部分损坏但可恢复（如 bit flip 在非关键段） | 次要字段损坏但关键字段（commands、state_checksum、fuel_ledger）可解析 | 🔧 部分恢复。损坏字段标记为 `reconstructed: true`。 |
+
+**损坏检测流程**：
+
+```
+1. 从 FDB 读取 tick_manifest → 获取 object_id + content_hash
+2. 从对象存储获取 blob
+3. 验证 Blake3(blob) == content_hash
+   ├─ 匹配 → terminal_state = verified
+   └─ 不匹配 OR blob 不存在：
+       ├─ 尝试从相邻 keyframe + delta chain 恢复
+       │   ├─ 恢复成功 → terminal_state = audit_gap
+       │   └─ 恢复失败 → terminal_state = unreplayable
+       └─ 尝试部分解析 blob
+           ├─ 关键字段完整 → terminal_state = reconstructable
+           └─ 关键字段损坏 → terminal_state = unreplayable
+```
+
+**与 hash chain 的关系**：TickTrace delta chain 按 tick 递增形成链——`chain[i] = Blake3(chain[i-1] || tick_trace_i)`。任一 tick 的 blob 进入 `unreplayable` 状态 → 链断裂 → replay verifier 可检测到损坏起始 tick。损坏 tick 之前的状态仍可验证，之后的需从最近有效 keyframe 重建。
 
 ---
 

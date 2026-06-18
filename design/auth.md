@@ -316,8 +316,9 @@ Swarm 不提供服务器 timestamp authority，也不新增 timestamp 审计。`
 | Replay Class | 说明 | Nonce 策略 | 示例 |
 |-------------|------|-----------|------|
 | `read_replay_safe` | 纯查询，重复不影响状态 | 可选 nonce，time window 校验 | `swarm_get_snapshot` |
-| `idempotent_mutation` | 重复执行结果相同 | Dragonfly nonce + time window | `swarm_deploy`（同 module_hash） |
-| `non_idempotent_mutation` | 重复执行产生副作用 | FDB version counter 或一次性 challenge | `swarm_submit_csr` |
+| `idempotent_mutation` | 重复执行结果相同 | Dragonfly nonce + time window（除 deploy 外） | `swarm_submit_csr`（同 CSR） |
+| `deploy_mutation` | 部署请求——防重放由 FDB version_counter 保证 | **FDB version_counter**（见 §10.8） | `swarm_deploy` |
+| `non_idempotent_mutation` | 重复执行产生副作用 | FDB version counter 或一次性 challenge | `swarm_admin_set_world_config` |
 | `admin_critical` | 安全敏感管理操作 | FDB 事务内消费 challenge + 双签审计 | `swarm_revoke_certificate`、CA 操作 |
 
 Dragonfly nonce 仅用于 `read_replay_safe` 和 `idempotent_mutation`。所有 `non_idempotent_mutation` 和 `admin_critical` 操作必须使用 FDB version counter、idempotency key 或一次性 challenge，并在事务内消费。
@@ -339,7 +340,7 @@ Dragonfly nonce 仅用于 `read_replay_safe` 和 `idempotent_mutation`。所有 
 | 方法 | Replay Class | Required Scope | Rate Limit | Visibility Filter | Admin Override |
 |------|-------------|----------------|------------|-------------------|----------------|
 | `swarm_get_snapshot` | read_replay_safe | swarm:read | 10/s | fog_of_war | no |
-| `swarm_deploy` | idempotent_mutation | swarm:deploy | 1/5s | owner | no |
+| `swarm_deploy` | deploy_mutation | swarm:deploy | 1/5s | owner | no |
 | `swarm_submit_csr` | non_idempotent_mutation | swarm:register | 1/30s | none | no |
 | `swarm_revoke_certificate` | admin_critical | swarm:admin | 1/10s | admin scope | required |
 | `swarm_admin_create_password_reset` | admin_critical | swarm:admin:recovery | 1/60s | admin scope | dual-audit |

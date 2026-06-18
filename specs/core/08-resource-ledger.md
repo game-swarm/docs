@@ -166,6 +166,20 @@ recycle_refund = body_cost * remaining_lifespan * 5000 / total_lifespan / 10000
 recycle_refund = max(body_cost * 1000 / 10000, recycle_refund)  # min 10%
 ```
 
+### Empire Upkeep（帝国维护费）
+
+维护费使用 world.toml 中 `[[empire_upkeep_mod]]` 定义的 tiered 公式。默认 Vanilla 规则：
+
+```
+upkeep = base_upkeep × rooms × (1 + rooms / room_soft_cap)
+base_upkeep = 50 (Standard) / 30 (Vanilla) / 10 (Tutorial)
+room_soft_cap = 10 (Standard) / 15 (Vanilla) / 20 (Tutorial)
+```
+
+维护费在 Resource Ledger 执行顺序中位于第 1 步（`UpkeepDeduction`），从玩家全局存储扣除。若全局存储不足，扣至 0 并记录 `UpkeepDeficit` 到 TickTrace。维护费 deficit 累积——连续 3 tick deficit 触发 drone 饥饿惩罚（效率 −50%），连续 10 tick deficit 触发 drone 强制死亡（age 加速 ×10）。
+
+**Recycle 权威公式**：Resource Ledger 为回收的单一权威源。回收退还比例 = `max(10%, remaining_lifespan / total_lifespan × 50%)`。即 drone 在寿命 10% 时回收退还 10%，在寿命 100% 时退还 50%。`recycle_refund_base` = 5000 bp (50%)，`recycle_refund_min` = 1000 bp (10%)。新手保护（Tutorial 前 500 tick）退还 100%，由 world.toml `tutorial_recycle_refund_full_ticks` 控制。
+
 ---
 
 ## 7. Future RFC 入口

@@ -207,7 +207,7 @@ Swarm 支持三个扩展层级：
   │   │   └── 冲突 → 丢弃 + 记录 RejectionReason
   │   └── Spawn 命令在 Phase 2a 中只校验不入队
   │   ├── Phase 2b: ECS Systems
-  │   │   └── > **权威 Phase 2b 系统调度见 [System Manifest](specs/core/06-phase2b-system-manifest.md)** — 27 systems, serial spine + 3 parallel sets
+  │   │   └── > **权威系统调度见 [Complete Tick Execution Manifest](specs/core/06-phase2b-system-manifest.md)** — 29 systems（Phase 2a inline 6 + Phase 2b deferred 23）, serial spine + 3 parallel sets
   ├── FDB 原子提交（全或无）
   └── tick_counter 推进
 
@@ -222,7 +222,7 @@ Swarm 支持三个扩展层级：
 
 | 阶段 | 执行模型 | 包含的命令/系统 | 分类原则 |
 |------|---------|---------------|---------|
-| **Phase 2a (Inline)** | 串行 inline 应用 | Move, Harvest, Build, Transfer, Attack, RangedAttack, Heal, Recycle | **玩家提交的命令**——效果依赖执行顺序，且「先到先得」竞争有意义。对 Bevy World 做立即修改，后续命令基于最新状态校验 |
+| **Phase 2a (Inline)** | 串行 inline 应用 | Move, Harvest, Attack, RangedAttack, Heal, Claim, Build, Recycle, Transfer, Withdraw, Spawn (validate only) | **玩家提交的命令**——效果依赖执行顺序，且「先到先得」竞争有意义。对 Bevy World 做立即修改，后续命令基于最新状态校验 |
 
 **Move 作为 Main Action 的设计理由**：Move 与 Harvest/Attack/Build 竞争同一个 per-drone per-tick action slot。此设计偏离了大多数 RTS 的「移动 + 行动」双动作模型，是 Swarm 有意的简化和 philosophic commitment：
 
@@ -240,7 +240,7 @@ Swarm:     Move = Action  → 每 tick 移动 OR 采集 OR 攻击 OR 建造
 | **手感差异** | 新玩家会觉得 drone "迟钝"——移动一格后下一 tick 才能采集。这是**设计意图**：drone 不是即时代理，玩家需通过代码预判和批量调度来弥补单 drone 的动作延迟 |
 
 此设计在 playtest 阶段可能被挑战——如果证据表明玩家普遍因 Move 占用 action slot 而流失，可重新评估。当前作为有意的设计选择冻结。
-| **Phase 2b (Deferred)** | ECS Systems `.chain()` + `.before()/.after()` | death_mark, spawn, spawning_grace, combat, status_advance, aging（主线 `.chain()`）；regeneration, decay（并行，仅需 before death_cleanup） | **被动系统**——对有依赖关系的系统串行执行（保证正确性），无数据竞争的系统利用 Bevy 并行调度。不接收玩家命令，响应 2a 产生的状态变化 |
+| **Phase 2b (Deferred)** | ECS Systems (serial spine + parallel sets) | death_marker, spawn, spawning_grace, regeneration, combat (parallel set A), special_attack_reducer, damage_application, status effects (parallel set B), aging, decay, death_cleanup, pvp_block, room_state, controller_2b, resource_ledger | **被动系统**——有依赖关系的系统串行执行（保证正确性），无数据竞争的系统利用并行调度。不接收玩家命令，响应 2a 产生的状态变化。完整调度见 [Complete Tick Execution Manifest](specs/core/06-phase2b-system-manifest.md) |
 
 **Attack 与 combat_system 的职责分离**：
 - **Phase 2a Attack/RangedAttack 命令**：直接应用 damage（含抗性/伤害类型计算），立即反映到目标 HP
@@ -253,7 +253,7 @@ Swarm:     Move = Action  → 每 tick 移动 OR 采集 OR 攻击 OR 建造
 
 **RoomCap 生命周期约束**：`RoomCap` 的读写顺序为 `death_mark: W(release) → spawn: R(check) + W(consume)`。在 `death_mark_system` 与 `spawn_system` 之间的任何 ECS system 不得读取 RoomCap 做准入决策——此时槽位已释放但尚未被新 drone 消费，RoomCap 值处于中间态。新增 system 插入此区间时必须在 manifest 中声明对 RoomCap 的读写关系。
 
-**Phase 2b 并行策略**：regeneration（资源点再生）和 decay（疲劳/冷却递减）只操作各自独立的数据，与主线 death_mark→spawn→spawning_grace→combat→status_advance→aging→death_cleanup 无数据竞争。利用 Bevy 的 `.before()/.after()` 将这两个系统与主线并行调度——Bevy 在幕后自动分配线程，无需手动管理。约束：两者必须在 `death_cleanup` 之前完成（防止操作已 despawn 的 entity），其他无顺序要求。正确性由数据独立 + Bevy 依赖图保证，确定性不依赖并行度（同 input 同 output）。
+**Phase 2b 并行策略**：Combat (S11-S13) 按 target_id partition 并行——attack_system、ranged_attack_system、heal_system 操作不重叠的 target 实体。Status Effects (S16-S22) 按 status subtype 并行——各系统操作互不重叠的 StatusState 子类型。decay (S24) 为独立串行系统（疲劳/冷却/结构衰减不与任何并行系统共享数据）。regeneration (S10) 在 damage_application (S15) 之前串行执行（防止 heal+regen 双倍回复）。完整调度及 R/W 矩阵见 [Complete Tick Execution Manifest](specs/core/06-phase2b-system-manifest.md)。
 
 **两阶段快照架构**：阶段一不再为每个玩家独立序列化世界状态。改为：(1) tick 开始时一次性构建完整世界快照，按房间分片；(2) 每个玩家根据其 drone 所在位置，拼接可见房间的分片（默认 ≤9 个）。复杂度从 `O(玩家数 × 实体数)` 降为 `O(实体数 + 玩家数 × 可见房间数)`，消除每玩家重复序列化开销。快照构建在玩家 WASM 执行前完成，与玩家顺序无关，天然确定。
 
@@ -264,15 +264,17 @@ Swarm:     Move = Action  → 每 tick 移动 OR 采集 OR 攻击 OR 建造
 **确定性要求**：
 1. 相同的初始世界状态
 2. 相同的 Command 输入（已排序，canonical order 见 [interface.md §4](interface.md)）
-3. ECS System 执行顺序固定（`.chain()`）
+3. ECS System 执行顺序固定（见 [Complete Tick Execution Manifest](specs/core/06-phase2b-system-manifest.md)）
 4. 所有随机数来自确定种子 PRNG——shuffle seed 公式 `Blake3("shuffle" || world_seed || tick.to_le_bytes())`；per-entity stream seed `Blake3(stream_name || world_seed || entity_id.to_le_bytes() || tick.to_le_bytes())`
 
 **回放输入封套**（`TickInputEnvelope`，每 tick 持久化）：
+- `collect_id`（Blake3, R16 B3 新增）, `attempt_id`（u32, R16 B3 新增）, `commit_id`（Blake3, R16 B3 新增）
 - `module_hash`, `wasmtime_version`, `effective_tick`
 - `wasm_status`（ok/timeout/trap/fuel_exhausted）
 - `snapshot_hash`, `commands_hash`（canonical order）
 - `deploy_events`, `rollback_events`, `admin_events`
 - `world_config_hash`, `mods_lock_hash`, `engine_abi_version`
+- `terminal_state`（verified/audit_gap/unreplayable/reconstructable, R16 B3 新增）
 
 **反作弊**：
 - 全量回放：任意房间状态可完整重现
@@ -313,6 +315,8 @@ Swarm:     Move = Action  → 每 tick 移动 OR 采集 OR 攻击 OR 建造
 | **TickTrace/keyframe retention** | 7d (hot) / 30d (warm) / 180d (cold) | 可配置 |
 
 **Per-player fair-share admission**: 引擎全局预算（如 pathfinding 100,000 explored nodes/tick）按活跃玩家数均分。每玩家份额 = `floor(global_budget / active_players)`。若 active_players 为 0，不执行分配。玩家超出其份额 → 当前调用 deterministic reject（路径返回部分结果或 `ERR_BUDGET_EXHAUSTED`）。引擎在 tick 开始时计算份额，整个 tick 内份额不变。份额按调用顺序消耗——先到先得，后续超份额即拒。此机制防止单玩家垄断全局寻路资源，保证公平性。
+
+> **权威容量定义**：所有容量上限和准入策略以 `specs/reference/api-registry.md` §5「全局容量限制」为准。engine.md 本节仅作性能合同（budget），数值引用自 registry 的权威列。
 
 **Arena 独立预算**：Arena 使用独立的 tick/collect/simulate budget，不继承 World 的 3s 模型。Arena pathfinding 和 visibility 缓存大小减半（5,000 / 25,000）。
 
