@@ -10,14 +10,14 @@
 
 | 类别 | 数量 | 说明 |
 |------|:----:|------|
-|| ✅ 已完成 Wave | 8 | W0 (Mod), W1 (Snapshot), W2 (P2-1), W3 (P2-3), W4 (P2-2), W5 (P2-5), W6 (P2-8), W7 (P3-1+P3-6), **W8 (Stub修复)** |
-| ✅ Manifest 已实现 | 15 | S01-S08, S09(✔), S10(✔), S11-S13(合), S24(✔), S25(stub), S26(✔), S27, S28 |
+|| ✅ 已完成 Wave | 9 | W0-W7, **W8 (Stub修复)**, **W9 (S14+S15)** |
+| ✅ Manifest 已实现 | 17 | S01-S08, S09(✔), S10(✔), S11-S13(合), S14(✔), S15(✔), S24(✔), S25(stub), S26(✔), S27, S28 |
 | ⚠️ Stub/语义错位 | 2 | S25(9行), S29(387行库代码,缺ECS系统) |
-| ❌ 完全缺失 | 10 | S14, S15, S16, S17, S18, S19, S20, S21, S22, S23 |
+| ❌ 完全缺失 | 8 | S16, S17, S18, S19, S20, S21, S22, S23 |
 | 📦 Mod 仓库 | 7 | 已填充 mod.toml + 3×.rhai，engine submodule 就位 |
 | 🔧 Infrastructure | 3 | S29 resource_ledger(387行库), arena.rs(623行基础), security.rs(515行) |
 
-> **当前提交**: `af0f48d` (W8 Stub修复)。W0-W8 全部完成。
+> **当前提交**: `fe903f2` (W9 S14+S15)。W0-W9 全部完成。
 > controller_repair_system (196行) 代码正确修复 body hits —— 文件注释和 ROADMAP 旧版标注有误。
 
 ---
