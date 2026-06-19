@@ -10,7 +10,7 @@
 
 | 类别 | 数量 | 说明 |
 |------|:----:|------|
-| ✅ 已完成 | 17 | P0-1~P0-5, P0-7~P0-8, P1-1~P1-4, P2-4, P2-6, S07, S08, S27, S28 |
+| ✅ 已完成 | 22 | P0-1~P0-5, P0-7~P0-8, P1-1~P1-4, P2-4, P2-6, S07, S08, S27, S28, economy(688行), global_storage(189行), depot_repair(315行), controller_repair(244行,drone age), security(515行) |
 | ⚠️ 部分/Stub | 11 | P0-6(72行), P3-1(274行), P3-6(267行), S09(21行), S10(43行), S15(28行), S24(88行), S25(9行), S26(19行), S29(0行), P4-1(623行) |
 | ❌ 缺失 | 18 | P2-1,P2-2,P2-3,P2-5,P2-7,P2-8, S14,S16-S23, P3-7,P3-8, P1-6,P1-7, P4-2~P4-5, P5-1~P5-7 |
 | 📦 Mod 仓库 | 8 | 已创建空仓库，无 engine submodule |
@@ -36,11 +36,11 @@ W0 (Mod 仓库填充 + engine submodule)
  │                                        │
  │                                        └─► W13 (S23) → W14 (P3-8)
  │                                                             │
- │                                                             └─► W15 (P4-1~P4-5)
- │                                                                      │
- │                                                                      └─► W16 (P1-6 ‖ P1-7 ‖ P2-7)
- │                                                                               │
- │                                                                               └─► W17 (P5-1~P5-7)
+ │                                                             └─► W15 (P4-1~P4-7)
+ │
+ ├─► W16 (P1-6 ‖ P1-7 ‖ P2-7)
+ │
+ └─► W17 (P5-1~P5-7)
 ```
 
 ---
@@ -125,8 +125,8 @@ W0 (Mod 仓库填充 + engine submodule)
 | 规范 | `specs/core/08-resource-ledger.md` §Empire Upkeep, §2.4, §2.5 |
 
 **实现:**
-1. 维护费公式: **`cost = base_upkeep × rooms × (1 + rooms / room_soft_cap)`**（`base_upkeep=50`, `room_soft_cap=10`）
-2. Controller Repair: `repair_cost = body_cost × (1 - 3500/10000) × (1 + distance × 500/10000)`
+1. 维护费公式: **`cost = base_upkeep × rooms × (1 + rooms / room_soft_cap)`**（参数从 `world.toml` `[empire_upkeep]` 读取，按模式可配置：Standard=50/10, Vanilla=30/10, Tutorial=10/5）
+2. Controller Repair: `repair_cost = body_cost × (1 - repair_cap/10000) × (1 + distance × distance_decay_bp/10000)`。⚠️ 当前 `controller_repair_system.rs`(244行) 实现的是 drone age 修复——**需重写**为规范定义的 body repair 逻辑
 3. Recycle Refund: `refund = body_cost × max(recycle_refund_min/10000, remaining_lifespan/total_lifespan × recycle_refund_base/10000)` = `body_cost × max(0.1, remaining/total × 0.5)`（`recycle_refund_base=5000bp`, `recycle_refund_min=1000bp`）
 4. Deficit 惩罚：连续 3 tick deficit → 效率 −50%；连续 10 tick deficit → 强制死亡（age 加速 ×10）
 
@@ -151,11 +151,11 @@ W0 (Mod 仓库填充 + engine submodule)
 
 **仓库: `engine`** | **并行度: 1**
 
-| 文件 | `command.rs` (新增 TransferToPlayer), `resources.rs`, `world.rs`, `lib.rs` |
+| 文件 | `command.rs` (新增 AlliedTransfer), `resources.rs`, `world.rs`, `lib.rs` |
 |------|------|
 | 规范 | `specs/core/08-resource-ledger.md` §2.1 |
 
-**实现:** TransferToPlayer CommandAction + 200bp fee + cooldown + identity binding
+**实现:** AlliedTransfer CommandAction + 200bp fee + cooldown + identity binding
 **验收:** ≥ 4 个测试
 
 ---
@@ -190,7 +190,11 @@ W0 (Mod 仓库填充 + engine submodule)
 |------|------|
 | 规范 | `specs/core/06-phase2b-system-manifest.md` §S09, §S10, §S24, §S26 |
 
-**实现:** S09 SpawningGrace（出生 tick 无敌, R16 B2）、S10 Regeneration（先于 damage, `Without<DeathMark>`）、S24 Decay（疲劳/冷却衰减）、S26 PvP Block（`pvp_enabled` 检查，安全模式到期逻辑见 `01-tick-protocol.md` §2.5）
+**实现:**
+- **S09 SpawningGrace**: 向新生 drone 写入 `SpawningGrace{remaining:1}`（当前实现仅检查/递减已有 Grace，**缺失写入逻辑**，R16 B2 修复）
+- **S10 Regeneration**: Entity HP 恢复（`hits++, capped at max_hits`, `Without<DeathMark>`）。⚠️ 当前 regeneration_system.rs(43行) 实现的是 Source 资源容量再生，与 manifest §S10 完全不符——**需重写**，非"增强"
+- **S24 Decay**: 疲劳/冷却衰减。⚠️ 当前 decay_system.rs 同时处理 drone.age++（aging, S23）和 decay（S24），违反 manifest 的独立系统定义。W13 创建 aging_system.rs 时需**从 decay_system.rs 剥离 aging 逻辑**
+- **S26 PvP Block**: `pvp_enabled` 检查，安全模式到期逻辑见 `01-tick-protocol.md` §2.5。⚠️ 当前调度位置在 spawn 之前，manifest 要求在 death_cleanup 之后——需修正 scheduler 注册顺序
 **验收:** 每系统 ≥ 2 个测试（共 ≥ 8 个）
 
 ---
@@ -199,11 +203,11 @@ W0 (Mod 仓库填充 + engine submodule)
 
 **仓库: `engine`** | **并行度: 1**
 
-| 文件 | `special_attack_reducer.rs` (**新建**), `damage_application_system.rs` (**新建**, S15，原 `death_mark_system.rs` 28行 stub 重命名), `systems/mod.rs`, `scheduler.rs`, `lib.rs` |
+| 文件 | `special_attack_reducer.rs` (**新建**), `damage_application_system.rs` (**新建**, S15), `systems/mod.rs`, `scheduler.rs`, `lib.rs` |
 |------|------|
 | 规范 | `specs/core/06-phase2b-system-manifest.md` §S14, §S15 |
 
-> S07 death_marker 与 S15 damage_application 分为独立文件：`death_marker.rs`（S07，已完成）和 `damage_application_system.rs`（S15，本 Wave）。
+> S07 `death_marker.rs`（已完成）与 S15 `damage_application_system.rs`（本 Wave 新建）是独立文件。**不要重命名或修改 death_marker.rs**——它是 S07 的完整实现。
 
 **实现:**
 - **S14**: Intent Collect → Canonical Sort (优先级+shuffle) → Deliver（不直接修改实体状态，交付 S22）
@@ -282,7 +286,7 @@ W0 (Mod 仓库填充 + engine submodule)
 
 ---
 
-## Wave 15: P4 Arena Mode（5 子任务串行）
+## Wave 15: P4 Arena Mode（7 子任务全部修改 `arena.rs`，串行执行）
 
 **仓库: `engine`** | **并行度: 1**（全部修改 `arena.rs`）
 
@@ -294,7 +298,7 @@ W0 (Mod 仓库填充 + engine submodule)
 | T15d | **P4-4** Social Replay | `design/modes.md` §9.1.4 | Delayed spectator + replay URL + public_spectate 限流 |
 | T15e | **P4-5** Local Replay | `specs/core/05-persistence-contract.md` §2 (Replay-Critical Subset) | Deterministic replay verifier |
 | T15f | **P4-6** PvE Challenge | `design/modes.md` §9.1.5 | 4 场景引擎（Guardian Gauntlet/Swarm Defense/Resource Race/Ruin Siege）+ 评分公式 + PvE 排行榜 |
-| T15g | **P4-7** Arena Admin | `design/modes.md` §9.1.6 | Room 管理（list/kick/close）+ parameters 热更新 |
+| T15g | **P4-7** Arena Admin | `design/modes.md` §9.1.1–§9.1.5 | Room 管理（list/kick/close）+ parameters 热更新。⚠️ §9.1.6 尚未创建——需在实现前补充规范 |
 
 **文件:** T15a-c,f,g: `arena.rs`; T15d: +`replay_storage.rs`; T15e: +`tick.rs`
 **验收:** arena 测试 ≥ 12 (+9), replay ≥ 3
@@ -318,7 +322,7 @@ W0 (Mod 仓库填充 + engine submodule)
 **验收:** 曲线与 balance sheet 预测一致。
 
 ### T16b — P1-7 Command Source Gate
-| 文件 | `security.rs` (增强), `command.rs` (集成点), `lib.rs` (注册 `mod security`) |
+| 文件 | `security.rs` (增强, 已注册 `pub mod security;` 于 lib.rs), `command.rs` (集成点) |
 |------|------|
 | 规范 | `specs/security/09-command-source.md` §4-§8 |
 
