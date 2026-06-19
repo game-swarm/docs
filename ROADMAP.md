@@ -11,13 +11,18 @@
 | 类别 | 数量 | 说明 |
 |------|:----:|------|
 | ✅ 已完成 | 31 | P0-1~P0-6, P0-7~P0-8, P1-1~P1-4, P2-1, P2-2, P2-3, P2-4, P2-5, P2-6, P2-8, P3-1(att+range+heal+projectile, 10 tests), P3-6(Hint Ladder+Oracle+Spectate, 10 tests), P5-6(rollback bench: capture 0.55ms), S07, S08, S27, S28, economy(688行), global_storage(189行), depot_repair(315行), controller_repair(244行,drone age), security(515行) |
-| ⚠️ 部分/Stub | 8 | S09(21行), S10(43行), S15(28行), S24(88行), S25(9行), S26(19行), S29(0行), P4-1(623行) |
-| ❌ 缺失 | 12 | P2-7, S14,S16-S23, P3-7,P3-8, P1-6,P1-7, P4-2~P4-5, P5-1~P5-5,P5-7,P5-8 |
+| ⚠️ 部分/Stub | 6 | S09(21行), S10(43行), S24(88行), S25(9行), S26(19行), P4-1(623行) |
+| ❌ 缺失 | 13 | S15, P2-7, S14,S16-S23, P3-7,P3-8, P1-6,P1-7, P4-2~P4-5, P5-1~P5-5,P5-7,P5-8 |
+| 🔧 已有基础设施 | 2 | S29(387行,P2-1库代码;per-tick ECS待实现), P1-7(security.rs 515行;CommandSource枚举待实现) |
 | 📦 Mod 仓库 | 0 | 7 个已填充 mod.toml + 3×.rhai，已添加为 engine submodule |
 
+> **测试总数: 276 (2026-06-20)** — 全部通过，0 失败。
+>
 > S07 death_marker、S08 spawn_system、S27 room_state_system(230行)、S28 controller_system(2b, 176行)、P0-6 snapshot(10 tests) 已完整实现，归入 ✅。
-> S25 death_cleanup(9行) 归入 ⚠️ stub。S29 resource_ledger 为 per-tick ECS 系统，尚未实现，归入 ⚠️。
+> S25 death_cleanup(9行) 归入 ⚠️ stub。S29 resource_ledger(387行) 为 P2-1 Transfer Gateway 库代码，per-tick ECS 系统尚未实现，归入 🔧。
+> S15 damage_application_system.rs **文件不存在**（ROADMAP 此前声称 28行 stub 为错误），归入 ❌。
 > P4-1 arena.rs 已有 623 行基础代码，归入 ⚠️。
+> P3-7 body_part_damage() 基础函数已存在于 combat_system.rs:123，完整 body_part_match 验证 + DisruptedResisted 待实现。
 
 ---
 
