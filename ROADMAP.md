@@ -10,9 +10,9 @@
 
 | 类别 | 数量 | 说明 |
 |------|:----:|------|
-| ✅ 已完成 | 28 | P0-1~P0-6, P0-7~P0-8, P1-1~P1-4, P2-1, P2-2, P2-3, P2-4, P2-5, P2-6, P2-8, S07, S08, S27, S28, economy(688行), global_storage(189行), depot_repair(315行), controller_repair(244行,drone age), security(515行) |
-| ⚠️ 部分/Stub | 10 | P3-1(274行), P3-6(267行), S09(21行), S10(43行), S15(28行), S24(88行), S25(9行), S26(19行), S29(0行), P4-1(623行) |
-| ❌ 缺失 | 13 | P2-7, S14,S16-S23, P3-7,P3-8, P1-6,P1-7, P4-2~P4-5, P5-1~P5-7 |
+| ✅ 已完成 | 31 | P0-1~P0-6, P0-7~P0-8, P1-1~P1-4, P2-1, P2-2, P2-3, P2-4, P2-5, P2-6, P2-8, P3-1(att+range+heal+projectile, 10 tests), P3-6(Hint Ladder+Oracle+Spectate, 10 tests), P5-6(rollback bench: capture 0.55ms), S07, S08, S27, S28, economy(688行), global_storage(189行), depot_repair(315行), controller_repair(244行,drone age), security(515行) |
+| ⚠️ 部分/Stub | 8 | S09(21行), S10(43行), S15(28行), S24(88行), S25(9行), S26(19行), S29(0行), P4-1(623行) |
+| ❌ 缺失 | 12 | P2-7, S14,S16-S23, P3-7,P3-8, P1-6,P1-7, P4-2~P4-5, P5-1~P5-5,P5-7,P5-8 |
 | 📦 Mod 仓库 | 0 | 7 个已填充 mod.toml + 3×.rhai，已添加为 engine submodule |
 
 > S07 death_marker、S08 spawn_system、S27 room_state_system(230行)、S28 controller_system(2b, 176行)、P0-6 snapshot(10 tests) 已完整实现，归入 ✅。
@@ -160,7 +160,7 @@ W0 (Mod 仓库填充 + engine submodule)
 
 ---
 
-## Wave 7: P3-1 Combat + P3-6 Visibility
+## Wave 7: P3-1 Combat + P3-6 Visibility ✅ (2026-06-20)
 
 **仓库: `engine`** | **并行度: 2**（无共享文件）
 
@@ -353,7 +353,7 @@ deploy→validate→commit→activate pipeline + `swarm_deploy_module` MCP tool 
 | P5-3 | `benches/fdb_bench.rs` | 500 players p99<200ms, conflict<1% |
 | P5-4 | `benches/room_partition.rs` | 1000 players, 200 rooms, p99<500ms, per-room conflict<1% |
 | P5-5 | `benches/pathfinding.rs` | 50×50 A\\*, 100 concurrent ops, p99<10ms/node, fair-share + cache determinism |
-| P5-6 | `benches/rollback.rs` | 500 entities 全组件, p99<50ms, entity ID allocator verified |
+| P5-6 | `benches/rollback_snapshot.rs` | ✅ 500 entities 全组件, p99<50ms (capture 0.55ms/restore 1.49ms), entity ID allocator verified |
 | P5-7 | `benches/load_test.rs` | 1000 players, 200 rooms, p99<500ms |
 | P5-8 | `benches/snapshot_stitch.rs` | 1000 × 256KB snapshots, p99<100ms |
 
