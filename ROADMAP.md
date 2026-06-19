@@ -10,9 +10,9 @@
 
 | 类别 | 数量 | 说明 |
 |------|:----:|------|
-| ✅ 已完成 | 26 | P0-1~P0-6, P0-7~P0-8, P1-1~P1-4, P2-1, P2-2, P2-4, P2-6, S07, S08, S27, S28, economy(688行), global_storage(189行), depot_repair(315行), controller_repair(244行,drone age), security(515行) |
+| ✅ 已完成 | 27 | P0-1~P0-6, P0-7~P0-8, P1-1~P1-4, P2-1, P2-2, P2-3, P2-4, P2-5, P2-6, S07, S08, S27, S28, economy(688行), global_storage(189行), depot_repair(315行), controller_repair(244行,drone age), security(515行) |
 | ⚠️ 部分/Stub | 10 | P3-1(274行), P3-6(267行), S09(21行), S10(43行), S15(28行), S24(88行), S25(9行), S26(19行), S29(0行), P4-1(623行) |
-| ❌ 缺失 | 15 |,P2-5,P2-7,P2-8, S14,S16-S23, P3-7,P3-8, P1-6,P1-7, P4-2~P4-5, P5-1~P5-7 |
+| ❌ 缺失 | 14 | P2-7,P2-8, S14,S16-S23, P3-7,P3-8, P1-6,P1-7, P4-2~P4-5, P5-1~P5-7 |
 | 📦 Mod 仓库 | 0 | 7 个已填充 mod.toml + 3×.rhai，已添加为 engine submodule |
 
 > S07 death_marker、S08 spawn_system、S27 room_state_system(230行)、S28 controller_system(2b, 176行)、P0-6 snapshot(10 tests) 已完整实现，归入 ✅。
@@ -134,16 +134,16 @@ W0 (Mod 仓库填充 + engine submodule)
 
 ---
 
-## Wave 5: P2-5 Starting Resources
+## Wave 5: P2-5 Starting Resources ✅
 
-**仓库: `engine`** | **并行度: 1**
+**仓库: `engine`** | **并行度: 1** | **状态: 完成**
 
-| 文件 | `resources.rs`, `economy.rs`, `world.rs`, `lib.rs` |
+| 文件 | `systems/starting_resources_system.rs`, `systems/memory_upkeep_system.rs`, `tick.rs`, `world.rs`, `lib.rs` |
 |------|------|
 | 规范 | `specs/core/08-resource-ledger.md` §2.3 |
 
-**实现:** `starting_resources` (Energy 5000 + Minerals 2000), `free_upkeep_controllers:1`, `free_upkeep_drones:3`, `free_upkeep_ticks:2000`
-**验收:** ≥ 3 个测试
+**实现:** `starting_resources_system` 首次 spawn 注入 Energy 5000 + Minerals 2000；`memory_upkeep_system` 免维护期豁免前 N 个 controller
+**验收:** 4 tests ✅ (251 全通过)
 
 ---
 
