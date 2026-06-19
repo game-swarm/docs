@@ -13,7 +13,7 @@
 | ✅ 已完成 | 22 | P0-1~P0-5, P0-7~P0-8, P1-1~P1-4, P2-4, P2-6, S07, S08, S27, S28, economy(688行), global_storage(189行), depot_repair(315行), controller_repair(244行,drone age), security(515行) |
 | ⚠️ 部分/Stub | 11 | P0-6(72行), P3-1(274行), P3-6(267行), S09(21行), S10(43行), S15(28行), S24(88行), S25(9行), S26(19行), S29(0行), P4-1(623行) |
 | ❌ 缺失 | 18 | P2-1,P2-2,P2-3,P2-5,P2-7,P2-8, S14,S16-S23, P3-7,P3-8, P1-6,P1-7, P4-2~P4-5, P5-1~P5-7 |
-| 📦 Mod 仓库 | 8 | 已创建空仓库，无 engine submodule |
+| 📦 Mod 仓库 | 0 | 7 个已填充 mod.toml + 3×.rhai，已添加为 engine submodule |
 
 > S07 death_marker、S08 spawn_system、S27 room_state_system(230行)、S28 controller_system(2b, 176行) 已完整实现，归入 ✅。
 > S25 death_cleanup(9行) 归入 ⚠️ stub。S29 resource_ledger 为 per-tick ECS 系统，尚未实现，归入 ⚠️。
@@ -45,7 +45,7 @@ W0 (Mod 仓库填充 + engine submodule)
 
 ---
 
-## Wave 0: 官方模组仓库初始化
+## Wave 0: 官方模组仓库初始化 ✅ (2026-06-19)
 
 **仓库: 7 个 `swarm/mod-*` + `engine`** | **并行度: 7（独立仓库）+ 1（engine）**
 
@@ -365,7 +365,7 @@ deploy→validate→commit→activate pipeline + `swarm_deploy_module` MCP tool 
 
 | Milestone | 判定 | Wave |
 |-----------|------|:----:|
-| **M0: Mod Ready** | 7 个 mod 仓库 + engine submodule | W0 |
+| **M0: Mod Ready** | 7 个 mod 仓库 + engine submodule | ✅ W0 |
 | **M1: Core Complete** | P0-6 Snapshot + Simulate/Dry-Run | W1, W14 |
 | **M2: Economy** | P2-1..P2-8 + Balance test | W2-W6, W16a |
 | **M3: Combat Foundation** | S09,S10,S14,S15,S24,S26 + Combat + Visibility + Hint Ladder | W7-W9 |
