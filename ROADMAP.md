@@ -1,19 +1,69 @@
 # Swarm Implementation ROADMAP
 
 > 仅列出待实现变更。文件互斥：同一 Wave 内任务触碰的文件集完全不相交。
-> 路径前缀：`engine:` = `/data/swarm/engine/src/`，`sandbox:` = `/data/swarm/sandbox/`，`docs:` = `/data/swarm/docs/`。
+> 路径前缀：`engine:` = `/data/swarm/engine/src/`，`sandbox:` = `/data/swarm/sandbox/`，`docs:` = `/data/swarm/docs/`，`mod:` = 独立 git 仓库 `swarm/mod-*`。
 > 系统编号以 `specs/core/06-phase2b-system-manifest.md` 为唯一权威来源。
+
+---
+
+## Wave 0: 官方模组仓库拆分
+
+**并行度: 7**（互不重叠——各自独立 git 仓库）
+
+将 engine 中内置系统按 DESIGN 要求拆分为独立 git 仓库 + Rhai 模组。当前所有系统代码在 `engine/src/systems/*.rs` 中——需保留 Rust 引擎 API，模组逻辑迁移到 Rhai 脚本。
+
+### 模组映射
+
+| 模组 | 仓库 | engine 系统 | 默认 |
+|------|------|-------------|:----:|
+| **empire-upkeep** | [`swarm/mod-empire-upkeep`](https://git.kagurazakalan.com/swarm/mod-empire-upkeep) | `memory_upkeep_system.rs`, `controller_repair_system.rs` | ✅ on |
+| **fog-of-war** | [`swarm/mod-fog-of-war`](https://git.kagurazakalan.com/swarm/mod-fog-of-war) | `visibility.rs` (perception/camera 逻辑) | ✅ on |
+| **resource-decay** | [`swarm/mod-resource-decay`](https://git.kagurazakalan.com/swarm/mod-resource-decay) | `decay_system.rs` (storage tax 逻辑) | ❌ off |
+| **pve-spawning** | [`swarm/mod-pve-spawning`](https://git.kagurazakalan.com/swarm/mod-pve-spawning) | `spawn_system.rs`, `spawning_grace_system.rs`, `npc_spawn_system.rs`, `pve.rs` | ✅ on |
+| **combat-core** | [`swarm/mod-combat-core`](https://git.kagurazakalan.com/swarm/mod-combat-core) | `combat_system.rs`, `death_mark_system.rs`, `death_cleanup_system.rs`, `regeneration_system.rs` | ✅ on |
+| **special-attacks** | [`swarm/mod-special-attacks`](https://git.kagurazakalan.com/swarm/mod-special-attacks) | S16-S22 status systems（hack/overload/drain/debilitate/disrupt/fortify/status_advance） | ✅ on |
+| **depot-storage** | [`swarm/mod-depot-storage`](https://git.kagurazakalan.com/swarm/mod-depot-storage) | `depot_repair_system.rs`, `global_storage_system.rs`, `cargo_in_transit_system.rs`, `drone_env_var_system.rs` | ✅ on |
+
+### T0a — 初始化 7 个模组仓库
+
+| 属性 | 值 |
+|------|-----|
+| **仓库** | 各自独立（`swarm/mod-*`） |
+| **模板** | [`swarm/mod-template`](https://git.kagurazakalan.com/swarm/mod-template) |
+| **文件** | 每个 repo：`mod.toml`（元数据+配置参数声明）、`init.rhai`、`tick_start.rhai`、`tick_end.rhai`、`README.md` |
+
+**实现内容：**
+
+1. 从 `mod-template` 复制 scaffold 到每个 mod 仓库
+2. 定制各 mod 的 `mod.toml`：`[meta]`（name/version/description）、`[config]`（可配置参数+默认值）、`[dependencies]`
+3. 代码迁移原则：Rust 系统保留为引擎 API（`actions.deduct_resource` 等的实现），Rhai 脚本调用这些 API
+4. 不修改 `engine:rule_module.rs`（Rhai 加载器已存在）——仅填充 Rhai 脚本内容
+
+**验收：** 每个 mod 仓库至少有 `mod.toml` + 3 个 `.rhai` 脚本，`mod.toml` 声明正确的 config 参数
+
+### T0b — 添加 submodule 到 engine
+
+| 属性 | 值 |
+|------|-----|
+| **仓库** | `engine` |
+| **文件** | `engine:.gitmodules`、`engine:mods/`（新建目录，7 个 submodule） |
+| **依赖** | T0a |
+
+**实现：** `git submodule add` 七个模组仓库到 `engine/mods/`，固定初始版本 tag
+**验收：** `git submodule status` 显示 7 个 mod 子模块
 
 ---
 
 ## Wave 依赖图
 
 ```
-W1 (P0-6)
+W0 (Mod 拆分)
  │
- ├─► W2 (P2-1) ─► W3 (P2-3) ─► W4 (P2-2) ─► W5 (P2-5) ─► W6 (P2-8)
- │
- └─► W7 (P3-1 ‖ P3-6) ─► W8 (S09+S10 stubs) ─► W9 (P3-2+P3-4) ─► W10 (P3-5)
+ ├─► W1 (P0-6)
+ │     │
+ │     ├─► W2 (P2-1) ─► W3 (P2-3) ─► W4 (P2-2) ─► W5 (P2-5) ─► W6 (P2-8)
+ │     │
+ │     └─► W7 (P3-1 ‖ P3-6) ─► W8 (S09+S10) ─► W9 (P3-2+P3-4) ─► W10 (P3-5)
                               │
                               └─► W11 (P3-7) ─► W12 (Status 1/2) ─► W13 (Status 2/2)
                                                        │
@@ -478,6 +528,7 @@ W1 独立；W7-W15 为游戏系统链，依赖 W6（需要完整 Resource Ledger
 
 | Milestone | 判定 | 包含 Wave |
 |-----------|------|----------|
+| **M0: Mod Architecture** | 7 个 vanilla mod 仓库初始化 + engine submodule | W0 |
 | **M1: Core Complete** | P0-6 闭合 | W1 |
 | **M2: World Economy** | P2-1..P2-8 全部 + 经济测试 | W2-W6 + W16a |
 | **M3: Gameplay Complete** | P3-1..P3-8 全部 + S09+S10 | W7-W14 |
