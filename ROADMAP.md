@@ -89,7 +89,7 @@ W0 (Mod 仓库填充 + engine submodule)
 
 ---
 
-## Wave 2: P2-1 Resource Ledger
+## Wave 2: P2-1 Resource Ledger ✅ (2026-06-19)
 
 **仓库: `engine`** | **并行度: 1**
 
