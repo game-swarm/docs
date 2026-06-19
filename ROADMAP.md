@@ -31,7 +31,7 @@
 | P0-4 | WASM Sandbox 集成 | `04-wasm-sandbox.md` | Worker pool + fuel metering + epoch interruption |
 | P0-5 | FDB 单事务持久化 | `05-persistence-contract.md` §1-§7 | tick_head + manifest + hash chain |
 | P0-6 | Snapshot 构建器 | `09-snapshot-contract.md` | fog_of_war 过滤 → WASM tick() input |
-| P0-7 | RNG 确定性 PRNG | `01-tick-protocol.md` §6 | ChaCha8 per-player seed derivation |
+| P0-7 | RNG 确定性 PRNG | `01-tick-protocol.md` §6 | ✅ Blake3 XOF per-player seed derivation |
 | P0-8 | IndexMap 替换 HashMap | `01-tick-protocol.md` §5 | 确定性实体迭代顺序 |
 
 ---
