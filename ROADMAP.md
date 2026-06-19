@@ -10,14 +10,14 @@
 
 | 类别 | 数量 | 说明 |
 |------|:----:|------|
-| ✅ 已完成 Wave | 7 | W0 (Mod), W1 (Snapshot), W2 (P2-1), W3 (P2-3), W4 (P2-2), W5 (P2-5), W6 (P2-8), W7 (P3-1+P3-6) |
-| ✅ Manifest 已实现 | 11 | S01-S08, S11-S13(合), S24(含aging), S25(stub), S26(pos错), S27, S28 |
-| ⚠️ Stub/语义错位 | 6 | S09(21行,缺写入), S10(43行,Src再生≠HP), S24(88行,含aging), S25(9行), S26(19行,pos错), S29(387行库代码,缺ECS系统) |
+|| ✅ 已完成 Wave | 8 | W0 (Mod), W1 (Snapshot), W2 (P2-1), W3 (P2-3), W4 (P2-2), W5 (P2-5), W6 (P2-8), W7 (P3-1+P3-6), **W8 (Stub修复)** |
+| ✅ Manifest 已实现 | 15 | S01-S08, S09(✔), S10(✔), S11-S13(合), S24(✔), S25(stub), S26(✔), S27, S28 |
+| ⚠️ Stub/语义错位 | 2 | S25(9行), S29(387行库代码,缺ECS系统) |
 | ❌ 完全缺失 | 10 | S14, S15, S16, S17, S18, S19, S20, S21, S22, S23 |
 | 📦 Mod 仓库 | 7 | 已填充 mod.toml + 3×.rhai，engine submodule 就位 |
 | 🔧 Infrastructure | 3 | S29 resource_ledger(387行库), arena.rs(623行基础), security.rs(515行) |
 
-> **当前提交**: `a7c1dd0` (P2-8 Allied Transfer)。W0-W7 全部完成。
+> **当前提交**: `af0f48d` (W8 Stub修复)。W0-W8 全部完成。
 > controller_repair_system (196行) 代码正确修复 body hits —— 文件注释和 ROADMAP 旧版标注有误。
 
 ---
