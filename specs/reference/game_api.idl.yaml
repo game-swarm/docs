@@ -52,6 +52,20 @@ type_registry:
       scale: 1_000_000  # 1e6
       description: "Cost in micro resource units (1.0 = 1_000_000)"
 
+  enum_types:
+    ObjectiveType:
+      description: "Machine-readable objective type for swarm_get_objectives. AI agents use this to plan."
+      total_variants: 8
+      variants:
+        - { name: collect_resource, value: 0, description: "Gather resources (Energy, Matter, etc.)" }
+        - { name: build_structure, value: 1, description: "Build a specific structure type" }
+        - { name: claim_room,      value: 2, description: "Claim a room controller to target RCL" }
+        - { name: spawn_drones,    value: 3, description: "Spawn N drones with specified body composition" }
+        - { name: deploy_code,     value: 4, description: "Deploy/update WASM module" }
+        - { name: survive_ticks,   value: 5, description: "Survive for N ticks with at least one drone" }
+        - { name: defeat_enemy,    value: 6, description: "Destroy enemy units/structures (PvP/Arena)" }
+        - { name: event,           value: 7, description: "Time-limited special world event objective" }
+
 # =============================================================================
 # 1. CommandAction — all 19 variants
 # =============================================================================
@@ -473,7 +487,7 @@ rejection_reason:
 # =============================================================================
 mcp_tools:
   description: "All MCP tools available to clients. Grouped by capability profile."
-  total_tools: 56
+  total_tools: 57
   rate_limits:
     query: "50/tick"
     debug: "30/tick"
@@ -484,7 +498,7 @@ mcp_tools:
 
   tools:
     # =========================================================================
-    # Onboarding (8 tools)
+    # Onboarding (11 tools)
     # =========================================================================
     - name: swarm_get_info
       category: Onboarding
@@ -639,6 +653,36 @@ mcp_tools:
       replay_class: read_replay_safe
       visibility_filter: none
       rate_limit_key: global
+
+    - name: swarm_get_objectives
+      category: Onboarding
+      input_schema:
+        player_id: u32?
+        scope: string?         # "current" | "all" | "next"; default "current"
+      output_schema:
+        objectives:
+          type: array
+          items:
+            id: string          # unique objective ID
+            type: ObjectiveType
+            description: string
+            required:
+              type: object      # {resource: amount, ...} — what you need
+              additional_properties: u32
+            current:
+              type: object      # {resource: amount, ...} — what you have
+              additional_properties: u32
+            reward:
+              type: object      # {resource: amount, ...} — what you get on completion
+              additional_properties: u32
+            priority: u32       # 0 = highest, >=1 = lower
+            expires_at: u64?    # tick number, null = no deadline
+      rate_limit: "5/tick"
+      required_scope: "swarm:read"
+      subject_source: player_id
+      replay_class: read_replay_safe
+      visibility_filter: owner
+      rate_limit_key: per_player
 
     # =========================================================================
     # Auth (2 tools)
