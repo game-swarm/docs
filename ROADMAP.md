@@ -10,13 +10,13 @@
 
 | 类别 | 数量 | 说明 |
 |------|:----:|------|
-|| ✅ 已完成 Wave | 10 | W0-W7, **W8 (Stub修复)**, **W9 (S14+S15)**, **W10 (body_part_match)** |
-| ✅ Manifest 已实现 | 17 | S01-S08, S09(✔), S10(✔), S11-S13(合), S14(✔), S15(✔), S24(✔), S25(stub), S26(✔), S27, S28 |
+|| ✅ 已完成 Wave | 11 | W0-W7, **W8 (Stub修复)**, **W9 (S14+S15)**, **W10 (body_part_match)**, **W11 (S16-S18)** |
+| ✅ Manifest 已实现 | 20 | S01-S08, S09(✔), S10(✔), S11-S13(合), S14(✔), S15(✔), S16(✔), S17(✔), S18(✔), S24(✔), S25(stub), S26(✔), S27, S28 |
 | ⚠️ Stub/语义错位 | 2 | S25(9行), S29(387行库代码,缺ECS系统) |
-| ❌ 完全缺失 | 8 | S16, S17, S18, S19, S20, S21, S22, S23 |
+| ❌ 完全缺失 | 5 | S19, S20, S21, S22, S23 |
 | 🔧 Infrastructure | 4 | body_part_match(S11-S13+S20共用), DisruptedResisted, S29 resource_ledger(387行), arena.rs(623行基础), security.rs(515行) |
 
-> **当前提交**: `fc4d66d` (W10 body_part_match + DisruptedResisted)。W0-W10 全部完成。
+> **当前提交**: `f8c6e9f` (W11 S16-S18)。W0-W11 全部完成。299 tests。
 > controller_repair_system (196行) 代码正确修复 body hits —— 文件注释和 ROADMAP 旧版标注有误。
 
 ---
@@ -36,7 +36,7 @@ W7 (Combat+Visibility) ✅
  │             │
  │             └─► W12 (S19+S20+S21+S22) ←─ 依赖 W9 (S14→S22 链)
  │
- ├─► W11 (S16+S17+S18) ──可与 W12 并行──► W12 (S19+S20+S21+S22)
+ ├─► W11 (S16+S17+S18) ✅ ──可与 W12 并行──► W12 (S19+S20+S21+S22)
  │                                               │
  │                          ┌────────────────────┘
  │                          ▼
@@ -113,19 +113,6 @@ W7 (Combat+Visibility) ✅
 ---
 
 ---
-
-## Wave 11: Status Effects Part 1 — S16 Hack + S17 Drain + S18 Overload
-
-**仓库: `engine`** | **并行度: 1**（3 个新文件 + 共享 infra）
-
-| 文件 | `hack_system.rs`, `drain_system.rs`, `overload_system.rs` (均新建), `systems/mod.rs`, `scheduler.rs`, `world.rs`, `lib.rs`, `components.rs` (新增 StatusState + 标记组件) |
-|------|------|
-| 规范 | `specs/core/06-phase2b-system-manifest.md` §S16-S18 |
-
-**实现:** S16 Hack（临时控制目标）、S17 Drain（吸取资源）、S18 Overload（范围伤害）
-**验收:** 每系统 ≥ 2 个测试（共 ≥ 6 个）
-
-> ⚠️ W11 与 W12 可并行——它们触碰完全不相交的系统文件。共享的 `components.rs`/`world.rs`/`lib.rs` 变更需在 W11 和 W12 开始前协调好接口。
 
 ---
 
