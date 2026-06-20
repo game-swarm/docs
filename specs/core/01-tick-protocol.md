@@ -155,7 +155,7 @@ fn build_snapshot(player_id, tick) -> Snapshot:
 ```
 
 - 快照按房间序列化一次，再按玩家过滤——不是 O(P × E)
-- 超限时的截断策略见 [Snapshot Contract §4](../specs/core/09-snapshot-contract.md) —— **snapshot-contract 是 snapshot truncation 的唯一权威源**。tick-protocol 不定义独立截断算法，只引用该权威源。
+- 超限时的截断策略见 [Snapshot Contract §4](../core/09-snapshot-contract.md) —— **snapshot-contract 是 snapshot truncation 的唯一权威源**。tick-protocol 不定义独立截断算法，只引用该权威源。
   - 截断算法（距离桶 + entity_id 字典序 + farthest-first + critical 不可截断）全部由 snapshot-contract 定义。
   - `truncated=true` 时 WASM 模块收到标记，应降级策略。
   - `host_get_objects_in_range` 返回格式见 snapshot-contract。

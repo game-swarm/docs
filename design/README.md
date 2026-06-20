@@ -229,3 +229,22 @@ Swarm 不追求与 Screeps API 兼容。设计哲学不同：
 | AI 玩家 | 无 | MCP 原生界面 |
 | 代码年代 | 2014 起步，Node.js 8 | 2026，Rust + WASM |
 | 许可证 | 混合（server 开源，client 专有） | MIT（完全开源） |
+
+---
+
+## 附录 C: 术语表（Glossary — R27 A-H2）
+
+以下术语在多个文档中出现且含义有微妙差异。本文档为权威消歧义源：
+
+| 术语 | 定义 | 存储层 |
+|------|------|--------|
+| `TickCommitRecord` | FDB 事务内原子提交的 replay-critical 子集——仅包含状态 checksum、命令哈希列表、rejection 计数、fuel 扣费、attempt_id。不包含 rich debug detail。 | FDB |
+| `RichTraceBlob` | 完整 TickTrace 序列化（含 debug_detail、rich events、per-system metrics、overload pressure 等非关键信号）。可降级、可延迟写入、可丢失而不影响 replay 正确性。 | Object Store |
+| `ReplayArtifact` | 供回放验证器使用的自包含 bundle：包含 TickCommitRecord + snapshot delta + 必要的 seed material。CI 和反作弊审计使用此格式。 | Object Store |
+| `RawCommand` | WASM 输出 + 服务端注入的 player_id/tick/source/auth context。预校验阶段的输入。 | 内存 → FDB trace |
+| `CommandIntent` | WASM tick() 的原始输出——仅含 sequence + action。不可信，不含任何服务端字段。 | 内存（COLLECT 阶段） |
+| `ValidatedCommand` | RawCommand 通过预校验后的形式——携带解析后的目标引用、距离、成本缓存。 | 内存 → 应用阶段 |
+| `DeployPayload` | 客户端提交的部署包：WASM binary + manifest + code-signing certificate + signature。 | Object Store |
+| `fdb_version_counter` | Deploy/state 操作的 FDB 原子递增计数器——保证跨节点一致性和防重放。与 `version_counter`（manifest 内字段）语义相同但存储位置不同。 | FDB |
+
+所有文档中的 `TickTrace` 统称指向以上三种记录的集合——具体指向哪一层取决于上下文（replay-critical → TickCommitRecord，debug → RichTraceBlob，回放 → ReplayArtifact）。

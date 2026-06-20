@@ -201,6 +201,8 @@ impl WorldConfig {
 }
 ```
 
+> **R27 ML-3 — ECS Entity Iteration Determinism**: Bevy ECS 不保证 archetype/table 内部存储的遍历顺序。引擎在所有遍历中必须显式排序（按 `entity_id` 字典序），确保相同世界状态 → 相同遍历顺序 → 相同输出。CI 增加 `randomized-entity-iteration` test mode：通过 feature flag 随机化 Bevy 内部存储顺序，运行确定性 replay 场景并断言 `state_checksum` 一致。此测试不改变生产行为，仅验证排序假设未被隐式依赖打破。
+
 ## 4. 规则 System 示例
 
 ### 代码传播速度

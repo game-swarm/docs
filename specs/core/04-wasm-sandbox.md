@@ -352,7 +352,7 @@ TickTrace 中存储的审计日志受以下大小限制，防止磁盘 DoS：
 |------|----------|------------|------|
 | `host_get_terrain` | 500 | 8 KB | |
 | `host_get_objects_in_range` | 2,000 + 100/entity | 64 KB | |
-| `host_path_find` | 500 × explored_nodes + 200 × expanded_edges + cache_miss_penalty | 8 KB | **成本按实际工作量**：explored_nodes（A* 展开的节点数）、expanded_edges（评估的邻居数）、cache_miss（CPU 重算）。不可达目标消耗更高（无路径可剪枝）。per-player/per-tick 上限：10 次调用 + 100,000 explored_nodes 总额度。超限 deterministic fail。**缓存键**: `(from, to, terrain_hash, player_visibility_fingerprint)` |
+| `host_path_find` | 500 × explored_nodes + 200 × expanded_edges + cache_miss_penalty | 8 KB | **成本按实际工作量**：explored_nodes（A* 展开的节点数）、expanded_edges（评估的邻居数）、cache_miss_penalty = **固定 2000 fuel**（与硬件无关，保证跨节点确定性结算）。不可达目标消耗更高（无路径可剪枝）。per-player/per-tick 上限：10 次调用 + 100,000 explored_nodes 总额度。超限 deterministic fail。**缓存键**: `(from, to, terrain_hash, player_visibility_fingerprint)` |
 | `host_get_world_config` | 1,000 | 16 KB | |
 | `host_get_world_rules` | 1,000 | 16 KB | |
 

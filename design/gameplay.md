@@ -1258,6 +1258,8 @@ cost = { Energy = 2000, Matter = 500 }
 | `spectate_delay` | u32 | 0 | 旁观延迟（tick 数）。0 = 实时；>0 = 延迟回放，防止观众信息泄露给参赛者 |
 | `replay_privacy` | enum | `"private"` | 回放可见性：`"private"` = 仅自身；`"allies"` = 同阵营可看；`"world"` = 同世界玩家可看；`"public"` = 任何人（含未登录）。Arena 模式赛后强制 `"public"` |
 
+| `replay_with_source` | bool | `false` | **默认 replay 不含源码**：回放只包含指令序列和状态变更，不包含 WASM 模块源码或 source map。玩家可通过 `replay_with_source = true` 主动公开（需在 world config 中开启此选项，服主可禁止）。`"public"` 世界服主可强制 `replay_with_source = true` 以实现完全透明。source map / code line provenance 需编译时嵌入 debug symbol section（opt-in） |
+
 **组合示例**：
 
 | 场景 | fog_of_war | player_view | 效果 |

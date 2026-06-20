@@ -1292,6 +1292,8 @@ allow_code_signing = false
 allow_admin = false
 require_local_certificate = true
 revocation_fallback = "reject_for_code"
+
+> **R27 ML-10**: 默认值升级为 `reject_for_code_and_login`——CRL 过期时同时拒绝 login 和 code signing，因为 login 路径同样依赖证书链验证。对于确实需要可用性优先的低风险世界，改为 `reject_for_code` 并标注风险。
 ```
 
 信任级别：

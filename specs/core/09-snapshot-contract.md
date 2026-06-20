@@ -266,7 +266,7 @@ Challenge Board（挑战板）在 MVP 中**仅发放非资源奖励**：
 | `NotVisibleOrNotFound` | `"target not visible or not found"` | 目标是否存在、是否在视野内、是否被隐身 |
 | `OutOfRange` | `"action out of range"` | 目标实际坐标、距离值、所需距离 |
 | `CooldownActive` | `"cooldown active"` | 剩余冷却 tick 数、冷却触发时间 |
-| `InsufficientResources` | `"insufficient resources"` | 缺少哪类资源、缺少多少、当前持有量 |
+| `InsufficientResource` | `"insufficient resources"` | 缺少哪类资源、缺少多少、当前持有量 |
 | `PermissionDenied` | `"permission denied"` | 具体缺失的权限、权限持有者 |
 | `InvalidTarget` | `"invalid target"` | 为什么无效、有效目标列表 |
 
@@ -292,7 +292,7 @@ Challenge Board（挑战板）在 MVP 中**仅发放非资源奖励**：
 |----------|-----------------|
 | `CooldownActive` | 提示等待冷却结束，但不透露剩余 tick |
 | `OutOfRange` | 提示靠近目标或使用远程操作，但不透露距离 |
-| `InsufficientResources` | 提示资源不足，建议采集或回收，但不透露差额 |
+| `InsufficientResource` | 提示资源不足，建议采集或回收，但不透露差额 |
 | `NotVisibleOrNotFound` | 提示目标可能不在视野或已被摧毁 |
 | `PermissionDenied` | 提示可能需要控制器权限或满足特定条件 |
 | `InvalidTarget` | 提示目标类型不适用当前操作 |
