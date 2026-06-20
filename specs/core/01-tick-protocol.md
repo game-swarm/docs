@@ -98,8 +98,8 @@ neutral ──Claim──→ reserved ──RCL 1──→ owned ←──→ co
                  │    阶段三：广播 (BROADCAST)         │
                  │  ┌─────────────────────────┐     │
                  │  │ 1. 计算实体增量            │     │
-                 │  │ 2. Dragonfly 缓存更新      │     │
-                 │  │ 3. NATS 发布增量           │     │
+                 │  │ 2. Dragonfly + NATS       │     │
+                 │  │    (并行 fan-out)         │     │
                  │  └─────────────────────────┘     │
                  └──────────┬───────────────────────┘
                             │ tick_counter = N + 1
@@ -515,13 +515,17 @@ delta = compute_delta(world_state_before, world_state_after)
 // delta 仅包含本 tick 变更的实体
 ```
 
-### 4.2 持久化 → 缓存 → 发布
+### 4.2 持久化 → 缓存 + 发布（并行 fan-out）
 
 ```
 1. Read committed tick result from in-memory post-commit state or FDB versionstamp
-2. Dragonfly.update(delta)   // 非权威缓存，允许滞后。失败则从 FDB 重建
-3. NATS.publish("tick.{tick}", delta)  // 网关 → WebSocket 客户端
+2. Post-commit delta fan-out（并行执行）:
+   Dragonfly.update(delta)  ──┐
+                              ├── 同时发起，任一失败不阻塞另一方
+   NATS.publish("tick.{tick}", delta) ──┘
 ```
+
+**设计理由**：Dragonfly 与 NATS 无数据依赖——缓存的滞后与实时推送独立演化。串行顺序会产生不必要的延迟（Dragonfly 慢即拖累 NATS 推送）。并行 fan-out 消除此耦合。任一失败均不 rollback committed tick。
 
 **BROADCAST failure never rolls back committed tick**——tick 已在 EXECUTE 阶段持久化到 FDB。BROADCAST 阶段的任何失败（Dragonfly 未命中、NATS 断开、部分客户端未收到）都不影响世界状态。客户端通过 `last_tick` 字段检测 gap → 主动 fetch。
 

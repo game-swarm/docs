@@ -513,12 +513,13 @@ auth/request_nonce/<certificate_id>/<nonce> → {created_at, expires_at}
 
 ## 7. Identity 模型
 
-### 7.1 三层身份
+### 7.1 三层身份（+ 审计指纹）
 
 ```
-login_username     — 登录凭据，ASCII [a-zA-Z0-9_-]{3,32}，大小写不敏感，不可变
-display_name       — 显示名称，Unicode，≤32 字符，可直接修改
-player_id          — 引擎内标识，u64，确定性 hash(provider + ":" + subject)
+login_username        — 登录凭据，ASCII [a-zA-Z0-9_-]{3,32}，大小写不敏感，不可变
+display_name          — 显示名称，Unicode，≤32 字符，可直接修改
+player_id             — 引擎内运行时标识，u64，确定性 hash(provider + ":" + subject)
+identity_fingerprint  — 审计/联邦稳定标识，[u8; 32]，完整 Blake3 输出（不经 64-bit 截断）
 ```
 
 - `login_username` 是 subject（认证主体），用于登录和 `player_id` 推导，不可变
@@ -526,8 +527,11 @@ player_id          — 引擎内标识，u64，确定性 hash(provider + ":" + s
 - `player_id` 推导：
   - 本地：`blake3("local:" + login_username_lowercase) → 取低 64 bits → u64`
   - 联邦：`blake3("federated:" + world_id + ":" + original_player_id) → u64`
-- 碰撞概率：对于 10^6 用户约 2.7×10^-8，可接受
-- 碰撞处理：注册时检测 FDB `auth/identities/` 唯一索引冲突，返回 `username_taken`
+- `identity_fingerprint` = 完整 `blake3("local:" + login_username_lowercase)` 或 `blake3("federated:" + world_id + ":" + original_player_id)` 的 **全部 32 字节**，不经 64-bit 截断
+  - **用途**：跨世界联邦身份映射、审计日志碰撞排查、TOFU pinning（`swarm_get_server_trust`）
+  - **不进入 hot-path**：tick 内 ECS 仅使用 `player_id: u64`，`identity_fingerprint` 离线使用
+  - **FDB 存储**：在 `auth/users/<login_username>` 中作为可选字段；在 `auth/identities/` 和跨世界联邦握手消息中包含
+- 碰撞概率：对于 10^6 用户，64-bit 截断约 2.7×10^-8，可接受。完整 256-bit 指纹碰撞概率可忽略
 
 ### 7.2 用户名规则
 
@@ -1306,9 +1310,9 @@ allow_login = true
 allow_code_signing = false
 allow_admin = false
 require_local_certificate = true
-revocation_fallback = "reject_for_code"
+revocation_fallback = "reject_for_code_and_login"
 
-> **R27 ML-10**: 默认值升级为 `reject_for_code_and_login`——CRL 过期时同时拒绝 login 和 code signing，因为 login 路径同样依赖证书链验证。对于确实需要可用性优先的低风险世界，改为 `reject_for_code` 并标注风险。
+> **R27 ML-10**: 默认值 `reject_for_code_and_login`，CRL 过期时同时拒绝 login 和 code signing。对于确实需要可用性优先的低风险世界，可改为 `reject_for_code`（仅拒绝 code signing，仍允许 login）并标注风险。
 ```
 
 信任级别：
@@ -1351,6 +1355,7 @@ revocation_fallback = "reject_for_code"
 | 值 | 行为 |
 |----|------|
 | `reject_for_code` | 若 CRL 超过 2× 同步间隔未更新，拒绝该远程世界的 `CodeSigningCertificate`；仍允许 login |
+| `reject_for_code_and_login` | CRL 过期则拒绝该远程世界的 `CodeSigningCertificate` **和**所有 login 请求 |
 | `reject_all` | CRL 过期则拒绝该远程世界的所有证书 |
 | `allow_with_warning` | 允许但有审计日志告警（仅用于低风险世界） |
 
