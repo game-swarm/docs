@@ -209,7 +209,47 @@ Allied Transfer 在 MVP 中以**受限合作（Restricted Cooperation）**模式
 | 新玩家锁 | 500 tick | 新玩家禁止接收任何转移 |
 | 审计日志 | 全部记录 | 每笔 Allied Transfer 写入完整审计日志 |
 
-**MVP 不实现**：联盟资源池（Alliance Resource Pool）、联盟税率、联盟仓库共享。
+**MVP 不实现**：联盟资源池（Alliance Resource Pool）、联盟税率、联盟仓库共享。完整物流战（路径追踪、护航编队、多跳拦截）留给 Rhai mod 实现。
+
+### 3.2a 运输中拦截（R27 E-H1 — 最终设计）
+
+Allied Transfer 的 200 tick 延迟窗口内，运输中资源可被敌方拦截。此机制是最终设计（非 MVP 占位），完整物流战留给 mod。
+
+**拦截窗口**：运输的最后 50 tick（tick 150-200）。前 150 tick 为安全期（资源刚从发送方扣除，尚未进入可拦截状态）。
+
+**拦截条件**：
+
+| 条件 | 要求 |
+|------|------|
+| 攻击方 drone 位置 | 接收方房间内，与接收方 drone 同格或 range=1 |
+| PvP 状态 | 世界 `pvp_enabled = true`；发送方与攻击方非盟友 |
+| 身体部件 | `CARRY`（窃取模式）或 `ATTACK`（销毁模式） |
+| 冷却 | 每攻击方 drone 对同一笔 transfer 只能尝试 1 次（per-transfer cooldown） |
+| 可见性 | 攻击方必须 `is_visible_to(attacker, receiver_room)` |
+
+**拦截结果**：
+
+| 攻击模式 | 身体部件 | 成功结果 | 失败结果 |
+|---------|---------|---------|---------|
+| **窃取** (Steal) | `CARRY` | 攻击方获得 50% 运输中资源；接收方获 50% | 攻击方 drone 暴露（无其他惩罚）；资源 100% 到接收方 |
+| **销毁** (Destroy) | `ATTACK` | 100% 运输中资源被销毁；双方均无收获 | 同上 |
+
+**成功率公式**：
+
+```
+base_success = 60%
+part_bonus = min(attacker_extra_parts × 5%, 25%)   // 额外的 CARRY/ATTACK 部件加成，上限 25%
+escort_penalty = defender_has_escort ? 30% : 0%     // 接收方同格有 ATTACK drone → -30%
+final_success = clamp(base_success + part_bonus - escort_penalty, 10%, 85%)
+```
+
+**Escort 防御**：接收方可在自己的 drone 上挂载 `ATTACK` 部件并置于同格——该 drone 在拦截发生时自动视为 escort（不消耗额外指令）。escort drone 不承受伤害——拦截是资源转移层面的博弈，非物理战斗。
+
+**确定性**：拦截判定发生在 tick 200（运输到期日），使用 `Blake3("intercept" || transfer_id || tick || world_seed)` 作为 RNG。拦截结果写入 TickTrace。
+
+**通知**：拦截成功/失败 → 发送方、接收方、攻击方三方均收到 `AlliedTransferIntercepted` 或 `AlliedTransferInterceptFailed` 事件。
+
+**审计**：每次拦截尝试记录：`(transfer_id, attacker_player_id, attacker_drone_id, mode, success, resources_affected, tick)`。
 
 ### 3.3 Future RFC（不在 MVP 范围）
 
