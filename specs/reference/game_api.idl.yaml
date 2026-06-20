@@ -677,19 +677,20 @@ mcp_tools:
     # =========================================================================
     # Play (14 tools)
     # =========================================================================
-    - name: swarm_get_leaderboard
+    - name: swarm_get_world_stats
       category: Play
       input_schema:
         scope: string
         limit: u32
       output_schema:
-        entries: "[{player, gcl, rooms, drones}]"
+        stats: "[{player, gcl, rooms, drones}]"
       rate_limit: "5/tick"
       required_scope: "swarm:read"
       subject_source: world
       replay_class: read_replay_safe
       visibility_filter: none
       rate_limit_key: global
+      notes: "World non-competitive stats — no ranking, no rewards, no fairness guarantees"
 
     - name: swarm_get_replay
       category: Play
@@ -1275,8 +1276,23 @@ mcp_tools:
       rate_limit_key: global
 
     # =========================================================================
-    # Arena (4 tools)
+    # Arena (5 tools)
     # =========================================================================
+    - name: swarm_get_leaderboard
+      category: Arena
+      input_schema:
+        scope: string
+        limit: u32
+      output_schema:
+        entries: "[{player, gcl, rooms, drones}]"
+      rate_limit: "5/tick"
+      required_scope: "swarm:read"
+      subject_source: world
+      replay_class: read_replay_safe
+      visibility_filter: arena_only
+      rate_limit_key: global
+      notes: "Arena competitive leaderboard — ranking enabled, rewards may apply. Not available in World mode."
+
     - name: swarm_tournament_create
       category: Arena
       input_schema:
@@ -1410,6 +1426,9 @@ mcp_tools:
     admin:
       categories: [Admin]
       default_assignment: "server owner / Admin certificate"
+    arena:
+      categories: [Arena]
+      default_assignment: "Arena host / tournament admin"
 
   websocket_security:
     agent_ws:
@@ -1816,6 +1835,13 @@ persistence:
 # Changelog
 # =============================================================================
 changelog:
+  - version: "0.4.1"
+    date: "2026-06-20"
+    changes:
+      - "R26-K1 D2-A: Move swarm_get_leaderboard from Play→Arena (visibility: none→arena_only)"
+      - "R26-K1 D2-A: Add swarm_get_world_stats to Play (World non-competitive stats)"
+      - "R26-K1 D2-A: Add arena capability profile"
+      - "Arena tools: 4→5"
   - version: "0.4.0"
     date: "2026-06-18"
     changes:

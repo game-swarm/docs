@@ -206,7 +206,7 @@ WASM 中**仅可调用查询类 host function**——所有函数只读，不计
 ```rust
 // 信息查询（只读，不改变世界状态，返回结果经可见性过滤）
 fn host_get_terrain(room_id: u32, out_ptr: i32, out_len: i32) -> i32;  // 权威签名见 api-registry.md §4.1
-fn host_get_objects_in_range(x: i32, y: i32, range: i32, out_ptr: i32, out_len: i32) -> i32;  // ← 仅返回 is_visible_to(caller) 为 true 的实体
+fn host_get_objects_in_range(x: i32, y: i32, range: u32, out_ptr: i32, out_len: i32) -> i32;  // ← 仅返回 is_visible_to(caller) 为 true 的实体
 fn host_path_find(from_x: i32, from_y: i32, to_x: i32, to_y: i32, opts_ptr: i32, opts_len: i32, out_ptr: i32, out_len: i32) -> i32;  // ← 仅基于可见地形计算路径
 
 // 世界配置查询
