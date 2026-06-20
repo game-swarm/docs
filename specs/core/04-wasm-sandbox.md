@@ -205,13 +205,13 @@ WASM 中**仅可调用查询类 host function**——所有函数只读，不计
 
 ```rust
 // 信息查询（只读，不改变世界状态，返回结果经可见性过滤）
-fn host_get_terrain(x: i32, y: i32) -> i32;                           // 地形公开，无需过滤
+fn host_get_terrain(room_id: u32, out_ptr: i32, out_len: i32) -> i32;  // 权威签名见 api-registry.md §4.1
 fn host_get_objects_in_range(x: i32, y: i32, range: i32, out_ptr: i32, out_len: i32) -> i32;  // ← 仅返回 is_visible_to(caller) 为 true 的实体
-fn host_path_find(from_x: i32, from_y: i32, to_x: i32, to_y: i32, out_ptr: i32, out_len: i32) -> i32;  // ← 仅基于可见地形计算路径
+fn host_path_find(from_x: i32, from_y: i32, to_x: i32, to_y: i32, opts_ptr: i32, opts_len: i32, out_ptr: i32, out_len: i32) -> i32;  // ← 仅基于可见地形计算路径
 
 // 世界配置查询
 fn host_get_world_config(key_ptr: i32, key_len: i32, out_ptr: i32, out_len: i32) -> i32;
-fn host_get_world_rules(out_ptr: i32, out_len: i32) -> i32;               // 查询世界规则（只读）
+fn host_get_world_rules(rule_id_ptr: i32, rule_id_len: i32, out_ptr: i32, out_len: i32) -> i32;  // 权威签名见 api-registry.md §4.1
 ```
 
 全部返回 `i32`：0 = 成功，负数 = 错误码。
@@ -350,7 +350,7 @@ TickTrace 中存储的审计日志受以下大小限制，防止磁盘 DoS：
 
 | 函数 | fuel 成本 | 响应大小上限 | 说明 |
 |------|----------|------------|------|
-| `host_get_terrain` | 500 | 4 bytes | |
+| `host_get_terrain` | 500 | 8 KB | |
 | `host_get_objects_in_range` | 2,000 + 100/entity | 64 KB | |
 | `host_path_find` | 500 × explored_nodes + 200 × expanded_edges + cache_miss_penalty | 8 KB | **成本按实际工作量**：explored_nodes（A* 展开的节点数）、expanded_edges（评估的邻居数）、cache_miss（CPU 重算）。不可达目标消耗更高（无路径可剪枝）。per-player/per-tick 上限：10 次调用 + 100,000 explored_nodes 总额度。超限 deterministic fail。**缓存键**: `(from, to, terrain_hash, player_visibility_fingerprint)` |
 | `host_get_world_config` | 1,000 | 16 KB | |

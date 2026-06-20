@@ -161,7 +161,7 @@ commands:
   Recycle:
     params: { object_id: ObjectId, spawn_id: ObjectId }
     validator: [exists, owner, drone, is_spawn, in_range(1)]
-    refund: registry.body_cost(body) * 0.5
+    refund: RecycleRefund(body_cost, remaining_lifespan, total_lifespan)  # lifespan-proportional 10%-50% (权威公式见 economy.idl.yaml §RecycleRefund)
 
   # ═════════════════════════════════════
   # 扩展指令
@@ -227,7 +227,7 @@ body_cost:
   Work:         { Energy: 100 }
   Carry:        { Energy: 50 }
   Attack:       { Energy: 80 }
-  RangedAttack: { Energy: 100 }   # 伤害 25
+  RangedAttack: { Energy: 150 }   # 伤害 25 (权威值见 economy.idl.yaml)
   Heal:         { Energy: 250 }
   Claim:        { Energy: 600 }
   Tough:        { Energy: 10 }
@@ -237,8 +237,8 @@ body_cost:
 #   body_part.Move = { Energy: 60, Crystal: 10 }
 
 host_functions:
-  # > IDL 内部使用短名称（如 get_terrain, path_find），权威名称带 host_ 前缀（host_get_terrain, host_path_find）。
-  # > 权威定义见 [API Registry](../reference/api-registry.md) §4
+  # > 此块使用 IDL 内部短名称（如 get_terrain, path_find），权威名称带 host_ 前缀（host_get_terrain, host_path_find）。
+  # > 所有签名的权威定义见 [API Registry](../reference/api-registry.md) §4。以下为概念形式，实现以 Registry 为准。
   tick:
     # > tick 是 WASM export，非 host function import。Host functions 见 [API Registry](../reference/api-registry.md) §4
     export: true
@@ -251,13 +251,13 @@ host_functions:
     returns: i32
 
   get_world_rules:
-    params: [out_ptr: i32, out_len: i32]
+    params: [rule_id_ptr: i32, rule_id_len: i32, out_ptr: i32, out_len: i32]
     returns: i32
 
   # 地形与寻路查询（只读，计入 fuel）
   get_terrain:
-    params: [x: i32, y: i32]
-    returns: i32  # terrain_type as i32 (0=plain, 1=wall, 2=swamp, 3=lava)
+    params: [room_id: u32, out_ptr: i32, out_len: i32]
+    returns: i32  # terrain grid written to out_ptr
 
   get_objects_in_range:
     params: [x: i32, y: i32, range: i32, out_ptr: i32, out_len: i32]
@@ -265,7 +265,7 @@ host_functions:
     limit: 5 calls/tick
 
   path_find:
-    params: [from_x: i32, from_y: i32, to_x: i32, to_y: i32, out_ptr: i32, out_len: i32]
+    params: [from_x: i32, from_y: i32, to_x: i32, to_y: i32, opts_ptr: i32, opts_len: i32, out_ptr: i32, out_len: i32]
     returns: i32  # 写入路径坐标列表到 out_ptr
     limit: 10 calls/tick
 

@@ -271,7 +271,7 @@ expires_at: <challenge_expires_at>
 | Certificate | 用途 | TTL | 约束 |
 |-------------|------|-----|------|
 | `ClientAuthCertificate` | MCP 查询、session renew、普通认证请求 | 24h | 只能用于 `SWARM-REQUEST-V1` |
-| `CodeSigningCertificate` | WASM/module deploy 签名 | 30–180 days（默认 7d，world.toml 可配） | 只能签 `module_hash + metadata` |
+| `CodeSigningCertificate` | WASM/module deploy 签名 | 30–180 days（默认 30d，world.toml 可配） | 只能签 `module_hash + metadata` |
 | `AdminCertificate` | 管理操作、证书治理、吊销、CA/trust policy 管理 | 1h | admin scope，敏感操作可要求双签；只能签给 `admin_device` profile |
 | `FederationCertificate` | 跨服务器身份映射 | 24h | 受 federation trust policy 限制 |
 

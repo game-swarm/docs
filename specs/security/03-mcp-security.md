@@ -220,7 +220,7 @@ AI 玩家令牌: `swarm:deploy swarm:read swarm:debug`。
 
 ## 4. MCP 工具 — 部署与管理
 
-> **MCP 工具权威清单** 见 [API Registry §3.2](../reference/api-registry.md#32-工具清单-46) — 56 工具。
+> **MCP 工具权威清单** 见 [API Registry §3.2](../reference/api-registry.md#32-game-api-工具清单-56) — 56 工具。
 >
 > **认证工具权威定义** 见 [auth_api.idl.yaml](../reference/auth_api.idl.yaml) → [API Registry §3.2 Auth](../reference/api-registry.md#auth-2)。
 >
@@ -228,12 +228,13 @@ AI 玩家令牌: `swarm:deploy swarm:read swarm:debug`。
 
 ### 4.1 WASM 模块管理
 
-部署核心工具（权威定义见 [API Registry §3.2 Deploy](../reference/api-registry.md#deploy-6)）：
+部署核心工具（权威定义见 [API Registry §3.2 Deploy](../reference/api-registry.md#deploy-7)）：
 - `swarm_deploy` — 上传/更新 WASM 模块（deploy_mutation 模式，异步 blob 上传至 object store）
 - `swarm_validate_module` — 上传前预校验
 - `swarm_get_deploy_status` / `swarm_list_deployments` — 查询部署状态
+- `swarm_list_modules` — 列出已部署模块（active，详细定义见 [API Registry §3.2 Deploy](../reference/api-registry.md#deploy-7)）
 
-> **已移除的旧工具**：`swarm_rollback`（替换为 `swarm_admin_rollback`，Admin profile）、`swarm_list_modules`（替换为 `swarm_list_deployments`）。详见 [API Registry §3.2](../reference/api-registry.md#32-工具清单-46)。
+> **变更记录**：`swarm_rollback` 已替换为 `swarm_admin_rollback`（Admin profile）。
 
 #### `swarm_deploy`
 
@@ -254,25 +255,21 @@ AI 玩家令牌: `swarm:deploy swarm:read swarm:debug`。
 
 ### 4.2 世界状态查看
 
-> 权威定义见 [API Registry §3.2 Onboarding + Play](../reference/api-registry.md#32-工具清单-46)。rate limit 见 [API Registry §3.1](../reference/api-registry.md#31-通用-rate-limit)。
+> 权威定义见 [API Registry §3.2 Onboarding + Play](../reference/api-registry.md)。rate limit 见 [API Registry §3.1](../reference/api-registry.md#31-通用-rate-limit)。
 
 核心查看工具按 `fog_of_war` / `owner` / `owner_or_visible` 可见性过滤。`swarm_get_snapshot` 每 tick 一次，返回与 WASM `tick()` 输入完全相同的结构化数据。
 
 ### 4.3 调试与回放
 
-> 权威定义见 [API Registry §3.2 Debug](../reference/api-registry.md#debug-7)。
-
-调试工具需要 `swarm:debug` scope，限制 30/tick。
-
-> **已移除的旧工具**：`swarm_explain_last_tick`（替换为 `swarm_get_tick_trace`）、`swarm_inspect_entity`（替换为 `swarm_get_drone`）。详见 [API Registry §3.2](../reference/api-registry.md#32-工具清单-46)。
+> 权威定义见 [API Registry §3.2 Debug](../reference/api-registry.md#debug-8)。\n\n调试工具需要 `swarm:debug` scope，限制 30/tick。`swarm_get_tick_trace` 为增强的 tick 级调试工具；`swarm_get_drone` 提供 entity 检查能力。\n\n> **Authority note**: 上述工具的 canonical definition 见 [API Registry §3.2](../reference/api-registry.md)。本文档不再声明移除状态——所有 active 工具以 API Registry 为准。
 
 ### 4.4 开发辅助
 
-> 权威定义见 [API Registry §3.2](../reference/api-registry.md#32-工具清单-46)。rate limit 见 [API Registry §3.1](../reference/api-registry.md#31-通用-rate-limit)。
+> 权威定义见 [API Registry §3.2](../reference/api-registry.md)。rate limit 见 [API Registry §3.1](../reference/api-registry.md#31-通用-rate-limit)。
 
-开发辅助工具限制 20/tick。`swarm_simulate`、`swarm_dry_run` 等允许离线验证。
+开发辅助工具限制 20/tick。`swarm_simulate`、`swarm_dry_run` 等允许离线验证。`swarm_get_schema`、`swarm_get_docs`、`swarm_get_available_actions` 为 active onboarding/play 工具，提供 schema 自省、文档获取和能力面查询——这些工具通过 scope/rate/detail-level 限制而非移除来保证安全性。
 
-> **已移除的旧工具**：`swarm_get_schema`、`swarm_get_docs`、`swarm_get_available_actions`（已整合至 SDK 和 API Registry）。详见 [API Registry §3.2](../reference/api-registry.md#32-工具清单-46)。
+> **Authority note**: 所有工具的 canonical definition 与 active/removed 状态以 [API Registry §3.2](../reference/api-registry.md) 为唯一权威源。本文档不自行声明工具的移除状态。
 
 ### 4.5 明确不在 MCP 中的
 

@@ -71,7 +71,10 @@ neutral ──Claim──→ reserved ──RCL 1──→ owned ←──→ co
                             ▼
                  ┌──────────────────────────────────┐
                  │     阶段二：执行 (EXECUTE)          │
-                 │  超时: 500ms                      │
+                 │  硬超时天花板: 500ms                │
+                 │  (budget target 见                  │
+                 │   design/engine.md §3.4.1:          │
+                 │   World ≤400ms, Arena ≤50ms)        │
                  │  ┌─────────────────────────┐     │
                  │  │ Phase 2a: 命令循环        │     │
                  │  │ 逐条校验 + 逐条应用       │     │
@@ -152,26 +155,10 @@ fn build_snapshot(player_id, tick) -> Snapshot:
 ```
 
 - 快照按房间序列化一次，再按玩家过滤——不是 O(P × E)
-- 超限时按**分桶权重**截断：
-  1. **关键桶**（无条件保留）：Spawn、Controller、玩家拥有的 depot/storage
-  2. **高优先桶**（按距离排序）：己方 drone、己方建筑
-  3. **中优先桶**（按距离排序）：敌方可见实体、资源点
-  4. **低优先桶**（按距离排序）：友方实体、中立实体
-  同一桶内按**确定性排序键** `(distance_to_drone, entity_id)` 升序排列，保证同输入同截断结果。距离以 drone 当前位置到实体的曼哈顿距离计算。
-- `truncated=true` 时 WASM 模块收到标记，应降级策略
-- `host_get_objects_in_range` 返回 `{items, truncated, total_visible_count?}`
-
-**截断确定性保证**：`sort_and_truncate` 的结果完全由 `(tick_state, player_visibility_fingerprint)` 决定：
-- 排序键完全基于世界状态中的确定值（距离、entity_id、分桶归属）——不使用墙钟、随机数或并行度
-- 同一 tick、同一世界状态、同一玩家 → 同一截断结果（包括哪些实体被丢弃）
-- 此保证是 replay determinism 的必要条件
-
-**玩家可预期性**：玩家可通过以下方式推理截断行为：
-- 关键桶实体**永不**被截断
-- 高优先桶内，离 drone 最近的实体优先保留
-- 同一桶内，entity_id 较小者优先（创建顺序）
-- `omitted_count` 告知被丢弃的实体数量——WASM 代码可据此判断信息完整度
-- `snapshot_len` 告知实际快照大小——WASM 可检测是否接近 256KB 阈值
+- 超限时的截断策略见 [Snapshot Contract §4](../specs/core/09-snapshot-contract.md) —— **snapshot-contract 是 snapshot truncation 的唯一权威源**。tick-protocol 不定义独立截断算法，只引用该权威源。
+  - 截断算法（距离桶 + entity_id 字典序 + farthest-first + critical 不可截断）全部由 snapshot-contract 定义。
+  - `truncated=true` 时 WASM 模块收到标记，应降级策略。
+  - `host_get_objects_in_range` 返回格式见 snapshot-contract。
 
 **滥用检测**：以下模式在引擎侧自动检测并标记：
 | 滥用模式 | 检测方法 | 响应 |
