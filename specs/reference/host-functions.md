@@ -20,9 +20,11 @@
 
 ### host_get_terrain
 ```c
-i32 host_get_terrain(x: i32, y: i32) -> i32
+i32 host_get_terrain(room_id: u32, out_ptr: i32, out_len: i32) -> i32
 ```
-返回指定坐标的地形类型：0=Plain, 1=Wall, 2=Swamp, 3=Lava。
+返回 room_id 对应房间的完整地形数据，写入 `out_ptr` 缓冲区（最大 `out_len` 字节）。
+- 返回字节数 ≤ 8KB
+- 返回值：实际写入字节数（≥0），负数=错误码
 
 ### host_get_objects_in_range
 ```c
@@ -35,9 +37,10 @@ i32 host_get_objects_in_range(x: i32, y: i32, range: i32, out_ptr: i32, out_len:
 
 ### host_path_find
 ```c
-i32 host_path_find(from_x: i32, from_y: i32, to_x: i32, to_y: i32, out_ptr: i32, out_len: i32) -> i32
+i32 host_path_find(from_x: i32, from_y: i32, to_x: i32, to_y: i32, opts_ptr: i32, opts_len: i32, out_ptr: i32, out_len: i32) -> i32
 ```
 从 (from_x, from_y) 到 (to_x, to_y) 的最短路径。
+`opts_ptr`/`opts_len` 传递寻路选项（JSON，可为空：`opts_len=0` 使用默认设置）。
 写入 `out_ptr` 缓冲区。
 - 每 tick 最多调用 10 次（计入 host call budget）
 
@@ -49,9 +52,11 @@ i32 host_get_world_config(key_ptr: i32, key_len: i32, out_ptr: i32, out_len: i32
 
 ### host_get_world_rules
 ```c
-i32 host_get_world_rules(out_ptr: i32, out_len: i32) -> i32
+i32 host_get_world_rules(rule_id_ptr: i32, rule_id_len: i32, out_ptr: i32, out_len: i32) -> i32
 ```
-返回当前世界规则集的 JSON。
+按 `rule_id` 查询指定规则模块的数据。`rule_id_len=0` 时返回完整规则集。
+写入 `out_ptr` 缓冲区。
+- 每 tick 最多调用 1 次
 
 ## Host Call Budget
 
