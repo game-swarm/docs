@@ -271,7 +271,7 @@ expires_at: <challenge_expires_at>
 | Certificate | 用途 | TTL | 约束 |
 |-------------|------|-----|------|
 | `ClientAuthCertificate` | MCP 查询、session renew、普通认证请求 | 24h | 只能用于 `SWARM-REQUEST-V1` |
-| `CodeSigningCertificate` | WASM/module deploy 签名 | 7d | 只能签 `module_hash + metadata` |
+| `CodeSigningCertificate` | WASM/module deploy 签名 | 30–180 days（默认 7d，world.toml 可配） | 只能签 `module_hash + metadata` |
 | `AdminCertificate` | 管理操作、证书治理、吊销、CA/trust policy 管理 | 1h | admin scope，敏感操作可要求双签；只能签给 `admin_device` profile |
 | `FederationCertificate` | 跨服务器身份映射 | 24h | 受 federation trust policy 限制 |
 
@@ -316,9 +316,9 @@ Swarm 不提供服务器 timestamp authority，也不新增 timestamp 审计。`
 | Replay Class | 说明 | Nonce 策略 | 示例 |
 |-------------|------|-----------|------|
 | `read_replay_safe` | 纯查询，重复不影响状态 | 可选 nonce，time window 校验 | `swarm_get_snapshot` |
-| `idempotent_mutation` | 重复执行结果相同 | Dragonfly nonce + time window（除 deploy 外） | `swarm_submit_csr`（同 CSR） |
+| `idempotent_mutation` | 重复执行结果相同 | Dragonfly nonce + time window（除 deploy 外） | `swarm_auth_device_register` |
 | `deploy_mutation` | 部署请求——防重放由 FDB version_counter 保证 | **FDB version_counter**（见 §10.8） | `swarm_deploy` |
-| `non_idempotent_mutation` | 重复执行产生副作用 | FDB version counter 或一次性 challenge | `swarm_admin_set_world_config` |
+| `non_idempotent_mutation` | 重复执行产生副作用 | FDB 事务内消费 challenge 或 version counter | `swarm_submit_csr`（FDB 事务内消费 PoW challenge，一次性）、`swarm_admin_set_world_config` |
 | `admin_critical` | 安全敏感管理操作 | FDB 事务内消费 challenge + 双签审计 | `swarm_revoke_certificate`、CA 操作 |
 
 Dragonfly nonce 仅用于 `read_replay_safe` 和 `idempotent_mutation`。所有 `non_idempotent_mutation` 和 `admin_critical` 操作必须使用 FDB version counter、idempotency key 或一次性 challenge，并在事务内消费。
