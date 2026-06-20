@@ -698,15 +698,17 @@ assert_eq!(replayed.entity_count, recorded.entity_count);
 | 参数 | 值 | 语义 |
 |------|-----|------|
 | `tick_interval_ms` | 3000ms（World）/ 可配置（Arena，默认 300ms） | **目标值**，非硬上限 |
-| `tick_soft_deadline_ms` | 2500ms | **软截止**——超过此值触发告警并跳过剩余玩家 COLLECT（0 指令） |
+| `tick_soft_deadline_ms` | 2500ms | **软截止**——超过此值触发告警。正常操作不应触发（worker pool 水平可扩展） |
 | `tick_hard_deadline_ms` | 4000ms | **硬截止**——超过此值 tick 放弃（Bevy snapshot 恢复），连续 3 tick 引擎降级 |
-| `tick_overrun_policy` | `skip_remainder` | 软截止超时后：跳过未完成玩家，已收集的玩家正常 EXECUTE。不下个 tick 补偿 |
+| `tick_overrun_policy` | `abort_and_retry` | 硬截止超时后：tick 放弃，恢复 snapshot，下一 tick retry。不下个 tick 补偿 |
+
+**Worker pool 语义**：PlayerExecutor worker pool 水平可扩展——运营商根据 active_players 调整 worker_pool_max 即可消除排队。Per-player sandbox deadline（2500ms World / 200ms Arena）独立——每个 worker 上的玩家独立计时，互不影响。详见 `design/engine.md` §3.4.2。
 
 ### 8.2 统一预算表
 
 | 阶段 | 资源 | 预算 | 超限行为 | 退还 |
 |------|------|------|---------|:--:|
-| **COLLECT** | wall-clock per player | 2500ms（`collect_timeout_ms`） | 该玩家 0 指令 | ❌ |
+| **COLLECT** | wall-clock per player | 2500ms（`collect_timeout_ms`）— 每个玩家独立，并行执行，worker pool 水平可扩展 | 该玩家 0 指令 | ❌ |
 | **COLLECT** | WASM fuel per player | 10,000,000 fuel units | 完整输出丢弃，0 指令 | ❌ |
 | **COLLECT** | WASM linear memory | 64 MB | OOM → 该玩家 0 指令 | ❌ |
 | **COLLECT** | Host function calls | 1000/tick | 第 1001 次返回错误 | ❌ |

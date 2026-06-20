@@ -336,7 +336,20 @@ effective_per_player_quota = min(per_player_cpu_quota, MAX_FUEL)
 
 ##### Worker Pool 推导
 
-Sandbox worker pool 动态伸缩，公式：
+Sandbox worker pool 水平可扩展——每个 worker 独立执行一个玩家的 drone 算法，生成指令序列。指令序列在 Phase 2 sandbox 中确定性串行执行。
+
+```text
+Phase 1 (COLLECT): Worker Pool 并行 — 水平可扩展
+  Worker₁ → Player₁.drone() → [cmd₁, cmd₂, ...]
+  Worker₂ → Player₂.drone() → [cmd₃, cmd₄, ...]
+  ...
+  Workerₙ → Playerₙ.drone() → [cmdₙ, ...]
+        ↓ (所有指令序列入队)
+Phase 2 (EXECUTE): Sandbox 串行 — 确定性世界模拟
+  for cmd in sorted(commands):  apply_to_world(cmd)
+```
+
+**Worker pool 配置**:
 
 ```
 worker_pool_size = min(worker_pool_max, active_players)
@@ -348,16 +361,11 @@ worker_pool_size = clamp(worker_pool_size, 0, worker_pool_hard_cap)
   active_players = 当前活跃玩家数（有 WASM 模块部署 + 至少 1 个存活 drone）
 ```
 
-**256 worker default scenario (500 active players)**:
-  pool = min(256, 500) = 256 workers → 每个 worker 处理约 2 个玩家
-  CPU budget per worker: aggregate 核心时间 / 256
-  Admission control: active_players > 256 → graceful queuing, fair-share slot allocation
+Worker pool 水平可扩展——运营商根据 active_players 调整 worker_pool_max 即可消除排队。空闲 worker 保留 5min 后回收。新玩家连接时若 pool 未满且 active_players < worker_pool_max，fork 新 worker（若池中有空闲则复用）。
 
-**1000 worker hard cap scenario (1000 active players)**:
-  pool = min(1000, 1000) = 1000 workers（pool 饱和）
-  需要运营商显示启用 worker_pool_max > 256 并承担容量证明
+**Per-player sandbox deadline**: 2500ms（World）/ 200ms（Arena）= 单个玩家 drone 算法的最大执行时间。超时后该玩家本 tick 输出 0 command + `TimeoutExceeded`。此 deadline 独立于 worker pool 大小——每个 worker 上的玩家独立计时。
 
-空闲 worker 保留 5min 后回收（见 §3.4.3）。新玩家连接时若 pool 未满且 `active_players < worker_pool_max`，fork 新 worker（若池中有空闲则复用）。
+**500/1000 player 容量的真正瓶颈**: 不在 worker pool（可水平扩展），而在 (a) Phase 2 sandbox 串行执行时间，(b) Per-player WASM 平均执行时间 × 并行度。详见 §3.4.1 Tick Pipeline 预算与下方容量推导。
 
 ##### 500/1000 Player Capacity Derivation
 

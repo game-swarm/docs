@@ -833,7 +833,22 @@ Admin MCP tools 的 input schema 必须显式包含 `admin_certificate_id`、`ad
 | Per username | — | 10/min, 5 次失败锁 5min | — |
 | 全局 | 受 PoW 保护 | 1000/min | 100/min |
 
-CSR 提交不设 IP/username 限速 — PoW 本身就是速率控制。Challenge 申请设轻量 IP 限速防止存储 DoS。
+##### CSR Admission Control（多维防护）
+
+CSR 提交使用**多层 admission control**，PoW 为第一层成本过滤，不替代速率限制：
+
+| 层 | 机制 | 限制 | 说明 |
+|----|------|------|------|
+| **L1: PoW** | Blake3 brute-force | 可配置难度（默认 24 bits） | 第一层成本过滤——提高单次 CSR 成本，不限制并发度 |
+| **L2: Per-IP rate limit** | Token bucket | 10/min per IP | 单 IP CSR 提交速率上限 |
+| **L3: Per-ASN rate limit** | Token bucket | 50/min per ASN | 同一 ASN 的分布式攻击防御 |
+| **L4: Global in-flight cap** | Semaphore | 100 并发 CSR signing | 全局并发 CSR 签发上限 |
+| **L5: Worker semaphore + bounded queue** | Semaphore + timeout | queue depth=500, queue timeout=30s | CSR signing worker pool 饱和时排队，超时返回 `rate_limited` |
+| **L6: Audit throttle** | 异常检测 | 连续超限 → 熔断 | 连续 3 次触发 L4/L5 限流后，该来源 5min 内所有 CSR 直接拒绝 |
+
+**设计理由**：PoW 是 per-request 成本，对分布式来源（云 VM、僵尸网络）不构成有效的速率控制——攻击者可利用并行计算优势绕过 PoW 难度。多维 admission control 按实体（IP/ASN）和全局资源（semaphore/queue）限制并发，PoW 作为基础成本层防止无成本滥用。
+
+Challenge 申请设轻量 IP 限速（30/min per IP）防止存储 DoS，独立于 CSR admission control。
 
 恢复凭据 per-IP 限流部署在 argon2id 验证之前：达到来源限流阈值时直接返回 `rate_limited`，不进入密码哈希，防止攻击者用大量随机 username 绕过 per-account lockout 将小请求放大为 19MiB argon2id 服务端成本。
 
