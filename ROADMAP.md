@@ -10,14 +10,13 @@
 
 | 类别 | 数量 | 说明 |
 |------|:----:|------|
-|| ✅ 已完成 Wave | 9 | W0-W7, **W8 (Stub修复)**, **W9 (S14+S15)** |
+|| ✅ 已完成 Wave | 10 | W0-W7, **W8 (Stub修复)**, **W9 (S14+S15)**, **W10 (body_part_match)** |
 | ✅ Manifest 已实现 | 17 | S01-S08, S09(✔), S10(✔), S11-S13(合), S14(✔), S15(✔), S24(✔), S25(stub), S26(✔), S27, S28 |
 | ⚠️ Stub/语义错位 | 2 | S25(9行), S29(387行库代码,缺ECS系统) |
 | ❌ 完全缺失 | 8 | S16, S17, S18, S19, S20, S21, S22, S23 |
-| 📦 Mod 仓库 | 7 | 已填充 mod.toml + 3×.rhai，engine submodule 就位 |
-| 🔧 Infrastructure | 3 | S29 resource_ledger(387行库), arena.rs(623行基础), security.rs(515行) |
+| 🔧 Infrastructure | 4 | body_part_match(S11-S13+S20共用), DisruptedResisted, S29 resource_ledger(387行), arena.rs(623行基础), security.rs(515行) |
 
-> **当前提交**: `fe903f2` (W9 S14+S15)。W0-W9 全部完成。
+> **当前提交**: `fc4d66d` (W10 body_part_match + DisruptedResisted)。W0-W10 全部完成。
 > controller_repair_system (196行) 代码正确修复 body hits —— 文件注释和 ROADMAP 旧版标注有误。
 
 ---
@@ -27,13 +26,13 @@
 ```
 W7 (Combat+Visibility) ✅
  │
- ├─► W8  (S09+S10+S24+S26) ←─ 可与 W7 并行（无依赖）
+ ├─► W8  (S09+S10+S24+S26) ✅
  │      │
- │      └─► W9  (S14+S15)    ←─ 依赖 W7 (combat infra)，不依赖 W8
+ │      └─► W9  (S14+S15)    ✅
  │             │
- │             ├─► W10 (P3-7) ←─ 依赖 W7
+ │             ├─► W10 (body_part_match) ✅
  │             │      │
- │             │      └─► W12 (S19+S20+S21+S22) ←─ W10 仅 S20 需要
+ │             │      └─► W12 (S19+S20+S21+S22) ←─ W10→S20 已就位
  │             │
  │             └─► W12 (S19+S20+S21+S22) ←─ 依赖 W9 (S14→S22 链)
  │
@@ -112,17 +111,6 @@ W7 (Combat+Visibility) ✅
 **验收:** ≥ 7 个测试
 
 ---
-
-## Wave 10: P3-7 Body Part Match
-
-**仓库: `engine`** | **并行度: 1**
-
-| 文件 | `combat_system.rs` (新增 body_part_match), `command.rs` (新增 DisruptedResisted) |
-|------|------|
-| 规范 | `specs/core/06-phase2b-system-manifest.md` §S20, D3/A |
-
-**实现:** body_part_match 通用验证逻辑（供 S11-S13 combat 攻击和 S20 disrupt 共用）。Disrupt body part match 验证 + 目标 body part 指定 + 失败拒绝。
-**验收:** ≥ 3 个测试
 
 ---
 
