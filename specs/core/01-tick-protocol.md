@@ -257,50 +257,78 @@ seed_rotation_interval = 10000   # 每 N tick 轮换一次（默认 10000）
 
 轮换算法：`new_seed = Blake3(old_seed || current_tick)`。旧种子对应的回放数据仍可验证——TickTrace 中记录每 tick 使用的 seed epoch，回放时按 epoch 选择对应种子。
 
-**前向保密威胁模型**：
+**种子生命周期与泄露防护（R27 T-H1 — 混合方案）**：
+
+> **根本约束**：在确定性系统中，未来状态（包括种子）可从当前状态推导——真正的密码学前向保密不可能。泄露了当前种子 + 状态的攻击者能模拟全部未来 tick。种子归档在快照/keyframe 中已足够用于确定性 replay。
+
+**方案：Arena 用 Commit-Reveal，World 用 Operator Seed-Bump**。
+
+#### Arena：Commit-Reveal（赛中不可见，赛后审计）
+
+Arena 模式有明确时间边界（start tick → end tick），适合 commit-reveal：
 
 ```
-威胁: world_seed 在 tick N 被泄露（例如: 运维误操作、日志泄露、内部威胁）
+Arena 赛前:
+  seed_epoch_0 = 服务端通过安全随机源生成（非 Blake3 链推导）
+  seed_commitment = Blake3(seed_epoch_0 || "commit")
+  → seed_commitment 写入 arena 公开元数据，seed_epoch_0 仅引擎内存
 
-当前设计特性:
-  - 旧种子 → 新种子: 可计算（new = Blake3(old || tick)）
-    → 知道 tick N 的 seed 可推导 tick N+1, N+2, ... 的所有未来种子
-  - 新种子 → 旧种子: 不可计算（Blake3 是单向函数）
-    → 无法从当前种子反推历史种子
+Arena 赛中（tick 0 → match_end）:
+  所有 RNG 使用 seed_epoch_0 派生
+  快照记录 seed_epoch（按 epoch 粒度，非每 tick）
+  MCP/API 只暴露 seed_commitment——玩家无法获取实际 seed
 
-影响面分析:
-  | 泄露后果 | 严重度 | 说明 |
-  |---------|:--:|------|
-  | 未来 tick 的玩家排序可预测 | 🔴 Critical | 攻击者可精确预知自己在每个 tick 的顺序位置，策划排序攻击 |
-  | 未来 tick 的 RNG 输出可预测 | 🔴 Critical | combat 伤害浮动、spawn 位置随机、资源点再生随机等全部可预测 |
-  | 攻击者可精确计算最优策略 | 🔴 Critical | 预知 seed → 预演所有 tick 的随机结果 → 选择剥削路径 |
-  | 历史 tick 的 RNG 输出 | 🟢 不受影响 | Blake3 单向性保证无法反推 |
-  | 历史 tick 的回放验证 | 🟢 不受影响 | TickTrace 记录 seed epoch，历史回放仍可验证 |
-
-缓解措施:
-  | 措施 | 机制 | 效果 |
-  |------|------|------|
-  | 定期轮换（已实现） | 每 10000 tick 轮换 | 限制泄露窗口宽度——攻击者最多预测 10000 tick 的未来 |
-  | 服主介入 | 泄露后立即 bump epoch → 全量 seed 失效 → 服主手动设置新 seed | 泄露后唯一恢复手段 |
-  | 审计日志 | world_seed 变更记录在不可变审计日志中 | 可追溯泄露时间点 |
-
-设计决策（已接受的风险）:
-  - 不实现密码学完善前向保密（双向不可推导）。
-    理由: 完善前向保密需要定期从外部熵源注入——与确定性回放要求冲突。
-    Swarm 的确定性回放要求 "相同初始状态 + seed → 相同世界状态"，
-    注入外部熵源（如硬件 RNG）将破坏此保证。
-  - 替代方案: 定期轮换 + 服主 epoch bump 提供操作层面的泄露恢复能力。
-    这不是密码学前向保密，但将泄露影响限制在固定时间窗口内。
-  - 安全假设: world_seed 是服主级秘密——与 TLS 私钥同级保护。
-    泄露是安全事件而非设计缺陷。
-
-泄露应急 runbook:
-  1. 检测: 玩家行为异常检测（如单玩家连续精准命中排序优势）→ 触发审计
-  2. 确认: 检查 world_seed 访问日志 → 确认泄露时间点
-  3. 止损: `swarm world seed-bump <world>` → 立即 bump seed epoch
-  4. 回滚: 从泄露点前的 keyframe 恢复世界状态（可选——取决于竞技公平要求）
-  5. 公告: 通知受影响玩家，提供补偿（如资源补偿、赛季重置）
+Arena 赛后（match_end_tick + 100）:
+  seed_epoch_0 自动公开写入 TickTrace
+  任何玩家/审计方可验证：Blake3(seed_epoch_0 || "commit") == seed_commitment
+  → 证明赛中随机性未被服主篡改
 ```
+
+#### World：Operator Seed-Bump + Statistical Detection
+
+World 模式无时间边界，commit-reveal 不适用。依靠运维止损：
+
+```
+正常轮换：new_seed = Blake3(old_seed || current_tick)（保持现有）
+
+泄露检测（Statistical Detection）：
+  每 1000 tick 汇总以下指标：
+  - per-player win-rate deviation（排序优势检测）：连续 5+ 次预测命中 → FLAG
+  - combat RNG advantage：伤害浮动 all_high / all_low 分布异常 → FLAG
+  - spawn position clustering：新生房间密度异常 → FLAG
+  触发 FLAG → WARN 日志 + 服主通知（Mattermost/webhook）
+
+种子归档（Replay 可用）：
+  每 epoch（10000 tick）的 seed 记录在 keyframe snapshot 中
+  快照包含：(seed_epoch_id, seed, epoch_start_tick, epoch_end_tick)
+  CI replay 从快照读取 seed → 不需要外部 seed archive
+
+Operator Seed-Bump MCP 工具：
+  swarm_world_seed_bump { world_id, reason }
+    → 生成全新 seed（来自安全随机源，非 Blake3 链）
+    → seed_epoch_id += 1
+    → 旧 seed 标记为 compromised（审计日志记录 bump reason）
+    → 未来 tick 使用新 seed 派生
+    → 可选：从泄露前 keyframe 回滚（服主决策）
+```
+
+**Seed 生命周期统一模型**：
+
+| 阶段 | Arena | World |
+|------|-------|-------|
+| 生成 | 安全随机源（外部熵） | Blake3 链（old → new） |
+| 赛中/运行时 | seed hash 公开，seed 仅引擎 | seed 仅引擎 |
+| 披露 | 赛后 +100 tick 自动公开 | **不公开**（运维保护） |
+| 归档 | 快照/keyframe 中记录 seed epoch | 快照/keyframe 中记录 seed epoch |
+| 泄露响应 | 赛后自动审计（seed hash 校验） | Operator seed-bump + 回滚 |
+
+**泄露应急 runbook**（World）：
+
+1. 检测：统计异常检测触发 FLAG → 服主通知
+2. 确认：检查 world_seed 访问日志 → 确认泄露时间点
+3. 止损：`swarm world seed-bump <world> --reason "seed_leak_detected_at_tick_<N>"`
+4. 回滚：从泄露点前的 keyframe 恢复世界状态（可选——取决于竞技公平要求）
+5. 公告：通知受影响玩家，提供补偿（如资源补偿、赛季重置）
 
 ### 3.2 资源竞争 (Resource Contention)
 
