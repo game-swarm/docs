@@ -10,13 +10,13 @@
 
 | 类别 | 数量 | 说明 |
 |------|:----:|------|
-|| ✅ 已完成 Wave | 14 | W0-W7, W8-W9, W10, W11, W12, W13, **W14 (EventLog)** |
+|| ✅ 已完成 Wave | 17 | W0-W7, W8-W9, W10, W11, W12, W13, W14, **W15a, W15b, W15c** |
 || ✅ Manifest 已实现 | 26 | S01-S25(✔), S26(✔), S27, S28 |
 || ⚠️ Stub/语义错位 | 1 | S29(387行库代码,缺ECS系统) |
 || ❌ 完全缺失 | 0 | — |
-|| 🔧 Infrastructure | 4 | body_part_match, DisruptedResisted, S29 resource_ledger, arena.rs, security.rs |
+|| 🔧 Pending Waves | 4 | W16a (WASM CDN), W16b (Economy Balance), W16c (CommandSource Gate), W17 (Benchmarks) |
 
-> **当前提交**: `7568cef` (W14 EventLog)。W0-W14 全部完成。314 tests。
+> **当前提交**: `ec357f7` (W15a+b+c Arena)。W0-W15c 全部完成。
 > controller_repair_system (196行) 代码正确修复 body hits —— 文件注释和 ROADMAP 旧版标注有误。
 
 ---
@@ -46,13 +46,13 @@ W7 (Combat+Visibility) ✅
  │                      W14 (P3-8 Feedback Loop) ✅
  │                          │
  │                          ▼
- │                      W15a (Arena Core)
+ │                      W15a (Arena Core) ✅
  │                          │
  │                          ▼
- │                      W15b (Arena Security)
+ │                      W15b (Arena Security) ✅
  │                          │
  │                          ▼
- │                      W15c (Arena Gameplay)
+ │                      W15c (Arena Gameplay) ✅
  │
  ├─► W16a (P1-6 WASM CDN) ←─ 完全独立，可与任何 Wave 并行
  │
