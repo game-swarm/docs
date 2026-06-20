@@ -28,11 +28,11 @@ i32 host_get_terrain(room_id: u32, out_ptr: i32, out_len: i32) -> i32
 
 ### host_get_objects_in_range
 ```c
-i32 host_get_objects_in_range(x: i32, y: i32, range: i32, out_ptr: i32, out_len: i32) -> i32
+i32 host_get_objects_in_range(x: i32, y: i32, range: u32, out_ptr: i32, out_len: i32) -> i32
 ```
 返回以 (x,y) 为中心、range 半径内的实体 JSON 列表。
 写入 `out_ptr` 指向的 WASM 线性内存缓冲区（最大 `out_len` 字节）。
-返回值：0=成功，负数=错误码。
+返回值：>=0 = bytes_written，<0 = canonical ABI error code（见 API Registry §4.5）。
 - 每 tick 最多调用 5 次（计入 host call budget）
 
 ### host_path_find
@@ -66,7 +66,7 @@ i32 host_get_world_rules(rule_id_ptr: i32, rule_id_len: i32, out_ptr: i32, out_l
 - `host_get_objects_in_range`: 5 次
 - 其他: 共享剩余配额
 
-超出预算 → 返回 -1，tick 继续执行（非致命错误）。
+超出预算 → 返回 canonical ABI error code `-4 ERR_BUDGET_EXHAUSTED`（per-call）或 `-5 ERR_PLAYER_BUDGET`（per-player）。权威错误码优先级见 [API Registry](api-registry.md) §4.5。
 
 ## 输出上限
 

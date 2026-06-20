@@ -72,7 +72,7 @@ WASM 中**仅可调用查询类 host function**——所有函数只读，不计
 ```rust
 // 信息查询（只读，不改变世界状态）
 fn host_get_terrain(room_id: u32, out_ptr: i32, out_len: i32) -> i32;
-fn host_get_objects_in_range(x: i32, y: i32, range: i32, out_ptr: i32, out_len: i32) -> i32;
+fn host_get_objects_in_range(x: i32, y: i32, range: u32, out_ptr: i32, out_len: i32) -> i32;
 fn host_path_find(from_x: i32, from_y: i32, to_x: i32, to_y: i32, opts_ptr: i32, opts_len: i32, out_ptr: i32, out_len: i32) -> i32;
 
 // 世界配置查询
@@ -82,7 +82,7 @@ fn host_get_world_rules(rule_id_ptr: i32, rule_id_len: i32, out_ptr: i32, out_le
 
 > **注意**: 以下为概念签名。权威定义见 [API Registry](specs/reference/api-registry.md) §4.1
 
-全部返回 `i32`：0 = 成功，负数 = 错误码。
+全部返回 `i32`：ret >= 0 = bytes_written，ret < 0 = canonical ABI error code（见 API Registry §4.5）。
 `out_ptr`/`out_len`：WASM 分配缓冲区，host 写入结果后再次校验边界。
 
 ### 5.2 禁止的 Host Function

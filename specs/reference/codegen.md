@@ -21,9 +21,11 @@
 
 以下数值**只存在于 IDL 中**，API Registry 由 codegen 生成。任何手写副本为错误：
 
-- CommandAction 数量 (当前 19)
+> ⚠️ **本文档自身为手工维护**。本文档中的数值（CommandAction 数量、RejectionReason 数量等）需在 IDL 变更时手动更新。`hermes codegen generate --check` 可检测漂移，但仍需人工确认本文档与 IDL 的一致性。建议 CI 同时检查本文档中的计数声明与 `--check` 输出的一致性。
+
+- CommandAction 数量 (当前 21)
 - MCP tool 数量 (当前 56 active)
-- RejectionReason 数量 (当前 79)
+- RejectionReason 数量 (当前 47)
 - Host function 数量 (当前 5)
 - `MAX_DRONES_PER_PLAYER` (50)
 - Body part costs

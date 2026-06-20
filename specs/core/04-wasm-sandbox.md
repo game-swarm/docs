@@ -258,7 +258,7 @@ clone (仅 CLONE_VM | CLONE_VFORK), exit, exit_group
 memory.max = 128MB          // 2x Wasmtime 内存，覆盖运行时开销
 memory.swap.max = 0          // 禁用 swap
 cpu.max = 250000 3000000     // 每 3s tick 周期限 0.25 CPU 秒
-pids.max = 32                // 最多 32 线程（Wasmtime + 编译器）
+pids.max = 16                // 最多 16 线程（Wasmtime + 编译器）
 ```
 
 ### 4.3 网络命名空间
@@ -377,7 +377,7 @@ TickTrace 中存储的审计日志受以下大小限制，防止磁盘 DoS：
 | | `getrandom` | ❌ 禁止 | seccomp BPF 检查 | 随机数由 host function 提供 |
 | | `open/openat` | ❌ 禁止 | seccomp BPF 检查 | 无文件系统访问 |
 | | `socket/connect/sendmsg/recvmsg` | ❌ 禁止 | seccomp BPF 检查 | 无网络访问 |
-| | `fork/vfork/clone` | ❌ 禁止 | seccomp BPF 检查 | 无进程创建 |
+| | `clone (仅 CLONE_VM \| CLONE_VFORK)` | ✅ 允许 | seccomp BPF 检查 | Wasmtime 内部线程创建所需；`fork/vfork` ❌ 禁止 |
 | | `execve` | ❌ 禁止 | seccomp BPF 检查 | 无程序执行 |
 | | `ptrace` | ❌ 禁止 | seccomp BPF 检查 | 无调试 |
 | | `kill/tkill` | ❌ 禁止 | seccomp BPF 检查 | 无信号发送 |

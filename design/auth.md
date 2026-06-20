@@ -903,7 +903,7 @@ swarm_deploy:
 | 数据 | 权威存储 | 热路径缓存 | 允许延迟 |
 |------|---------|-----------|---------|
 | Nonce 新鲜度 | Dragonfly (TTL) | 无（直接查 Dragonfly） | 0 |
-| 证书吊销状态 (CRL) | FDB | Engine 内 LRU | 60s（明确接受的风险：吊销后至多 60s 旧证书仍可被接受。竞争性世界可配置为 5-10s） |
+| 证书吊销状态 (CRL) | FDB | Engine 内 LRU | World 默认 60s（持久世界容忍度更高）；Arena/competitive 默认 5s（吊销后至多 5s 旧证书仍可被接受） |
 | 证书链验证结果 | — | Engine 内 LRU | 0（即时失效） |
 | Server Root CA | FDB | Engine 启动时加载 | 0（重启生效） |
 | Intermediate CA | FDB | Engine 启动时加载 | 0（重启生效） |
@@ -1215,7 +1215,7 @@ POST /mcp (JSON-RPC)
 | Token | TTL | Rotation | 存储位置 |
 |-------|-----|----------|---------|
 | `ClientAuthCertificate` | 15 min–180 days | `swarm_renew_certificate` 续签 | 每设备本地 / agent store |
-| `CodeSigningCertificate` | 15 min–180 days | CSR renewal | 每设备本地 / agent store |
+| `CodeSigningCertificate` | 30–180 days（默认 30d，world.toml 可配） | CSR renewal | 每设备本地 / agent store |
 | `AdminCertificate` | 15 min–1h | 重新签发 | 管理员设备 / hardware key |
 | `refresh_token` | 30 days | 每次使用后轮换 | FDB `auth/sessions/`（Web 兼容层） |
 
