@@ -10,13 +10,13 @@
 
 | 类别 | 数量 | 说明 |
 |------|:----:|------|
-|| ✅ 已完成 Wave | 11 | W0-W7, **W8 (Stub修复)**, **W9 (S14+S15)**, **W10 (body_part_match)**, **W11 (S16-S18)** |
-| ✅ Manifest 已实现 | 20 | S01-S08, S09(✔), S10(✔), S11-S13(合), S14(✔), S15(✔), S16(✔), S17(✔), S18(✔), S24(✔), S25(stub), S26(✔), S27, S28 |
+|| ✅ 已完成 Wave | 12 | W0-W7, W8-W9, **W10 (body_part_match)**, **W11 (S16-S18)**, **W12 (S19-S22)** |
+| ✅ Manifest 已实现 | 24 | S01-S22(✔), S24(✔), S25(stub), S26(✔), S27, S28 |
 | ⚠️ Stub/语义错位 | 2 | S25(9行), S29(387行库代码,缺ECS系统) |
-| ❌ 完全缺失 | 5 | S19, S20, S21, S22, S23 |
+| ❌ 完全缺失 | 1 | S23 |
 | 🔧 Infrastructure | 4 | body_part_match(S11-S13+S20共用), DisruptedResisted, S29 resource_ledger(387行), arena.rs(623行基础), security.rs(515行) |
 
-> **当前提交**: `f8c6e9f` (W11 S16-S18)。W0-W11 全部完成。299 tests。
+> **当前提交**: `f8e9bc1` (W12 S19-S22)。W0-W12 全部完成。308 tests。
 > controller_repair_system (196行) 代码正确修复 body hits —— 文件注释和 ROADMAP 旧版标注有误。
 
 ---
@@ -36,7 +36,7 @@ W7 (Combat+Visibility) ✅
  │             │
  │             └─► W12 (S19+S20+S21+S22) ←─ 依赖 W9 (S14→S22 链)
  │
- ├─► W11 (S16+S17+S18) ✅ ──可与 W12 并行──► W12 (S19+S20+S21+S22)
+ ├─► W11 (S16+S17+S18) ✅ ──可与 W12 并行──► W12 (S19+S20+S21+S22) ✅
  │                                               │
  │                          ┌────────────────────┘
  │                          ▼
@@ -115,21 +115,6 @@ W7 (Combat+Visibility) ✅
 ---
 
 ---
-
-## Wave 12: Status Effects Part 2 — S19 + S20 + S21 + S22
-
-**仓库: `engine`** | **并行度: 1**
-
-| 文件 | `debilitate_system.rs`, `disrupt_system.rs`, `fortify_system.rs`, `status_advance_system.rs` (均新建), `systems/mod.rs`, `scheduler.rs`, `world.rs`, `lib.rs`, `components.rs` |
-|------|------|
-| 规范 | `specs/core/06-phase2b-system-manifest.md` §S19-S22 |
-
-**实现:**
-- S19 Debilitate（削弱属性）、S20 Disrupt（打断，需 body part match 从 W10）、S21 Fortify（防御强化）
-- **S22 status_advance（Unique Writer）**: 唯一写入所有 StatusState 组件。统一读入 intent → 更新 StatusState (duration--, expire, apply) → 触发 damage → 写入 S15 的 damage buffer
-- 特殊攻击优先级链: **Hack > Drain > Overload > Debilitate > Disrupt > Fortify**
-
-**验收:** 每系统 ≥ 2 个测试（共 ≥ 8 个）+ unique writer 合约验证
 
 ---
 
