@@ -43,15 +43,15 @@ specs/reference/               API 参考 — 开发者面向的接口文档
 ## 文档三层模型
 
 ```
-DESIGN.md / design/*.md   目标架构（纯目标状态，不标注实现进度）
+DESIGN / design/*.md   目标架构（纯目标状态，不标注实现进度）
         ↓
-specs/                     技术规范（冻结基线，不追加"后增补"章节）
+specs/                     技术规范（追踪 DESIGN，与设计保持同步）
         ↓
 ROADMAP.md                 实现追踪（gap → checklist → Wave）
 ```
 
 - DESIGN 描述远景，永不为匹配现状而降级
-- P0 specs 是冻结基线，不追加内容。新规范进 `p1/`
+- specs 始终对齐 DESIGN，DESIGN 变更后同步更新 specs
 - ROADMAP 追踪 DESIGN/spec 定义但代码未实现的差距
 
 ## ROADMAP.md 撰写规范
