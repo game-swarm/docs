@@ -416,10 +416,10 @@ WASM tick() 输入 snapshot 受 per-player 256KB cap 约束：
 | 状态 | 语义 | 处理 |
 |------|------|------|
 | **正常** | snapshot ≤ cap | 完整传入 |
-| **Truncated** | snapshot > cap | 按 priority bucket + stable entity_id order 截断；`snapshot.truncated=true`；暴露 `omitted_counts` 和 bucket 统计 |
+| **Truncated** | snapshot > cap | 按确定性截断顺序（距离桶 → entity_id 字典序，从最远桶末尾移除）截断；`snapshot.truncated=true`；暴露 `omitted_counts` 和 bucket 统计。**权威截断合同见 [Snapshot Contract](specs/core/09-snapshot-contract.md) §1** |
 | **Rejected** | 保护性拒绝（如 OOM 攻击） | 返回 deterministic empty input + `over_budget_rejected` 错误码 |
 
-**Priority bucket 顺序**：自机 > 友方 drone > 敌方 drone > 建筑 > NPC > 资源
+**截断顺序**: 距离桶 0(self) > 1(adjacent) > 2(near) > 3(mid) > 4(far) > 5(very far) > 6(out of sight)，同桶内 entity_id 字典序。关键实体（自身/Controller/target/己方 drone/攻击者）不可截断。详见 Snapshot Contract §1.3–1.4。
 
 截断不依赖 ECS query 原始顺序——使用 stable `entity_id` sort 保证确定性 replay。给玩家的展示层 snapshot 走分页传输，不在 WASM cap 约束内。
 
