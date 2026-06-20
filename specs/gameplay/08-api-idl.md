@@ -319,7 +319,7 @@ git diff --exit-code        # 生成代码与提交代码一致 → 不一致则
 --------------|-----------|---------------|------|
  `RangedAttack` | RangedAttack | — | 远程攻击，parts × 25，范围 3 |
  `ClaimController` | Claim | — | 占领 Controller |
- `Recycle` | — | — | 回收 drone，退还 50% body part 资源 |
+ | `Recycle` | — | — | 回收 drone，退还 lifespan-proportional body part 资源（10%-50%，详见 resource-ledger §2.5） |
  `Disrupt` | Attack | `disrupt` | 打断目标动作，50 tick CD |
  `Fortify` | Tough | `fortify` | 护盾 + 净化，300 tick CD |
  `Hack` | Claim | `hack` | 夺取 drone → Neutral，200 tick CD |
@@ -430,5 +430,5 @@ swarm sdk publish world_v1        # 部署到目标世界（在线）
 
 任何使用 Layer 3 扩展（自定义 body part / damage type / Command）的世界实例标记为非官方世界：
 - 在世界列表中显示 `[MOD]` 标识
-- 不参与官方排名（World 模式无排行榜，Arena 模式仅 Vanilla 世界计入排名）
+- 不参与官方排名（World 模式无公开排行榜，仅非竞争统计；Arena 模式仅 Vanilla 世界计入排名）
 - 玩家加入时显示警告：「此世界使用非标准规则集，请确认已安装对应世界 SDK。」

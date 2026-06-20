@@ -290,7 +290,7 @@ Swarm:     Move = Action  → 每 tick 移动 OR 采集 OR 攻击 OR 建造
 | 阶段 | World 预算 | Arena 预算 | 说明 |
 |------|-----------|-----------|------|
 | **Tick interval** | 3000ms | 300ms | 目标 tick 间隔 |
-| **SNAPSHOT build** | ≤50ms (p99) | ≤20ms (p99) | 构建全量世界快照并按房间分片 |
+| **SNAPSHOT build** | ≤200ms (p95) | ≤50ms (p99) | 构建全量世界快照并按房间分片 |
 | **COLLECT (sandbox dispatch)** | ≤2500ms | ≤200ms | 并行分发 WASM 执行，含 sandbox deadline |
 | **EXECUTE (2a+2b)** | ≤400ms | ≤50ms | 命令应用 + ECS systems |
 | **COMMIT (FDB)** | ≤50ms (p99) | ≤20ms (p99) | FDB 原子提交 |
