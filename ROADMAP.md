@@ -6,12 +6,12 @@
 
 ---
 
-## 审计发现摘要 — 22 Gaps
+## 审计发现摘要 — 21 Gaps (不含假阳性)
 
 | 严重度 | 数量 | 类别 |
 |--------|:----:|------|
 | 🔴 Critical | 9 | 安全/正确性/运行时故障 |
-| 🟠 High | 5 | 重大功能缺口 |
+| 🟠 High | 4 | 重大功能缺口 |
 | 🟡 Moderate | 8 | 功能不完整/文档不一致 |
 
 ---
@@ -244,14 +244,14 @@
 
 ---
 
-## 🔧 修复顺序建议
+## 🔧 修复分组
 
-| Wave | Gaps | 估计工时 | 涉及文件 |
-|------|------|:--------:|----------|
-| **W1: 快速修复** | C01 (MCP source) | 30min | mcp.rs 1处 |
-| **W2: 安全边界** | C04 (SIMD), C05 (Seccomp), C06 (relaxed), C07 (fog+full), H04 (CI audit) | 2h | sandbox/lib.rs, world.rs, .github/ |
-| **W3: 数据完整性** | C09 (collect_id), M01 (Simulate limits), M05 (snapshot truncation) | 3h | fdb.rs, tick.rs, sim.rs |
-| **W4: 认证链** | C08 (cert auth), H02 (passkey/recovery), H03 (request signature) | 8h+ | gateway/, mcp.rs, auth.rs |
-| **W5: Enum 清理** | C03 (RejectionReason), H01 (NotEligible), M04 (omitted_count), M06 (hint ladder) | 4h | command.rs, visibility.rs, sim.rs |
-| **W6: 设计分歧** | C02 (Direction), M02 (AlliedTransfer) | 需决策 | 多文件 |
-| **W7: 文档同步** | M03 (registry counts), M07 (NATS), M08 (PvE) | 1h | docs/, gateway/ |
+| Wave | Gaps | 涉及文件 |
+|------|------|----------|
+| **W1** | C01 (MCP source) | mcp.rs 1处 |
+| **W2** | C04 (SIMD), C05 (Seccomp), C06 (relaxed), C07 (fog+full), H04 (CI audit) | sandbox/lib.rs, world.rs, .github/ |
+| **W3** | C09 (collect_id), M01 (Simulate limits), M05 (snapshot truncation) | fdb.rs, tick.rs, sim.rs |
+| **W4** | C08 (cert auth), H02 (passkey/recovery), H03 (request signature) | gateway/, mcp.rs, auth.rs |
+| **W5** | C03 (RejectionReason), H01 (NotEligible), M04 (omitted_count), M06 (hint ladder) | command.rs, visibility.rs, sim.rs |
+| **W6** | C02 (Direction), M02 (AlliedTransfer) | 需决策，多文件 |
+| **W7** | M03 (registry counts), M07 (NATS), M08 (PvE) | docs/, gateway/ |

@@ -40,6 +40,39 @@ specs/future/      扩展路线 (T2 增量快照, T3 分片)
 specs/reference/               API 参考 — 开发者面向的接口文档
 ```
 
+## 文档三层模型
+
+```
+DESIGN.md / design/*.md   目标架构（纯目标状态，不标注实现进度）
+        ↓
+specs/                     技术规范（冻结基线，不追加"后增补"章节）
+        ↓
+ROADMAP.md                 实现追踪（gap → checklist → Wave）
+```
+
+- DESIGN 描述远景，永不为匹配现状而降级
+- P0 specs 是冻结基线，不追加内容。新规范进 `p1/`
+- ROADMAP 追踪 DESIGN/spec 定义但代码未实现的差距
+
+## ROADMAP.md 撰写规范
+
+- [ ] 每项为 checklist item，可勾选
+- **禁止写入工时估计**（不写 "30min"/"2h" 等）
+- **禁止写入难度评级**（不写 "简单"/"中等" 等）
+- **禁止写入 Wave 修饰名**（不写 "快速修复"/"安全边界" — Wave 仅编号 W1/W2/...）
+- 每个 gap 锚定具体规范引用 + 代码位置
+- 已完成项移除（ROADMAP 只含待做变更）
+- Gap ID 命名约定：`GAP-C{n}` (Critical), `GAP-H{n}` (High), `GAP-M{n}` (Moderate)
+- Wave 分组表仅含 gap ID + 涉及文件，无工时列
+
+## 代码-文档对齐审计
+
+当需要检查代码与文档是否对齐时：
+
+1. **MCP 工具 set-difference**（最关键）— 见 `../AGENTS.md`
+2. **并行双 subagent 审计**：Core Engine (01-02-07-08-09 + reference) vs Infra+Design（其余 specs + design/*）
+3. 审计结果直接写入 ROADMAP.md checklist
+
 ## 规范管理
 
 - `specs/` 按域分子目录：`core/` `security/` `gameplay/` `future/`
@@ -58,6 +91,18 @@ design/*.md 更新 → spec 对齐 → 代码实现对齐 spec
 1. 设计变更先在 design/README.md 中完成
 2. 设计稳定后同步到 `specs/`
 3. 代码实现对齐 spec
+4. 代码变更后审计 → gap → ROADMAP checklist
+
+### 双仓库提交
+
+docs 是 git 子模块，修改 docs 内文件后必须分两步提交：
+
+```bash
+cd /data/swarm/docs
+git add -A && git commit -m "docs: <描述>" && git push origin main
+cd /data/swarm
+git add docs && git commit -m "chore: bump docs (<简述>)" && git push origin master
+```
 
 ## 评审流程
 
