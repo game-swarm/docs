@@ -120,7 +120,7 @@ description = "出生点——生成 drone"
 category = "core"
 hits = 5000
 rcl_required = 1
-cost = { Energy = 200 }
+cost = { Energy = 300 }
 
 [[structure_types]]
 name = "Extension"
@@ -129,7 +129,7 @@ category = "storage"
 hits = 1000
 rcl_required = 2
 max_per_room = 60
-cost = { Energy = 50 }
+cost = { Energy = 200 }
 
 [[structure_types]]
 name = "Tower"
@@ -138,7 +138,7 @@ category = "defense"
 hits = 3000
 rcl_required = 3
 attack = { damage = 50, damage_type = "Kinetic", range = 5, cooldown = 10 }
-cost = { Energy = 200 }
+cost = { Energy = 800 }
 
 [[structure_types]]
 name = "Storage"
@@ -155,7 +155,7 @@ description = "链接——短距离能量传输"
 category = "logistics"
 hits = 1000
 rcl_required = 4
-cost = { Energy = 300 }
+cost = { Energy = 400 }
 
 [[structure_types]]
 name = "Extractor"
@@ -163,7 +163,7 @@ description = "萃取器——从资源点采集矿物"
 category = "production"
 hits = 5000
 rcl_required = 6
-cost = { Energy = 800 }
+cost = { Energy = 600 }
 
 [[structure_types]]
 name = "Lab"
@@ -179,7 +179,7 @@ description = "终端——跨世界身份同步与日志交换节点"
 category = "logistics"
 hits = 3000
 rcl_required = 5
-cost = { Energy = 500 }
+cost = { Energy = 1200 }
 
 [[structure_types]]
 name = "Observer"
@@ -188,7 +188,7 @@ category = "intel"
 hits = 500
 rcl_required = 5
 sight_range = 10
-cost = { Energy = 300 }
+cost = { Energy = 500 }
 
 [[structure_types]]
 name = "PowerSpawn"
@@ -896,7 +896,7 @@ damage_type = "Kinetic"
 base_damage = 25
 range = 3
 age_modifier = -50
-cost = { Energy = 100 }
+cost = { Energy = 150 }
 
 [[body_part_types]]
 name = "Heal"
