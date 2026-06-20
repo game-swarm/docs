@@ -10,13 +10,13 @@
 
 | 类别 | 数量 | 说明 |
 |------|:----:|------|
-|| ✅ 已完成 Wave | 13 | W0-W7, W8-W9, W10 (body_part_match), W11 (S16-S18), W12 (S19-S22), **W13 (S23+S25)** |
+|| ✅ 已完成 Wave | 14 | W0-W7, W8-W9, W10, W11, W12, W13, **W14 (EventLog)** |
 || ✅ Manifest 已实现 | 26 | S01-S25(✔), S26(✔), S27, S28 |
 || ⚠️ Stub/语义错位 | 1 | S29(387行库代码,缺ECS系统) |
 || ❌ 完全缺失 | 0 | — |
-|| 🔧 Infrastructure | 4 | body_part_match(S11-S13+S20共用), DisruptedResisted, S29 resource_ledger(387行), arena.rs(623行基础), security.rs(515行) |
+|| 🔧 Infrastructure | 4 | body_part_match, DisruptedResisted, S29 resource_ledger, arena.rs, security.rs |
 
-> **当前提交**: `bf1910a` (W13 S23+S25)。W0-W13 全部完成。314 tests。
+> **当前提交**: `7568cef` (W14 EventLog)。W0-W14 全部完成。314 tests。
 > controller_repair_system (196行) 代码正确修复 body hits —— 文件注释和 ROADMAP 旧版标注有误。
 
 ---
@@ -43,7 +43,7 @@ W7 (Combat+Visibility) ✅
  │                      W13 (S23+S25) ✅
  │                          │
  │                          ▼
- │                      W14 (P3-8 Feedback Loop)
+ │                      W14 (P3-8 Feedback Loop) ✅
  │                          │
  │                          ▼
  │                      W15a (Arena Core)
