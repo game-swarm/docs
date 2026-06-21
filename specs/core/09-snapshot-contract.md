@@ -20,7 +20,7 @@
 
 ### 1.1 触发条件
 
-引擎在每 tick 结束时为每个 drone 生成感知快照（perception snapshot）。快照序列化为 JSON 后若超过 **256KB** 上限，触发截断：
+引擎在每 tick 结束时为每个 **player** 生成感知快照（per-player perception snapshot），覆盖该 player 所有 active drone 的集体视野。快照以 player actor context 为粒度（非 per-drone），序列化为 JSON 后若超过 **256KB** 上限，触发截断：
 
 | 条件 | 行为 |
 |------|------|
@@ -34,7 +34,11 @@
 ```jsonc
 {
   "tick": 12345,
-  "drone_id": "drone_0xABCD",
+  "player_id": 42,
+  "actor_context": {
+    "active_drones": ["drone_0xABCD", "drone_0xEF01"],
+    "primary_drone": "drone_0xABCD"
+  },
   "truncated": true,
   "omitted_categories": {
     "entities": 47,    // 被省略的实体数量
@@ -51,7 +55,7 @@
 
 ### 1.3 确定性截断顺序
 
-截断顺序必须完全确定（同一世界状态、同一 tick、同一 drone 产生完全相同的截断结果）：
+截断顺序必须完全确定（同一世界状态、同一 tick、同一 player 产生完全相同的截断结果）：
 
 1. **第一排序键：距离桶（distance bucket）**
 
@@ -77,7 +81,7 @@
 
    引擎从 bucket 6（最远）的最后一个 entity_id 开始丢弃，逐一向内推进，直到快照体积 ≤ 256KB。
 
-### 1.4 关键实体永不截断
+### 1.4 关键实体永不截断 + 大小预留 (Critical Entity Size Reserve)
 
 以下实体被标记为 **critical**，截断过程**绝不**触及：
 
@@ -89,7 +93,9 @@
 | 己方所有 drone | 同玩家多 drone 必须完全可见 |
 | 正在攻击自身的实体 | 防御决策必需 |
 
-实现方式：关键实体在排序时置于不可截断前缀，截断游标不得越过此前缀。
+**Critical Entity Size Reserve**：引擎为关键实体预留固定的截断预算——关键实体总大小不得超过 `critical_entity_reserve = 128KB`（256KB 总额的 50%）。若关键实体超过此预留，按确定性优先级截断自身内部字段（如 entity 的 `full_snapshot` → `position_only` → `id_only`），但 entity 自身不被完全移除。
+
+实现方式：关键实体在排序时置于不可截断前缀，截断游标不得越过此前缀。关键实体内部降级按 `(entity_priority_bucket, last_modified_tick DESC, entity_id)` 排序。
 
 ### 1.5 竞技世界截断降级
 
