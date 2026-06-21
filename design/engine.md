@@ -455,7 +455,7 @@ actual_reduction = min(total_reduction, global_cap)
 #### 3.4.7 FDB 写入策略
 
 - FDB 存 head/manifest/hash/pointer——小事务推进 world head
-- 大型 TickTrace/keyframe 进入对象存储或 append-only log
+- 大型 RichTraceBlob/keyframe 进入对象存储或 append-only log
 - 每 K=100 tick 写入一次 keyframe，其余 tick 写入 delta
 - 每日写入预算：按 target load 估算（非 16MB/tick 全量写入）
 - `state_checksum`：覆盖 WorldState + mod_state/action_log + tick_metrics + config hash + manifest pointer
