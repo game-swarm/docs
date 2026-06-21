@@ -71,10 +71,10 @@ neutral ──Claim──→ reserved ──RCL 1──→ owned ←──→ co
                             ▼
                  ┌──────────────────────────────────┐
                  │     阶段二：执行 (EXECUTE)          │
-                 │  硬超时天花板: 500ms                │
-                 │  (budget target 见                  │
-                 │   design/engine.md §3.4.1:          │
-                 │   World ≤400ms, Arena ≤50ms)        │
+                 │  EXECUTE 在 COLLECT+EXECUTE        │
+                 │  总预算下运行，不独立超时            │
+                 │  (World ≤400ms、Arena ≤50ms        │
+                 │   仅为性能目标，非硬超时)            │
                  │  ┌─────────────────────────┐     │
                  │  │ Phase 2a: 命令循环        │     │
                  │  │ 逐条校验 + 逐条应用       │     │
@@ -827,7 +827,7 @@ assert_eq!(replayed.entity_count, recorded.entity_count);
 | **COLLECT** | Host function calls | 1000/tick | 第 1001 次返回错误 | ❌ |
 | **COLLECT** | `host_path_find` calls | 10/tick + 100,000 explored_nodes 总额度 | 超限 → deterministic fail | ❌ |
 | **COLLECT** | Output JSON | 256 KB | 整批丢弃（不保留前缀，不执行已解析指令） | ❌ |
-| **EXECUTE** | wall-clock total | `tick_soft_deadline_ms` 内完成 | 软截止前必须完成（EXECUTE 不单独超时，由 COLLECT+EXECUTE 总预算控制） | — |
+| **EXECUTE** | wall-clock total | `tick_soft_deadline_ms` 内完成 | 软截止前必须完成（EXECUTE 不独立超时，由 COLLECT+EXECUTE 总预算控制，详见 §8.1 `tick_hard_deadline_ms`）。World ≤400ms / Arena ≤50ms 仅为性能目标，非硬超时。 | — |
 | **EXECUTE** | FDB retry count | 3 次 | 第 4 次失败 → tick 放弃 | ✅ 全额退还 |
 | **EXECUTE** | COLLECT 缓存跨重试 | 复用首次 COLLECT 结果 | 不重新执行 WASM，fuel 不追加扣费 | — |
 | **BROADCAST** | wall-clock | 无硬限制（异步发布） | Dragonfly/NATS 失败不影响已持久化 tick | — |

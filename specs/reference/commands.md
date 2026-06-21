@@ -171,7 +171,7 @@ WASM 模块通过 `tick(snapshot) → CommandIntent[]` JSON 返回指令。
 ### Overload
 消耗目标 fuel budget。必须满足可见性约束——仅可攻击可见玩家。
 ```json
-{ "sequence": 18, "action": { "type": "Overload", "object_id": "d1", "target_id": "e5" } }
+{ "sequence": 18, "action": { "type": "Overload", "object_id": "d1", "target_id": 42 } }
 ```
 - 校验：drone 有 RANGED_ATTACK body part，目标玩家可见（`is_visible_to`），fatigue = 0
 - 效果：target fuel -500k，下限 MAX_FUEL×0.2。全局冷却：同一目标每 50 tick 最多被 Overload 一次（不限攻击者数量）。反馈通过 `OverloadPressure` 组件暴露（见 `design/gameplay.md` §Overload 反馈透明度）

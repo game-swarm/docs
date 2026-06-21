@@ -73,8 +73,10 @@
 |------|-----|------|------|
 | **Global Transfer** | | | |
 | `global_deposit_fee` | 100 | bp | 存入全局仓库费率 (1.00%) |
+| `global_deposit_fee` | 100 | bp | 存入全局仓库费率 (1.00%) |
 | `global_withdraw_fee` | 500 | bp | 提取费率 (5.00%) |
-| `global_transfer_delay` | 100 | tick | 全局提取延迟 |
+| `global_deposit_delay` | 10 | tick | 全局存入延迟（资源锁定，不可立即使用） |
+| `global_withdraw_delay` | 100 | tick | 全局提取延迟 |
 | **Allied Transfer** | | | |
 | `allied_transfer_fee` | 200 | bp | 联盟转移费率 (2.00%) |
 | `allied_transfer_delay` | 200 | tick | 联盟转移延迟 |
