@@ -698,38 +698,71 @@ mcp_tools:
       rate_limit_key: per_player
 
     # =========================================================================
-    # Auth (2 tools)
+    # Auth (3 tools) — R33 B4 证书链模型
     # =========================================================================
-    - name: swarm_auth_login
+    - name: swarm_register_challenge
       category: Auth
-      input_schema:
-        credential: Credential
-        challenge_response: string
+      input_schema: {}
       output_schema:
-        token: string
-        expiry: u64
-        scope: string
-        player_id: PlayerId
+        challenge_id: string
+        challenge: string
+        difficulty_bits: u32
+        expires_at: u64
       rate_limit: "10/min"
-      required_scope: "swarm:auth"
+      required_scope: "none"
       subject_source: none
       replay_class: non_replayable
       visibility_filter: none
       rate_limit_key: per_ip
+      schema_source: auth_api
+      alias_of: auth_api.swarm_register_challenge
+      notes: "R33 B4: CSR 注册 PoW challenge"
 
-    - name: swarm_auth_refresh
+    - name: swarm_submit_csr
       category: Auth
       input_schema:
-        token: string
+        username: string
+        csr: string
+        certificate_profile: string
+        device_label: string
+        challenge_id: string
+        nonce: string
+        csr_signature: string
+        email: string?
+        recovery_password: string?
       output_schema:
-        token: string
-        expiry: u64
-      rate_limit: "5/min"
+        certificate_bundle: CertificateBundle
+      rate_limit: "1/30s"
+      required_scope: "none"
+      subject_source: none
+      replay_class: non_idempotent_mutation
+      visibility_filter: none
+      rate_limit_key: per_ip
+      schema_source: auth_api
+      alias_of: auth_api.swarm_submit_csr
+      notes: "R33 B4: CSR 提交 + 证书签发"
+
+    - name: swarm_cert_check
+      category: Auth
+      input_schema:
+        certificate_id: string
+      output_schema:
+        valid: bool
+        player_id: PlayerId
+        usage: string
+        scope: string
+        audience: string
+        expires_at: u64
+        revoked: bool
+      rate_limit: "100/min"
       required_scope: "swarm:auth"
       subject_source: player_id
-      replay_class: non_replayable
+      replay_class: read_replay_safe
       visibility_filter: owner
       rate_limit_key: per_player
+      schema_source: auth_api
+      alias_of: auth_api.swarm_cert_check
+      notes: "R33 B4: 证书验证"
 
     # =========================================================================
     # Play (14 tools)
