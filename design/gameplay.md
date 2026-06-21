@@ -767,8 +767,8 @@ Corrosive = 1.5        # 建筑怕腐蚀
 | **Debilitate** | Work | 给目标附加易伤状态。指定伤害类型抗性 ×2，持续 50 tick | 150 tick | 200 Energy | 目标 `Corrosive` 抗性 |
 | **Disrupt** | Attack | 打断目标当前动作（Drain/Hack 等持续动作立即终止）。不造成 HP 伤害 | 50 tick | 100 Energy | 目标 `Sonic` 抗性 |
 | **Fortify** | Tough | 自身/友方获得护盾（所有抗性 ×0.5）。**同时清除目标所有负面状态**（Debilitate/Drain/Overload/Hack控制锁），持续 100 tick | 300 tick | 400 Energy | 无——增益+净化 |
-| **Leech** | Attack | 吸血攻击。通过 `[[custom_actions]]` 注册 | — | — | — |
-| **Fabricate** | Work | drone→建筑转化。通过 `[[custom_actions]]` 注册 | — | — | — |
+| **Leech** | Attack | 吸血攻击：对目标造成 Kinetic 伤害，伤害量的 50% 转化为自身 HP 恢复。受目标 Kinetic 抗性影响 | 150 tick | 300 Energy | 目标 `Kinetic` 抗性 |
+| **Fabricate** | Work | drone→建筑转化：将敌方 drone 转化为己方结构（Tower/Storage/Wall），需持续 channel 5 tick，期间 drone immobile。channel 中断 → 失败退款 50% | 500 tick | 800 Energy | 目标 `EMP` 抗性 |
 
 **渐进解锁 (Progressive Unlock)**：特殊攻击依据世界难度层级渐进解锁——
 
@@ -1000,29 +1000,12 @@ Move、Attack、Harvest 等每个 action 在 snapshot 和 replay 中保留完整
 # world.toml — 自定义 CommandAction（需引擎编译时注册）
 
 [[custom_actions]]
-name = "Leech"
-description = "吸血攻击——造成伤害并治疗自身 50%"
-damage_type = "Corrosive"
-base_damage = 15
-range = 1
-special_effect = "heal_self"
-special_param = 0.5
-
-[[custom_actions]]
 name = "Scramble"
 description = "扰乱——随机重排目标下一 tick 的指令执行顺序"
 range = 3
 special_effect = "scramble_commands"
 cooldown = 100
 cost = { Energy = 400 }
-
-[[custom_actions]]
-name = "Fabricate"
-description = "转化——将敌方 drone 转化为己方建筑"
-range = 1
-special_effect = "convert_to_structure"
-cooldown = 500
-cost = { Energy = 2000, Matter = 500 }
 ```
 
 **注册流程**：
