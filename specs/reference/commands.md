@@ -112,9 +112,9 @@ WASM 模块通过 `tick(snapshot) → CommandIntent[]` JSON 返回指令。
 - 延迟：N tick 到账（默认 5），5% 手续费
 
 ### Recycle
-回收 drone，退还 lifespan-proportional 比例（10%–50%）body part 资源。**权威公式见 [API Registry](api-registry.md) §10 Canonical Formulas**。
+回收自身，退还 lifespan-proportional 比例（10%–50%）body part 资源。Recycle 为 self-action（仅 `object_id`，无 `target_id`）。**权威公式见 [API Registry](api-registry.md) §10 Canonical Formulas**。
 ```json
-{ "sequence": 12, "action": { "type": "Recycle", "object_id": "d1", "target_id": "d1" } }
+{ "sequence": 12, "action": { "type": "Recycle", "object_id": "d1" } }
 ```
 - 校验：drone 在 Spawn 1 格内
 - 退还：`max(1000, remaining_lifespan × 5000 / total_lifespan) bp × body_cost / 10000`（范围 10%–50%）

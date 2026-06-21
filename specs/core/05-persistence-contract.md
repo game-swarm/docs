@@ -33,7 +33,12 @@
 
 ### 2.1 TickCommitRecord Fields（FDB 原子提交 — 不可降级）
 
-以下 10 个字段组成 TickCommitRecord，随每 tick FDB **同一事务**原子提交。缺失任一则 tick 不可 replay：
+以下 10 个字段组成 TickCommitRecord，随每 tick FDB **同一事务**原子提交。缺失任一则 tick 不可 replay。
+
+**三层分离声明：**
+- **deterministic_replay**：仅需 FDB 中 TickCommitRecord 的 10 个字段 + keyframe/delta chain。对象存储中的任何数据均非 replay 必需。
+- **rich_debug_replay**：RichTraceBlob（可选，存储于对象存储）。缺失 → `terminal_state = audit_gap`（审计记录缺失，可从相邻 tick/keyframe 重建）。
+- **WASM module blob**：对象存储中的 WASM 二进制。**非 replay-critical**。缺失 → 安全审计 gap（无法验证玩家提交的 WASM bytecode 与部署时一致），**绝非** `unreplayable`——FDB manifest 中的 `module_hash` + `fdb_version_counter` 足够完成确定性 replay。
 
 | # | 字段 | 存储位置 | 用途 |
 |---|------|---------|------|
@@ -53,6 +58,8 @@
 ### 2.2 Debug/Rich（对象存储异步写入 — 可降级）
 
 **Object Store 仅承载 RichTraceBlob**。对象存储中不存放 replay-critical 数据。对象存储写入失败仅导致 `terminal_state = audit_gap`（审计记录缺失，游戏状态可从相邻 tick 重建），**绝不会**导致 `unreplayable`——FDB 中 TickCommitRecord 的 10 个字段足够完成确定性 replay。
+
+> **WASM 模块 blob 非 replay-critical（D6）**：WASM 模块二进制文件存储在对象存储中，其可用性不影响确定性 replay。Replay verifier 仅使用 FDB 中的 TickCommitRecord（含 `commands`、`canonical_codec_version`、`manifest_hash` 等 10 字段）重放，不重新执行 WASM 模块。WASM 模块 blob 缺失只影响 rich audit/debug 路径——deploy 的 `deploy_activation_decision` 已在 FDB 清单中通过 `module_hash` + `fdb_version_counter` 完整记录激活决策，replay 不需要原始 WASM 字节。
 
 以下字段写入对象存储 blob，缺失不影响 deterministic replay：
 
@@ -345,6 +352,8 @@ TickCommitRecord {
 
 > **R23 D6/B 裁决**：FDB room-partition transaction 纳入 Phase 1 合同。单事务 MVP 仅支持小规模验证；500/1000-player 场景必须使用 room-level partition。
 
+> **R32 B1**：模型从「per-room 独立 FDB commit + 全局回滚」升级为「shadow write + atomic publish」。Per-room 写入目标为 `/staging/{tick}/{room}`——staging 行不是已提交状态。GlobalTickCommit 是唯一的 publish 点，将 staging 行原子提升为 `/committed/` 路径。所有下游读取仅走 `/committed/`。Staging 孤立行由 GC 清理（< 15s）。详见 `specs/core/01-tick-protocol.md` §3.5。
+
 ### 8.1 分区策略
 
 ```
@@ -355,23 +364,29 @@ TickCommitRecord {
   
 Room-Partition (500+ players):
   适用: > 50 active players 或 > 100 rooms
-  策略: 每个 room 独立 FDB 事务分区
-  Key layout: /swarm/{shard}/{room_id}/{tick}/{...}
-  Conflict range: per-room transaction 不跨 room 冲突
-  Cross-room operations: 2-phase commit（source room → target room）
+  策略: 每个 room 独立 FDB 事务写入 staging 区
+  Key layout:
+    /staging/{tick}/{room_id}/state   → 房间状态 delta（非 committed——仅 GlobalTickCommit 可见）
+    /staging/{tick}/{room_id}/events  → 房间内事件
+    /committed/head/{tick}            → global tick head（唯一 publish 点）
+    /committed/manifest/{tick}        → room hashes + cross-room intent log
+  Conflict range: per-room staging transaction 不跨 room 冲突
+  Cross-room operations: 在 staging 写入后、GlobalTickCommit 中统一裁决——全或无
+  GC: staging 孤立行每 10s 扫描清理（检查 /committed/head/{tick} 是否存在）
 ```
 
 ### 8.2 实现约束
 
-| 约束 | 单事务 MVP | Room-Partition |
+| 约束 | 单事务 MVP | Room-Partition (Shadow Write) |
 |------|-----------|---------------|
-| FDB 事务大小 | 单 tick < 10KB | 每 room < 2KB |
+| FDB 事务大小 | 单 tick < 10KB | 每 room staging < 2KB |
 | 对象存储异步写入超时 | 5s；3 次重试 | 5s；3 次重试 |
 | 对象存储读取 | 延迟 < 100ms p99 | 不变 |
 | Keyframe 写入 | 异步，不阻塞 tick 循环 | 不变 |
 | WAL 写入 | 同步 | per-room WAL |
 | 内存 buffer | RichTraceBlob 10MB max | 不变 |
-| Cross-room conflict | N/A | 全局 tick 原子 — 跨房间操作在内存中完成，commit 为全或无。不存在 per-room 独立推进或 best-effort 语义 |
+| Cross-room conflict | N/A | Staging 写入成功 + GlobalTickCommit 原子 publish → 全或无。不存在 per-room 独立推进或 best-effort 语义 |
+| Staging GC | N/A | GC worker 每 10s 清理孤立 staging 行（最大残留 < 15s）
 
 ### 8.3 Synthetic Benchmark 要求
 

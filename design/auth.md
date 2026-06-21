@@ -345,15 +345,15 @@ Dragonfly nonce 仅用于 `read_replay_safe` 和 `idempotent_mutation`。所有 
 
 #### MCP/REST 方法授权矩阵
 
-每个 MCP 方法必须标注以下维度：
+每个 MCP 方法必须标注以下维度。**Admin category 的权威 per-tool rate limit 以 [API Registry §3.2](../reference/api-registry.md#32-game-api-工具清单-57) 和 §3.1 通用 Rate Limit 表为准**——本表仅作权限模型示例，不得声明可冲突的 admin rate limit 数值。
 
 | 方法 | Replay Class | Required Scope | Rate Limit | Visibility Filter | Admin Override |
 |------|-------------|----------------|------------|-------------------|----------------|
 | `swarm_get_snapshot` | read_replay_safe | swarm:read | 10/s | fog_of_war | no |
 | `swarm_deploy` | deploy_mutation | swarm:deploy | 1/5s | owner | no |
 | `swarm_submit_csr` | non_idempotent_mutation | swarm:register | 1/30s | none | no |
-| `swarm_revoke_certificate` | admin_critical | swarm:admin | 1/10s | admin scope | required |
-| `swarm_admin_create_password_reset` | admin_critical | swarm:admin:recovery | 1/60s | admin scope | dual-audit |
+| `swarm_revoke_certificate` | admin_critical | swarm:admin | admin（见 API Registry） | admin scope | required |
+| `swarm_admin_create_password_reset` | admin_critical | swarm:admin:recovery | admin（见 API Registry） | admin scope | dual-audit |
 
 完整矩阵见 `interface.md` MCP 工具表。
 
@@ -811,7 +811,7 @@ WebSocket 连接按客户端类型分为两条安全路径：
   5. 建立认证 WebSocket → 会话绑定 (cert_id, player_id, current_tick)
   6. 后续每条消息必须携带 per-message seq + MAC/Ed25519 签名
      - seq: 单调递增（每方向独立），接收方严格检查 `seq == last_seq + 1`
-     - MAC: 对 `SWARM-WS-MSG-V1\n<seq>\n<tick>\n<body_hash>` 的 Ed25519 签名
+     - MAC: 对 `SWARM-WS-MSG-V1\n<direction>\n<session_id>\n<seq>\n<tick>\n<body_hash>` 的 Ed25519 签名
      - **tick 绑定**：MAC payload 必须包含当前 tick 编号——防止跨 tick 消息重放
      - seq 跳跃或 MAC 不匹配 → 断开连接 + 审计日志
   7. 服务端回复也附独立 seq + 签名
@@ -820,7 +820,7 @@ WebSocket 连接按客户端类型分为两条安全路径：
 WebSocket 断开后需重新握手。会话内消息不计入 per-tick rate limit（握手时已完成身份绑定）。
 
 - `seq`: 单调递增序号（从 1 开始），接收方严格检查 `seq == last_seq + 1`
-- `mac`: 对 `SWARM-WS-MSG-V1\n<seq>\n<body_hash>` 的 Ed25519 签名，使用握手绑定的用户私钥
+- `mac`: 对 `SWARM-WS-MSG-V1\n<direction>\n<session_id>\n<seq>\n<tick>\n<body_hash>` 的 Ed25519 签名，使用握手绑定的用户私钥
 - 签名验证通过后消息才能被处理；seq 跳跃视为安全事件 → 断开连接 + 审计日志
 - 服务端回复也必须附 seq（独立计数器）+ 服务端签名
 
@@ -877,16 +877,16 @@ Admin MCP tools 的 input schema 必须显式包含 `admin_certificate_id`、`ad
 
 ##### CSR Admission Control（多维防护）
 
-CSR 提交使用**多层 admission control**，PoW 为第一层成本过滤，不替代速率限制：
+CSR 提交使用**多层 admission control**，PoW 为第一层成本过滤，不替代速率限制。**权威准入参数以 §5.2「多层准入链」表格为准——本节仅引用和补充，不重新声明可冲突的数值。**
 
 | 层 | 机制 | 限制 | 说明 |
 |----|------|------|------|
 | **L1: PoW** | Blake3 brute-force | 可配置难度（默认 24 bits） | 第一层成本过滤——提高单次 CSR 成本，不限制并发度 |
-| **L2: Per-IP rate limit** | Token bucket | 10/min per IP | 单 IP CSR 提交速率上限 |
-| **L3: Per-ASN rate limit** | Token bucket | 50/min per ASN | 同一 ASN 的分布式攻击防御 |
-| **L4: Global in-flight cap** | Semaphore | 100 并发 CSR signing | 全局并发 CSR 签发上限 |
-| **L5: Worker semaphore + bounded queue** | Semaphore + timeout | queue depth=500, queue timeout=30s | CSR signing worker pool 饱和时排队，超时返回 `rate_limited` |
-| **L6: Audit throttle** | 异常检测 | 连续超限 → 熔断 | 连续 3 次触发 L4/L5 限流后，该来源 5min 内所有 CSR 直接拒绝 |
+| **L2: Per-IP rate limit** | Token bucket | ≤ 1/30s（见 §5.2 权威表） | 单 IP CSR 提交速率上限 |
+| **L3: Per-ASN rate limit** | Token bucket | ≤ 10/min（见 §5.2 权威表） | 同一 ASN 的分布式攻击防御 |
+| **L4: Global semaphore** | Semaphore | ≤ min(cpu_cores, 4)（见 §5.2 权威表） | 全局并发 CSR 验证上限 |
+| **L5: Bounded queue** | Queue | queue depth ≤ 100（见 §5.2 权威表） | 排队满时返回 `ERR_CSR_QUEUE_FULL` |
+| **L6: Audit throttle** | 异常检测 | 同 username 连续失败 ≥ 5 → 冷却 300s（见 §5.2 权威表） | 防止暴力枚举用户名 |
 
 **设计理由**：PoW 是 per-request 成本，对分布式来源（云 VM、僵尸网络）不构成有效的速率控制——攻击者可利用并行计算优势绕过 PoW 难度。多维 admission control 按实体（IP/ASN）和全局资源（semaphore/queue）限制并发，PoW 作为基础成本层防止无成本滥用。
 

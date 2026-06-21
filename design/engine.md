@@ -266,10 +266,12 @@ Swarm:     Move = Action  → 每 tick 移动 OR 采集 OR 攻击 OR 建造
 2. 相同的 Command 输入（已排序，canonical order 见 [interface.md §4](interface.md)）
 3. ECS System 执行顺序固定（见 [Complete Tick Execution Manifest](specs/core/06-phase2b-system-manifest.md)，31 systems，R30 B1）
 4. 所有随机数来自确定种子 PRNG——shuffle seed 公式 `Blake3("shuffle" || world_seed || tick.to_le_bytes())`；per-entity stream seed `Blake3(stream_name || world_seed || entity_id.to_le_bytes() || tick.to_le_bytes())`
+5. **确定性数据结构**：`ResourceRegistry`、entity 迭代、player 列表等需要确定性键排序的场景使用 `BTreeMap`（标准库全序排列，跨平台一致迭代顺序）。`IndexMap` 保留用于有序资源类型等插入顺序确定的场景。禁止 `std::HashMap`（迭代顺序跨运行非确定）。
 
 **回放输入封套**（`TickInputEnvelope`，每 tick 持久化）：
 - `collect_id`（Blake3, R16 B3 新增）, `attempt_id`（u32, R16 B3 新增）, `commit_id`（Blake3, R16 B3 新增）
 - `module_hash`, `wasmtime_version`, `effective_tick`
+- `fuel_schedule_version`, `host_cost_table_version`（R32 B9 新增 — WASM fuel metering 版本对齐）
 - `wasm_status`（ok/timeout/trap/fuel_exhausted）
 - `snapshot_hash`, `commands_hash`（canonical order）
 - `deploy_events`, `rollback_events`, `admin_events`
@@ -321,7 +323,7 @@ Swarm:     Move = Action  → 每 tick 移动 OR 采集 OR 攻击 OR 建造
 每 tick 的总 WASM CPU 预算由 tick budget 和活跃玩家数共同决定：
 
 ```
-aggregate_cpu_budget = floor(TICK_BUDGET_COLLECT_MS × CPU_CORES × PER_CORE_MIPS)
+aggregate_cpu_budget = floor(TICK_BUDGET_COLLECT_MS × CPU_CORES × PER_CORE_FUEL_RATE)
 per_player_cpu_quota = floor(aggregate_cpu_budget / active_players)
 effective_per_player_quota = min(per_player_cpu_quota, MAX_FUEL)
 ```
@@ -329,8 +331,11 @@ effective_per_player_quota = min(per_player_cpu_quota, MAX_FUEL)
 其中：
 - `TICK_BUDGET_COLLECT_MS` = 2500ms（见 §3.4.1 COLLECT budget）
 - `CPU_CORES` = 引擎可用 CPU 核心数（默认 `num_cpus::get()`）
-- `PER_CORE_MIPS` = 每核每秒 Million Instructions（保守估算 ~500 MIPS/core）
-- `MAX_FUEL` = 10,000,000 fuel units（per-player hard cap）
+- `PER_CORE_FUEL_RATE` = 每核每秒 wasmtime fuel units（保守估算 ~500M fuel/s per core，对应 wasmtime 默认 fuel 计量。详见 wasmtime `Store::fuel_consumed`）
+- `MAX_FUEL` = 10,000,000 wasmtime fuel units（per-player hard cap）
+- `fuel_schedule_version`：Wasmtime `FuelCostingSchedule` 版本标识符，与 `host_cost_table_version` 一起写入 TickCommitRecord。引擎启动时通过 `wasmtime::Config::consume_fuel(true)` 启用 fuel metering。host function cost 表版本随 engine ABI version 更新，确定性 replay 需匹配相同版本。
+
+> **fuel 语义**：fuel 是 wasmtime fuel units（非 CPU instructions 或真实时间）。wasmtime 按指令权重累加 fuel，`fuel_consumed()` 返回消耗量。host function 调用有独立 cost（engine 侧 `add_fuel()`），总计入 per-tick quota。WASM 执行中 fuel 耗尽 → 立即 trap（`fuel_exhausted`），完整输出丢弃，不计 refund。fuel 计量在 WASM 实例边界内——不同 wasmtime 版本/配置的 fuel 消耗不可直接比较（需 `fuel_schedule_version` 对齐）。
 
 **Admission 决策**：每个玩家 WASM 执行时，其 fuel budget = `min(effective_per_player_quota, player_reserved_fuel)`。若 `effective_per_player_quota < MIN_FUEL`（默认 500,000），引擎拒绝新玩家 WASM 执行（`ERR_CPU_SATURATED`），已入玩家不受影响。此机制防止 CPU 过载扩散到已连接的活跃玩家。
 
@@ -390,10 +395,11 @@ Worker pool 水平可扩展——运营商根据 active_players 调整 worker_po
 ```
 1000 players × 5ms avg = 5000ms > Collect budget (2500ms)
   → 依赖并行 worker pool 分摊
-  → 假设 1000 workers，p50=5ms，理论 peak = 5000ms 但并行化为 ~25ms wall-clock (1000 workers / 40 cores)
+  → 假设 1000 workers，p50=5ms，理论 peak = 5000ms 但并行化为 ~125ms wall-clock（1000 × 5ms / 40 cores）
   → 实际操作: snapshot stitching + dispatch overhead ≈ 500ms
-  → 余量: 2500ms - 500ms = 2000ms for execution
-  → 每玩家可用时间 = 2000ms / 1000 = 2ms (fuel throttled)
+  → 总 wall-clock: 125ms (WASM 执行) + 500ms (overhead) = 625ms
+  → 余量: 2500ms - 625ms = 1875ms
+  → 每玩家可用 CPU 预算 = 1875ms × 40 / 1000 ≈ 75ms aggregate（实际 fuel 分配见 Aggregate CPU Admission Formula）
   → 1000 = hard cap（引擎在此负载下仍可保证 tick 完成，但 per-player fuel 极度受限）
 ```
 

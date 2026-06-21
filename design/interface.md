@@ -16,7 +16,7 @@ AI：  MCP 看世界 → 生成 WASM → 部署 ───┘
 
 ### 4.1 MCP 工具分类
 
-> **权威工具清单见 [API Registry](specs/reference/api-registry.md) §3** — 56 game tools + 11 auth tools.
+> **权威工具清单见 [API Registry](specs/reference/api-registry.md) §3** — 57 game tools + 11 auth tools.
 >
 > 以下为**概念分类概述**，不列完整表。所有工具的 canonical schema、replay_class、rate_limit、security columns 以 Registry 为准。本表仅作方向性说明，不得用于实现引用。
 

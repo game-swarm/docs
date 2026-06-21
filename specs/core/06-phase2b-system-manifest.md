@@ -217,7 +217,7 @@ Canonical key 归约：S15 对 `PendingDamage[target_id]` 和 `PendingHeal[targe
 - **Reads**: PendingDamage buffer (from S11-S13), Entity (armor, resistances)
 - **Writes**: Entity (hits), DeathMark (if hits ≤ 0)
 - **Must run after**: S11, S12, S13, S14
-- **Filter**: `Without<SpawningGrace>` — 跳过出生保护中的实体。
+- **Filter**: `Without<SpawningGrace>` — 跳过出生保护中的实体。**注意**: S15 亦需 `Without<DeathMark>` guard —— 已标记死亡的实体不应再接收伤害/治疗。此 guard 防止 S07-S08 区间的 DeathMark 实体因并行 race 被重复伤害应用。
 
 ### S16-S22b: Status Effect Buffer Production (Parallel Set B)
 
@@ -400,9 +400,9 @@ S22 `status_advance_system` 迭代实体顺序：`sorted(entities_with_active_st
 | **S08 spawn** | W | W | - | W | W | W | - | W | - | - | - | - | - | - |
 | **S09 spawn_grace** | - | - | - | - | - | - | - | - | W | - | - | - | - | - |
 | **S10 regen** | - | W | - | - | - | - | - | - | - | - | - | - | - | - |
-| **S11 atk** | R | W | - | - | - | - | - | R | R | - | - | - | - | - |
-| **S12 rng_atk** | R | W | - | - | - | - | - | R | R | - | - | - | - | - |
-| **S13 heal** | R | W | - | - | - | - | - | R | R | - | - | - | - | - |
+| **S11 atk** | R | - | - | - | - | - | - | R | R | - | - | - | - | - |
+| **S12 rng_atk** | R | - | - | - | - | - | - | R | R | - | - | - | - | - |
+| **S13 heal** | R | - | - | - | - | - | - | R | R | - | - | - | - | - |
 | **S14 spec_atk_red** | - | - | - | - | - | - | - | R | - | - | **R** | - | **R** | - |
 | **S15 dmg_apply** | - | W | - | - | - | - | W | - | R | - | - | - | - | - |
 | **S16 hack_buf** | - | - | - | - | - | - | - | R | - | - | - | **W** | **R** | - |

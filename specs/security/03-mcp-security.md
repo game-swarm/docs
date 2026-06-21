@@ -160,7 +160,7 @@ WebSocket 连接按客户端类型分为两条安全路径：
 连接建立时通过 §10.5a WebSocket 证书握手完成身份绑定。会话建立后，**每条消息必须携带递增序列号 + MAC/Ed25519 签名**，防止会话内消息重放、注入或重排。具体要求：
 
 - `seq`: 单调递增序号（从 1 开始），接收方严格检查 `seq == last_seq + 1`
-- `mac`: 对 `SWARM-WS-MSG-V1\n<seq>\n<body_hash>` 的 Ed25519 签名，使用握手绑定的用户私钥
+- `mac`: 对 `SWARM-WS-MSG-V1\n<direction>\n<session_id>\n<seq>\n<tick>\n<body_hash>` 的 Ed25519 签名，使用握手绑定的用户私钥
 - 签名验证通过后消息才能被处理；seq 跳跃视为安全事件 → 断开连接 + 审计日志
 - 服务端回复也必须附 seq（独立计数器）+ 服务端签名
 
