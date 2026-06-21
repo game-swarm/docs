@@ -73,7 +73,6 @@
 |------|-----|------|------|
 | **Global Transfer** | | | |
 | `global_deposit_fee` | 100 | bp | 存入全局仓库费率 (1.00%) |
-| `global_deposit_fee` | 100 | bp | 存入全局仓库费率 (1.00%) |
 | `global_withdraw_fee` | 500 | bp | 提取费率 (5.00%) |
 | `global_deposit_delay` | 10 | tick | 全局存入延迟（资源锁定，不可立即使用） |
 | `global_withdraw_delay` | 100 | tick | 全局提取延迟 |
