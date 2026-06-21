@@ -450,6 +450,51 @@ canonical_request_signature:
     wasm-sdk: "WASM SDK (deploy, code signing)"
 
 # =============================================================================
+# 4a. Deploy Canonical Signature — SWARM-DEPLOY-V1 (R34 CV-B3)
+# =============================================================================
+deploy_canonical_signature:
+  description: >
+    Deploy-specific canonical Ed25519 signature payload. Extends SWARM-REQUEST-V1
+    with deploy-specific fields for certificate binding, replay protection, and
+    module integrity verification. Signed by CodeSigningCertificate private key.
+
+  signature_payload:
+    format: "SWARM-DEPLOY-V1\nmethod: swarm_deploy\npath: /deploy\nbody_hash: <v>\ntimestamp: <v>\nnonce: <v>\ncertificate_id: <v>\nplayer_id: <v>\naudience: <v>\ndeploy_id: <v>\nmodule_hash: <v>\nfdb_version_counter_predicted: <v>\n"
+    fields:
+      - "method: swarm_deploy"
+      - "path: /deploy"
+      - "body_hash: blake3 of WASM module bytes + metadata"
+      - "timestamp: unix_ms"
+      - "nonce: random 128-bit hex"
+      - "certificate_id: CodeSigningCertificate cert_id"
+      - "player_id: deploying player"
+      - "audience: swarm-aud-v1:wasm-sdk:<server_id>:<world_id>:<player_id>"
+      - "deploy_id: unique deploy identifier (server-generated, returned on accept)"
+      - "module_hash: blake3 of WASM module bytes"
+      - "fdb_version_counter_predicted: expected FDB counter value for anti-replay"
+    encoding: "UTF-8, LF line endings, no BOM"
+    algorithm: Ed25519
+
+  validation:
+    - "1. Certificate is CodeSigningCertificate, not expired, not revoked"
+    - "2. SWARM-DEPLOY-V1 signature verifiable by cert's Ed25519 public key"
+    - "3. module_hash matches actual WASM module bytes"
+    - "4. deploy_id is unique (not previously consumed)"
+    - "5. fdb_version_counter_predicted matches or is within allowed skew"
+    - "6. Timestamp within window (default 60s), nonce not consumed"
+    - "7. audience matches server + world + player"
+
+  replay_protection:
+    mechanism: "FDB version_counter + deploy_id uniqueness"
+    description: >
+      Deploy replay protection uses FDB atomic version_counter increment,
+      not Dragonfly nonce. The predicted counter is signed into the deploy
+      payload; server validates counter prediction, atomically bumps FDB
+      counter, and accepts only if prediction matches. Combined with
+      deploy_id uniqueness, this guarantees idempotent single-accept
+      semantics across server restarts.
+
+# =============================================================================
 # 5. RejectionReason — 12 canonical auth codes
 # =============================================================================
 rejection_reason:
