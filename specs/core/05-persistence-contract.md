@@ -371,7 +371,7 @@ Room-Partition (500+ players):
 | Keyframe 写入 | 异步，不阻塞 tick 循环 | 不变 |
 | WAL 写入 | 同步 | per-room WAL |
 | 内存 buffer | RichTraceBlob 10MB max | 不变 |
-| Cross-room conflict | N/A | 2PC，超时 3s，fallback to best-effort |
+| Cross-room conflict | N/A | 全局 tick 原子 — 跨房间操作在内存中完成，commit 为全或无。不存在 per-room 独立推进或 best-effort 语义 |
 
 ### 8.3 Synthetic Benchmark 要求
 
