@@ -610,7 +610,9 @@ refund_pct = max(0.1, 0.5 × (remaining_lifespan / total_lifespan))
  **Debilitate** | `object_id.owner == player_id` | `object_id` 距 `target_id` ≤ 3 | N/A | Energy ≥ 200 (消耗) | N/A | `drone.body` 含 `Work`, target 非己方, `damage_type` ∈ DamageType 枚举, 无同类型叠加, `fatigue==0`, 冷却未到 |
  **Disrupt** | `object_id.owner == player_id` | `object_id` 距 `target_id` ≤ 1 | N/A | Energy ≥ 100 (消耗) | N/A | `drone.body` 含 `Attack`, target 非己方且为 Drone, `fatigue==0`, 冷却未到 |
  **Fortify** | `object_id.owner == player_id` | `object_id` 距 `target_id` ≤ 1 | N/A | Energy ≥ 400 (消耗) | N/A | `drone.body` 含 `Tough`, target 为己方/盟友, `fatigue==0`, 冷却未到 |
- **ClaimController** | `object_id.owner == player_id` | `object_id` 距 `target_id` ≤ 1 | N/A | N/A | N/A | `drone.body` 含 `Claim`, target 是 Controller |
+ | **Leech** | `object_id.owner == player_id` | `object_id` 距 `target_id` ≤ 1 | N/A | Energy ≥ 300 (消耗) | N/A | `drone.body` 含 `Attack`, target 非己方, `fatigue==0`, 冷却未到。damage_type=Corrosive, base_damage=15, heal=self 50%。canonical 参数见 special-attack-table.md |
+ | **Fabricate** | `object_id.owner == player_id` | `object_id` 距 `target_id` ≤ 1 | N/A | Energy ≥ 2000 + Matter ≥ 500 (消耗) | N/A | `drone.body` 含 `Work`+`Carry`, target 非己方且为 Drone, `fatigue==0`, 冷却未到。5-tick channel（可被 Disrupt 打断）。canonical 参数见 special-attack-table.md |
+ | **ClaimController** | `object_id.owner == player_id` | `object_id` 距 `target_id` ≤ 1 | N/A | N/A | N/A | `drone.body` 含 `Claim`, target 是 Controller |
 
 > **批级与系统级校验**（在逐指令校验之上）：  
 > - **JSON 大小**：单条指令 ≤ 64KB，整批（tick 输出）≤ 256KB（与 §1 Tick 输出 JSON Schema 一致）  

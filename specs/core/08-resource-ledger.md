@@ -191,6 +191,24 @@ PvE 资源产出通过 4 维账本控制，防止 faucet 无限放大：
 - 超出部分不产出，记录 `PvEBudgetExhausted` 到 TickTrace
 - 不影响其他维度/玩家的产出
 
+### 3.1 NPC/Entity Tier → PvEAward Budget 映射
+
+PvE 奖励根据 NPC/entity tier 映射到玩家预算，防止无上限 faucet：
+
+| Tier | Entity 示例 | 基础奖励 (Energy/Unit) | 玩家倍数 | 说明 |
+|------|------------|----------------------|---------|------|
+| T0 | 环境 Source、被动再生 | 0（环境物） | N/A | 环境再生不计入玩家 PvE budget |
+| T1 | 低级 NPC (Scout Drone) | 100–500 | ×1.0 | 新手友好，低奖励 |
+| T2 | 中级 NPC (Guard Drone) | 500–2000 | ×1.0 | 标准 PvE 目标 |
+| T3 | 高级 NPC (Boss Drone) | 2000–10000 | ×1.0 | 高风险高回报 |
+| T4 | 世界事件 (Periodic Event) | 5000–50000 | ×0.5 | 事件奖励打折，防事件滥用 |
+| T5 | 赛季/竞技 (Arena/Tournament) | 由规则模块定义 | N/A | Out-of-Scope — Arena 使用独立奖励池 |
+
+**映射规则**：
+- NPC tier 由 `world.toml` `[[npc_templates]]` 的 `tier` 字段定义
+- `PvEAward.amount = base_reward × player_multiplier`，受 Player/Global/Zone/Event 四维上限约束
+- 同一 tick 同一 NPC entity 被多个玩家击杀时，按击杀贡献比例分配（先到先得、overkill 不额外产出）
+
 ---
 
 ## 4. 确定性执行顺序

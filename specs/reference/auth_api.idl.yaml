@@ -495,6 +495,64 @@ deploy_canonical_signature:
       semantics across server restarts.
 
 # =============================================================================
+# 4.5 SWARM-DEPLOY-V1 Canonical Payload
+# =============================================================================
+deploy_signature:
+  description: >
+    Deploy-specific canonical signature payload. SWARM-DEPLOY-V1 extends
+    the SWARM-REQUEST-V1 fields with deploy-specific bindings (deploy_id,
+    module_hash, fdb_version_counter_predicted) that prevent replay and
+    ensure the certificate authorizes the exact module being deployed.
+  payload_name: "SWARM-DEPLOY-V1"
+  format: >
+    SWARM-DEPLOY-V1\n
+    method: swarm_deploy\n
+    path: /mcp\n
+    body_hash: <blake3 of wasm_bytes>\n
+    timestamp: <unix_ms>\n
+    nonce: <random 128-bit hex>\n
+    certificate_id: <code_signing_certificate_id>\n
+    player_id: <authenticated player_id>\n
+    audience: swarm-aud-v1:wasm-sdk:<server_id>:<world_id>:<player_id>\n
+    deploy_id: <client-generated unique deploy request id>\n
+    module_hash: <blake3 of wasm_bytes>\n
+    fdb_version_counter_predicted: <预期 FDB 计数器值，用于绑定原子提交>
+  fields:
+    - name: method
+      description: "固定为 swarm_deploy"
+    - name: path
+      description: "固定为 /mcp"
+    - name: body_hash
+      description: "WASM 模块二进制完整 blake3 hash"
+    - name: timestamp
+      description: "Unix 毫秒时间戳"
+    - name: nonce
+      description: "128-bit 随机 nonce，FDB 去重"
+    - name: certificate_id
+      description: "CodeSigningCertificate 的 cert_id"
+    - name: player_id
+      description: "已认证玩家 ID"
+    - name: audience
+      description: "swarm-aud-v1:wasm-sdk:<server_id>:<world_id>:<player_id>"
+    - name: deploy_id
+      description: "客户端生成的唯一部署请求 ID，用于幂等重试"
+    - name: module_hash
+      description: "WASM 模块二进制 blake3 hash（与 body_hash 相同值，显式绑定）"
+    - name: fdb_version_counter_predicted
+      description: "预期 FDB 版本计数器值，绑定原子提交防止竞态"
+  algorithm: Ed25519
+  encoding: "UTF-8, LF line endings, no BOM"
+  validation:
+    - "1. CodeSigningCertificate 链回溯至 server trust root，未过期，未吊销"
+    - "2. Certificate usage = code_signing"
+    - "3. Ed25519 签名可用 certificate public key 验证"
+    - "4. timestamp 在允许窗口内（默认 60s）"
+    - "5. nonce 之前未被消费（FDB 去重）"
+    - "6. audience 匹配当前 server_id/world_id/player_id"
+    - "7. module_hash 匹配实际 WASM blob 的 hash"
+    - "8. deploy_id 格式 valid，未被重放"
+
+# =============================================================================
 # 5. RejectionReason — 12 canonical auth codes
 # =============================================================================
 rejection_reason:

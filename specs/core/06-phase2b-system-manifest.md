@@ -127,10 +127,11 @@ Serial Spine:
 ### S05: transfer_system
 - **ID**: `transfer`
 - **Phase**: 2a inline
-- **Handled Commands**: `Transfer`, `Withdraw`
+- **Handled Commands**: `Transfer`, `Withdraw`, `TransferToGlobal`, `TransferFromGlobal`
 - **Reads**: ResourceAmount, Room, WorldConfig, ResourceLedger
 - **Writes**: ResourceAmount (source → target), ResourceLedger
 - **Linked to**: specs/core/08-resource-ledger.md
+- **Note**: TransferToGlobal/FromGlobal 路由至 ResourceLedger GlobalDeposit/GlobalWithdraw 操作，分别受 `global_deposit_delay`(10 tick) 和 `global_withdraw_delay`(100 tick) 约束。local Transfer/Withdraw 不受 global delay 影响。
 
 ### S06: spawn_validator
 - **ID**: `spawn_val`
@@ -404,7 +405,10 @@ S22 `status_advance_system` 迭代实体顺序：`sorted(entities_with_active_st
 | **S12 rng_atk** | R | - | - | - | - | - | - | R | R | - | - | - | - | - |
 | **S13 heal** | R | - | - | - | - | - | - | R | R | - | - | - | - | - |
 | **S14 spec_atk_red** | - | - | - | - | - | - | - | R | - | - | **R** | - | **R** | - |
-| **S15 dmg_apply** | - | W | - | - | - | - | W | - | R | - | - | - | - | - |
+| S15 dmg_apply | - | W | - | - | - | - | W | - | R | - | - | - | - | - |
+|   |   | **combat/heal domain** |   |   |   |   |   |   |   |   |   |   |   |
+
+> **Domain-specific writer 注**: S15 是 combat damage + heal 的 unique HitPoints writer——仅处理攻击和治疗的 HP 变更。S10 regeneration 是独立 writer（自然回复，在 combat 之前执行）。S22 status_advance_system 是另一类 HP 修改者（特殊攻击效果如 Leech drain），通过 StatusState→HP 路径在 S22 内部实现。三者写入同一 HitPoints component 但操作不同语义域（combat/heal vs regen vs special attack effect），时序保证无竞争（S10→S15→S22 串行）。
 | **S16 hack_buf** | - | - | - | - | - | - | - | R | - | - | - | **W** | **R** | - |
 | **S17 drain_buf** | - | - | - | W | - | - | - | - | - | - | - | **W** | **R** | - |
 | **S18 overload_buf** | - | - | - | W | - | - | - | - | - | - | - | **W** | **R** | - |

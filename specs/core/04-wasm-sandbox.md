@@ -355,6 +355,47 @@ TickTrace 中存储的审计日志受以下大小限制，防止磁盘 DoS：
 
 ## 7. 编译时预算
 
+
+### 7.1 Wasmtime Pre-Warm Strategy
+
+> **R34 ML-6**: 部署延迟和首 tick 冷启动惩罚需要 pre-warm 机制降低 P99 延迟。
+
+**双版本并行**：
+- 当前活跃版本（`active_module`）服务所有 tick 请求
+- 预编译版本（`prewarm_module`）在后台异步编译，不与 active 版本竞争 tick 预算
+- 预编译版本就绪后原子切换：`active_module ← prewarm_module`
+
+**后台预编译触发**：
+1. 新 WASM 部署成功（`swarm_deploy` 完成 FDB commit + object store upload）
+2. 后台编译 worker 收到通知 → 独立 Wasmtime Engine 实例编译模块
+3. 编译期间 active 版本不受影响（独立 Engine，独立 cgroup limits）
+4. 编译完成 → 模块 hash 写入 `prewarm_registry`（FDB `sandbox/prewarm/<player_id>/<module_hash>`）
+
+**原子切换**：
+- 下一 tick COLLECT 开始前：检查 `prewarm_registry` 是否有匹配当前部署 hash 的预编译模块
+- 有 → `active_module` 替换为预编译版本（原子指针 swap）
+- 无 → 使用当前 active 版本（无惩罚）
+- 切换不中断当前 tick，仅影响下一次 COLLECT
+
+**覆盖率阈值**：
+- 编译 worker pool 最大 5 并发（见 §7 编译时预算 `并发编译` 限制）
+- 若 `prewarm_cache_hit_rate` < 80%（连续 10 次部署），扩展到 8 worker
+- 若 `prewarm_cache_hit_rate` > 95%（连续 100 tick），缩回 5 worker
+- Pre-warm 编译失败不影响 active 版本——记录 `prewarm_compile_failed` 审计日志
+
+**Rollback Window**：
+- 预编译模块保留最近 3 个版本（按 `fdb_version_counter` 降序）
+- 第 4 个及更早版本由 GC 清理（每 1h 扫描）
+- 紧急回滚时：Admin `swarm_admin_rollback` 可指定 target `fdb_version_counter`，引擎自动切换到对应预编译版本（若缓存中）
+
+**Pre-warm 编译预算**：
+| 资源 | 限制 | 说明 |
+|------|------|------|
+| 编译超时 | 30s（同部署编译） | 独立超时进程 |
+| 编译内存 | 512 MB（同部署编译） | 独立 cgroup |
+| 并发编译 worker | 5（可扩展至 8） | 防止后台编译影响 tick 执行 |
+| 预编译缓存 | 3 版本/玩家 | 超出由 GC 清理 |
+
 | 资源 | 限制 | 执行点 |
 |------|------|--------|
 | 编译超时 | 30s | 独立超时进程 |
