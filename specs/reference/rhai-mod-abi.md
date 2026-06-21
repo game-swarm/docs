@@ -118,7 +118,7 @@ hooks = ["on_tick_start", "on_tick_end", "on_death"]
 
 ## 4. Capability 白名单
 
-扩展能力需在 `mod.toml` 中声明 `required_capabilities`，服主在 `world.toml` 中按模组授权。
+扩展能力需在 `mod.toml` 中声明 `required_capabilities`，服主在 `world.toml` 中按模组授权。**默认所有 capability 需显式授权（default-deny）**——不写 `capabilities` 则零授权。仅服主显式列入的 capability 生效。
 
 ### 4.1 完整 Capability 清单
 
@@ -128,14 +128,14 @@ hooks = ["on_tick_start", "on_tick_end", "on_death"]
 | `modify_terrain` | 🔴 High | 修改地形类型 | ❌ |
 | `broadcast_world_event` | 🟡 Medium | 向所有玩家发送世界事件 | ❌ |
 | `award_global` | 🟡 Medium | 超 max_award_per_tick 注入资源 | ❌ |
-| `tax_resource` | 🟡 Medium | 施加全局资源税率 | ✅ vanilla 默认 |
-| `set_resistance` | 🟡 Medium | 修改实体抗性值 | ✅ |
-| `add_body_part_type` | 🟢 Low | 注册新 body part | ✅ |
-| `add_structure_type` | 🟢 Low | 注册新建筑类型 | ✅ |
-| `add_damage_type` | 🟢 Low | 注册新伤害/抗性类型 | ✅ |
+| `tax_resource` | 🟡 Medium | 施加全局资源税率 | ❌ |
+| `set_resistance` | 🟡 Medium | 修改实体抗性值 | ❌ |
+| `add_body_part_type` | 🟢 Low | 注册新 body part | ❌ |
+| `add_structure_type` | 🟢 Low | 注册新建筑类型 | ❌ |
+| `add_damage_type` | 🟢 Low | 注册新伤害/抗性类型 | ❌ |
 | `register_action_handler` | 🟡 Medium | 注册新 Rhai action handler | ❌ |
-| `set_entity_flag` | 🟢 Low | 设置全局实体 flag | ✅ |
-| `set_world_param` | 🟢 Low | 修改 mutable=true 参数 | ✅ |
+| `set_entity_flag` | 🟢 Low | 设置全局实体 flag | ❌ |
+| `set_world_param` | 🟢 Low | 修改 mutable=true 参数 | ❌ |
 
 ### 4.2 授权语法
 

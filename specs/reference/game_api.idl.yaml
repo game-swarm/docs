@@ -180,10 +180,10 @@ command_action:
       index: 10
       category: core
       parameters:
-        - name: target_id
+        - name: object_id
           type: EntityId
           required: true
-      description: "Recycle a drone or structure"
+      description: "Recycle own drone (self-action — no spawn proximity required)"
 
     - name: ClaimController
       index: 11

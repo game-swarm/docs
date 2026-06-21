@@ -260,7 +260,7 @@ expires_at: <challenge_expires_at>
 
 | 层级 | 准入检查 | 说明 |
 |------|---------|------|
-| **L1: PoW** | `challenge_id` 存在、未过期、未消费，且 PoW 成立 | 基础工作量证明——消耗客户端 CPU，防止零成本注册洪泛 |
+| **L1: PoW** | `challenge_id` 存在、未过期、未消费，且 PoW 成立 | 准入层 anti-spam（非信任根）——消耗客户端 CPU，防止零成本注册洪泛。PoW 仅做速率闸门，不参与后续认证信任链 |
 | **L2: per-IP 限流** | 同 IP CSR 提交速率 ≤ 1/30s（可配置） | 防止单 IP 快速轮换账号绕过 PoW |
 | **L3: per-ASN 限流** | 同 ASN CSR 提交速率 ≤ 10/min（可配置） | 防止分布式 botnet 跨 IP 攻击 |
 | **L4: global semaphore** | 全局并发 CSR 验证 ≤ `min(cpu_cores, 4)` | 防止 PoW 验证（blake3 brute-force verify）耗尽 CPU |

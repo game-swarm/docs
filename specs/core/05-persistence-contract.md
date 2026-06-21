@@ -160,7 +160,7 @@ Phase C: 对象存储异步写入（FDB commit 成功后触发）
   ├─ 任务失败（网络/超时）：
   │   ├─ 重试最多 3 次（指数退避 1s/2s/4s）
   │   ├─ 3 次均失败 → UPDATE tick_manifest SET upload_status = "failed"
-  │   └─ blob 缺失不影响 world state（FDB 已有完整状态），但该 tick replay 不可用
+  │   └─ blob 缺失不影响 world state（FDB 已有完整状态）。Rich/debug replay 不可用；deterministic replay 不受影响（TickCommitRecord 10 字段完整）。
   └─ 任务超时（> 5s）：
       └─ 同失败处理
 
@@ -174,15 +174,15 @@ Phase D: WAL 截断
 
 | upload_status | 含义 | tick state 完整性 |
 |:---|------|:---:|
-| `pending` | blob 尚未写入对象存储 | ✅ FDB state 完整，replay 不可用 |
+| `pending` | blob 尚未写入对象存储 | ✅ FDB state 完整，rich debug replay 不可用（deterministic replay OK） |
 | `uploading` | blob 正在写入（worker 已接管） | ✅ FDB state 完整 |
 | `complete` | blob 已写入，etag 已回填 | ✅✅ 完全持久化，replay 可用 |
-| `failed` | 3 次重试后仍失败 | ✅ FDB state 完整，replay 不可用 |
+| `failed` | 3 次重试后仍失败 | ✅ FDB state 完整，rich debug replay 不可用（deterministic replay OK） |
 
 **Replay 检查**：replay verifier 查询 `tick_manifest.upload_status`：
-- `complete` → 从对象存储拉取 blob，验证 hash
-- `pending` / `uploading` → 等待最多 30s 后重试；超时则降级为 `failed`
-- `failed` → 跳过该 tick（replay gap），标记 `terminal_state = audit_gap`
+- `complete` → 从对象存储拉取 blob，验证 hash → rich debug replay 可用
+- `pending` / `uploading` → 降级为 `audit_gap`。Deterministic replay 不受影响（FDB TickCommitRecord 10 字段完整）
+- `failed` → 标记 `terminal_state = audit_gap`。Deterministic replay 仍可用（FDB 数据完整）
 
 **孤儿清理**：由于 FDB 先于对象存储写入，不再产生孤儿 blob。若 blob 写入成功但 etag 回填失败（FDB 更新超时），GC 通过对比对象存储中 blob 的 created_at 与 tick_manifest 中 upload_status 清理（`upload_status = 'failed'` 但对象存储中存在 blob → 保留 1h 后清理）。
 
@@ -204,7 +204,7 @@ FDB commit 先于对象存储写入——以下为所有失败场景的处理：
 | 正常 | ✅ 已提交 | ✅ 已写入（异步完成） | 正常。`upload_status = complete` |
 | FDB commit 失败 | ❌ 回滚 | ❌ 未写入 | Tick 放弃，不递增 tick 编号 |
 | FDB commit 成功 + blob 写入成功 | ✅ 已提交 | ✅ 已写入 | 正常 |
-| FDB commit 成功 + blob 写入失败（3 次重试后） | ✅ 已提交 | ❌ 缺失 | `upload_status = failed`。world state 完整，replay 不可用 |
+| FDB commit 成功 + blob 写入失败（3 次重试后） | ✅ 已提交 | ❌ 缺失 | `upload_status = failed`。world state 完整，rich debug replay 不可用（deterministic replay 不受影响，TickCommitRecord 10 字段完整） |
 | FDB commit 成功 + blob 写入超时（> 5s） | ✅ 已提交 | ❓ 未知 | 重试 3 次；仍失败 → `upload_status = failed` |
 | Blob 写入成功 + etag 回填失败 | ✅ 已提交 | ✅ 已写入 | 对象存储中存在 blob 但 manifest 中无 etag。GC 扫描：1h 后若 `upload_status != 'complete'` 则清理孤儿 blob |
 

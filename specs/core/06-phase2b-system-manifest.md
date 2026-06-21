@@ -17,7 +17,7 @@
 
 ---
 
-## 1. System Schedule (29 systems)
+## 1. System Schedule (31 systems)
 
 ```
 Serial Spine:
@@ -473,5 +473,5 @@ manifest_hash = Blake3(
 | 版本 | 日期 | 变更 |
 |------|------|------|
 | 1.0.0 | 2026-06-18 | R15 B2 修复：初始版本。27 system，serial spine + 3 parallel sets。 |
-| 2.0.0 | 2026-06-18 | R16 B2 修复：29 systems。S14 special_attack_reducer、S06 spawn_validator。 |
+| 2.0.0 | 2026-06-18 | R16 B2 修复：31 systems。S14 special_attack_reducer、S06 spawn_validator。 |
 | 3.0.0 | 2026-06-21 | **R30 B1 修复**：Status Effects 拆分——S16-S22b 并行 buffer 生产 + S22 串行唯一 StatusState committer。新增 S22a leech_buffer + S22b fabricate_buffer（31 systems）。S01 写入 PendingSpecialAttackIntent。8 种特殊攻击全部核心目标。S14 从 S01 读取 intents。Unique Writer Contract 完备化。 |
