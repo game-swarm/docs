@@ -67,11 +67,11 @@ type_registry:
         - { name: event,           value: 7, description: "Time-limited special world event objective" }
 
 # =============================================================================
-# 1. CommandAction — all 19 variants
+# 1. CommandAction — all 21 variants
 # =============================================================================
 command_action:
   description: "Core CommandAction enum. WASM tick() output CommandIntent action types."
-  total_variants: 19
+  total_variants: 21
   variants:
     # --- 1.1 Core (11) ---
     - name: Move
@@ -219,7 +219,7 @@ command_action:
           required: true
       description: "Withdraw resources from global storage"
 
-    # --- 1.3 Special Attack (6) ---
+    # --- 1.3 Special Attack (8) ---
     - name: Hack
       index: 14
       category: special_attack
@@ -274,15 +274,27 @@ command_action:
           required: true
       description: "Strengthen own defenses"
 
+    - name: Leech
+      index: 20
+      category: special_attack
+      parameters:
+        - name: target_id
+          type: EntityId
+          required: true
+      description: "Life-drain attack — deal Kinetic damage and heal self for 50% of damage dealt"
+
+    - name: Fabricate
+      index: 21
+      category: special_attack
+      parameters:
+        - name: target_id
+          type: EntityId
+          required: true
+      description: "Convert enemy drone into friendly structure (Tower/Storage/Wall) — requires 5-tick channel"
+
   custom_actions:
     description: "Custom actions defined in World Action Manifest, not in Core enum."
-    known:
-      - name: Leech
-        action_id: custom
-        description: "World Action Manifest custom_action"
-      - name: Fabricate
-        action_id: custom
-        description: "World Action Manifest custom_action"
+    known: []
 
 # =============================================================================
 # 2. RejectionReason — 35 canonical codes + debug_detail (D2/B)
