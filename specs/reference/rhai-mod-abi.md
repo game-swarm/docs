@@ -147,7 +147,7 @@ version = "1.2.0"
 capabilities = ["tax_resource", "set_entity_flag"]
 ```
 
-不写 `capabilities` = 全部已声明 capability 均授权。未声明 capability 即使授权也不可调用。
+不写 `capabilities` = 仅授权 `default=true` 的能力（默认安全——最小权限原则）。全部已声明 capability 授权需显式 `capabilities = ["all_declared"]`。未声明 capability 即使授权也不可调用。
 
 ## 5. 错误传播与降级
 
