@@ -78,7 +78,7 @@ struct Controller {
 | 2 | 200 | Extension (5), Road, Container | 100 | 10/tick | 1 格 | 储能起步 |
 | 3 | 400 | Extension (10), Tower, Storage, Depot | 200 | 20/tick | 2 格 | 防御+前线维修 |
 | 4 | 800 | Extension (20), Link | 300 | 30/tick | 2 格 | 能源网络 |
-| 5 | 1,500 | Extension (30), Terminal, Observer | 400 | 40/tick | 3 格 | 市场交易 |
+| 5 | 1,500 | Extension (30), Terminal, Observer | 400 | 40/tick | 3 格 | 跨世界身份同步/日志交换 |
 | 6 | 3,000 | Extension (40), Extractor, Lab, Factory | 500 | 50/tick | 3 格 | 制造系统 |
 | 7 | 6,000 | Extension (50), PowerSpawn | 500 | 60/tick | 4 格 | 晚期产能 |
 | 8 | 12,000 | Extension (60), Nuker | 500 | 80/tick | 5 格 | 终极武器 |

@@ -15,6 +15,7 @@
 | `env` | `host_path_find` | 寻路 |
 | `env` | `host_get_world_config` | 读取世界配置 |
 | `env` | `host_get_world_rules` | 读取世界规则 |
+| `env` | `host_get_random` | 确定性随机字节 |
 
 ## 详细签名
 
@@ -58,12 +59,23 @@ i32 host_get_world_rules(rule_id_ptr: i32, rule_id_len: i32, out_ptr: i32, out_l
 写入 `out_ptr` 缓冲区。
 - 每 tick 最多调用 1 次
 
+### host_get_random
+```c
+i32 host_get_random(sequence: u32, out_ptr: i32, out_len: i32) -> i32
+```
+返回确定性随机字节。引擎内部 PRNG 以 `(tick_seed, player_id, drone_id, sequence)` 为种子，保证同一 tick 内不同 drone/sequence 产生独立且可 replay 的随机序列。
+写入 `out_ptr` 缓冲区。
+- 最大输出：256 bytes
+- fuel 成本：100 base + 1 per output byte
+- 每 tick 最多调用 10 次
+
 ## Host Call Budget
 
 所有 host function 调用计入总预算：
 - **总计**: 1000 次/tick
 - `host_path_find`: 10 次
 - `host_get_objects_in_range`: 5 次
+- `host_get_random`: 10 次
 - 其他: 共享剩余配额
 
 超出预算 → 返回 canonical ABI error code `-4 ERR_BUDGET_EXHAUSTED`（per-call）或 `-5 ERR_PLAYER_BUDGET`（per-player）。权威错误码优先级见 [API Registry](api-registry.md) §4.5。
@@ -79,6 +91,7 @@ i32 host_get_world_rules(rule_id_ptr: i32, rule_id_len: i32, out_ptr: i32, out_l
 | `host_get_world_config` | **16 KB** |
 | `host_get_world_rules` | **16 KB** |
 | `host_get_terrain` | **8 KB** |
+| `host_get_random` | **256 bytes** |
 
 ## 安全约束
 

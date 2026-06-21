@@ -353,7 +353,8 @@ Rhai 脚本执行
 
 **隔离保证**：
 - Rhai 脚本**不能**绕过 Command Validation Pipeline（见 specs/core/02-command-validation §1）
-- Rhai 脚本**不能**直接写入 ECS 组件——只能通过 `actions.*` API
+- Rhai 脚本**默认不能**直接写入 ECS 组件——仅能通过 `actions.*` API（声明式 action buffer）
+- **可选 capability-gated direct ECS writer**：模组可在 `mod.toml` 中声明 `direct_ecs_writer` capability，经服主在 `world.toml` 中显式授权后，获得对特定 ECS 组件的直接写入能力。每个 direct writer capability 必须声明 `engine_version`、`abi_version`、`affected_components`、`affected_resources`。详见 §5.1g Direct ECS Writer 能力模型。
 - Rhai 脚本**不能**访问其他玩家的私有数据
 - Buffer apply 阶段由引擎核心在 FDB 事务中执行，保证确定性
 
@@ -519,6 +520,62 @@ engine = ">=0.8, <1.0"
 |------|------|
 | 模组更新 | `swarm mod upgrade` → 下一 tick 新版本 hook 生效 |
 | 回滚 | `swarm mod downgrade` → 旧版本立即恢复 |
+
+### 5.1g Direct ECS Writer 能力模型（D8 B+）
+
+RuleMod 的状态修改路径分为两层：
+
+1. **声明式 action buffer（默认，所有模组均可用）**：通过 `actions.*` API（`actions.deduct`、`actions.award`、`actions.emit_event`、`actions.set_world_param`、`actions.set_entity_flag`）写入 `RhaiActionBuffer`，由引擎在全部 hook 执行完毕后统一 apply。此路径受 Command Validation Pipeline 保护，无需额外 capability 声明。
+
+2. **Direct ECS writer（可选，需 capability gate）**：模组可在 `mod.toml` 中声明特定的 `direct_ecs_writer` capability，经服主在 `world.toml` 中显式授权后，获得对特定 ECS 组件的直接写入能力。直接写入绕过 `RhaiActionBuffer`，进入 ECS system manifest 的 R/W matrix 和 TickTrace audit。
+
+#### Direct ECS Writer Capability 声明要求
+
+每个 `direct_ecs_writer` capability 必须在 `mod.toml` 中声明以下字段：
+
+```toml
+# mod.toml — direct_ecs_writer capability 声明
+[[capabilities]]
+name = "direct_ecs_writer"
+engine_version = ">=0.9, <1.0"     # 引擎版本兼容范围（必填）
+abi_version = 1                      # Direct ECS writer ABI 版本（必填）
+affected_components = [              # 可写入的 ECS 组件白名单（必填，至少一个）
+    "HitPoints",
+    "Position",
+]
+affected_resources = [               # 可修改的资源类型（必填，至少一个）
+    "Energy",
+]
+manifest_hash = "sha256:..."         # 组件/资源集合的完整性 hash（CI 自动生成）
+```
+
+#### 授权语法（world.toml）
+
+```toml
+# world.toml — 服主显式授权 direct_ecs_writer
+[[mods]]
+name = "custom-combat-mod"
+version = "2.0.0"
+capabilities = ["direct_ecs_writer"]
+[mods.capability_config.direct_ecs_writer]
+allow_components = ["HitPoints"]      # 服主可进一步限制组件范围
+allow_resources = ["Energy"]          # 服主可进一步限制资源范围
+max_writes_per_tick = 100             # 每 tick 最大写入次数
+```
+
+#### 约束与审计
+
+| 约束 | 说明 |
+|------|------|
+| R/W matrix 注册 | Direct writer 必须进入 `06-phase2b-system-manifest.md` 的 system R/W matrix，标注 `source=RuleMod:<mod_id>` |
+| CI unique writer gate | CI 检查 direct writer 的 `affected_components` 不与核心 engine system 冲突（同一组件不得有多个 unique writer） |
+| TickTrace 审计 | 每次 direct write 记录 `(mod_id, tick, component, entity_id, field, old_value, new_value)` |
+| Manifest hash | `affected_components` 和 `affected_resources` 集合的 hash 纳入 `world_action_manifest_hash` 和 `TickInputEnvelope` |
+| 版本兼容 | `engine_version` 不匹配 → 模组拒绝加载（`ModEngineVersionMismatch`） |
+| ABI 版本 | `abi_version` 变更 → 模组 MAJOR 版本升级，需服主手动迁移 |
+| 降级行为 | Direct writer 模组连续 3 tick panic/timeout → 自动降级（禁用 1000 tick），与普通模组降级规则一致 |
+
+> **设计理由**：Direct ECS writer 为高级模组开发提供性能关键路径（如自定义 combat system），但必须在 manifest、CI、audit 三重约束下运行。默认所有模组只能使用声明式 action buffer。服主需在充分理解风险后显式授权 direct writer capability。
 
 ## 6. World vs Arena 默认值
 
@@ -700,7 +757,7 @@ cost = { Energy = 1000 }
 
 [[structure_types]]
 name = "Terminal"
-description = "终端——市场交易接口"
+description = "终端——跨世界身份同步与日志交换节点"
 category = "logistics"
 hits = 3000
 rcl_required = 5
@@ -778,7 +835,7 @@ cost = { Energy = 5000 }
  | 2 | 200 | Extension (5), Road, Container | 100 | 10/tick | 1 格 | 储能起步 |
  | 3 | 400 | Extension (10), Tower, Storage, Depot | 200 | 20/tick | 2 格 | 防御+前线维修 |
  | 4 | 800 | Extension (20), Link | 300 | 30/tick | 2 格 | 能源网络 |
- | 5 | 1,500 | Extension (30), Terminal, Observer | 400 | 40/tick | 3 格 | 市场交易 |
+ | 5 | 1,500 | Extension (30), Terminal, Observer | 400 | 40/tick | 3 格 | 跨世界身份同步/日志交换 |
  | 6 | 3,000 | Extension (40), Extractor, Lab, Factory | 500 | 50/tick | 3 格 | 制造系统 |
  | 7 | 6,000 | Extension (50), PowerSpawn | 500 | 60/tick | 4 格 | 晚期产能 |
  | 8 | 12,000 | Extension (60), Nuker | 500 | 80/tick | 5 格 | 终极武器 |

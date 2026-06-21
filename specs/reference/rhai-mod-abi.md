@@ -136,6 +136,7 @@ hooks = ["on_tick_start", "on_tick_end", "on_death"]
 | `register_action_handler` | 🟡 Medium | 注册新 Rhai action handler | ❌ |
 | `set_entity_flag` | 🟢 Low | 设置全局实体 flag | ❌ |
 | `set_world_param` | 🟢 Low | 修改 mutable=true 参数 | ❌ |
+| `direct_ecs_writer` | 🔴 Critical | 直接写入 ECS 组件（绕过 RhaiActionBuffer） | ❌ 需服主显式授权 + CI unique writer gate |
 
 ### 4.2 授权语法
 
@@ -148,6 +149,57 @@ capabilities = ["tax_resource", "set_entity_flag"]
 ```
 
 不写 `capabilities` = 仅授权 `default=true` 的能力（默认安全——最小权限原则）。全部已声明 capability 授权需显式 `capabilities = ["all_declared"]`。未声明 capability 即使授权也不可调用。
+
+### 4.3 Direct ECS Writer Capability（D8 B+）
+
+`direct_ecs_writer` 是高风险 capability，允许模组绕过 `RhaiActionBuffer` 直接写入 ECS 组件。每个 `direct_ecs_writer` 必须在 `mod.toml` 中声明受影响的组件和资源范围。
+
+#### 声明格式（mod.toml）
+
+```toml
+# mod.toml — direct_ecs_writer capability 声明
+[[capabilities]]
+name = "direct_ecs_writer"
+engine_version = ">=0.9, <1.0"     # 引擎版本兼容范围（必填）
+abi_version = 1                      # Direct ECS writer ABI 版本（必填）
+affected_components = [              # 可写入的 ECS 组件白名单（必填，至少一个）
+    "HitPoints",
+    "Position",
+]
+affected_resources = [               # 可修改的资源类型（必填，至少一个）
+    "Energy",
+]
+manifest_hash = "sha256:..."         # 组件/资源集合的完整性 hash（CI 自动生成）
+```
+
+#### 授权格式（world.toml）
+
+```toml
+# world.toml — 服主显式授权 direct_ecs_writer
+[[mods]]
+name = "custom-combat-mod"
+version = "2.0.0"
+capabilities = ["direct_ecs_writer"]
+[mods.capability_config.direct_ecs_writer]
+allow_components = ["HitPoints"]      # 服主可进一步限制组件范围
+allow_resources = ["Energy"]          # 服主可进一步限制资源范围
+max_writes_per_tick = 100             # 每 tick 最大写入次数
+```
+
+#### CI 校验要求
+
+| # | 校验项 | 说明 |
+|---|--------|------|
+| 1 | `engine_version` 有效性 | CI 解析 semver 约束，验证当前引擎版本在允许范围内 |
+| 2 | `abi_version` 匹配 | Direct writer ABI 版本必须与引擎内置版本匹配；不匹配 → `ModEngineVersionMismatch` |
+| 3 | `affected_components` 白名单 | 所有声明的组件名必须在引擎 ECS component registry 中存在；未知组件 → CI reject |
+| 4 | `affected_resources` 白名单 | 所有声明的资源名必须在资源注册表中存在；未知资源 → CI reject |
+| 5 | Unique writer gate | 同一组件的 direct writer 不得与核心 engine system 的 unique writer 冲突；冲突 → CI reject |
+| 6 | `manifest_hash` 完整性 | CI 根据 `affected_components` + `affected_resources` 的排序 JSON 自动计算 hash，与声明值比对 |
+| 7 | `manifest_hash` 纳入 TickInputEnvelope | `manifest_hash` 计入 `world_action_manifest_hash`，参与 replay 确定性 |
+| 8 | R/W matrix 注册 | Direct writer 的 component set 登记到 `06-phase2b-system-manifest.md` system R/W matrix |
+| 9 | 授权检查 | 服主 `world.toml` 中未显式授权 `direct_ecs_writer` → 模组加载时拒绝（capability denied） |
+| 10 | 运行时审计 | 每次 direct write 记录 TickTrace audit entry：`(mod_id, tick, component, entity_id, field, old_value, new_value)` |
 
 ## 5. 错误传播与降级
 

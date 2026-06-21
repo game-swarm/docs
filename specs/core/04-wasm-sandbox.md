@@ -208,6 +208,7 @@ WASM 中**仅可调用查询类 host function**——所有函数只读，不计
 fn host_get_terrain(room_id: u32, out_ptr: i32, out_len: i32) -> i32;  // 权威签名见 api-registry.md §4.1
 fn host_get_objects_in_range(x: i32, y: i32, range: u32, out_ptr: i32, out_len: i32) -> i32;  // ← 仅返回 is_visible_to(caller) 为 true 的实体
 fn host_path_find(from_x: i32, from_y: i32, to_x: i32, to_y: i32, opts_ptr: i32, opts_len: i32, out_ptr: i32, out_len: i32) -> i32;  // ← 仅基于可见地形计算路径
+fn host_get_random(sequence: u32, out_ptr: i32, out_len: i32) -> i32;  // ← 确定性随机字节，种子=(tick_seed, player_id, drone_id, sequence)
 
 // 世界配置查询
 fn host_get_world_config(key_ptr: i32, key_len: i32, out_ptr: i32, out_len: i32) -> i32;
@@ -303,6 +304,7 @@ cargo test --test wasm_sandbox -- --test-threads=1
 | Host function 调用 | 1000/tick | 计数 |
 | path_find 调用 | 10/tick | 计数；全局预算 100,000 explored nodes/tick，per-player fair-share 分配（见 engine.md §3.4.2） |
 | get_objects_in_range 调用 | 5/tick | 计数 |
+| host_get_random 调用 | 10/tick | 计数 |
 | 输出 JSON 体积 | 256 KB | 返回值大小检查 |
 
 ### 6.1 MCP Simulate/Dry-Run 限制
@@ -355,6 +357,7 @@ TickTrace 中存储的审计日志受以下大小限制，防止磁盘 DoS：
 | `host_path_find` | 500 × explored_nodes + 200 × expanded_edges + cache_miss_penalty | 8 KB | **成本按实际工作量**：explored_nodes（A* 展开的节点数）、expanded_edges（评估的邻居数）、cache_miss_penalty = **固定 2000 fuel**（与硬件无关，保证跨节点确定性结算）。不可达目标消耗更高（无路径可剪枝）。per-player/per-tick 上限：10 次调用 + 100,000 explored_nodes 总额度。超限 deterministic fail。**缓存键**: `(from, to, terrain_hash, player_visibility_fingerprint)` |
 | `host_get_world_config` | 1,000 | 16 KB | |
 | `host_get_world_rules` | 1,000 | 16 KB | |
+| `host_get_random` | 100 + 1/output byte | 256 bytes | 确定性随机；seed=(tick_seed, player_id, drone_id, sequence)；per_tick_limit=10 |
 
 ---
 

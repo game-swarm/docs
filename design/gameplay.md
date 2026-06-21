@@ -296,7 +296,7 @@ drone age 维护由两层设施构成：
 
 **默认行为**：
 - drone 采集资源 → 先进入**世界本地存储**（就近的 Storage/Extension/Spawn）
-- 世界本地存储的资源可通过 Terminal 在市场交易（需物流可达）
+- 世界本地存储的资源通过 Terminal 进行跨世界身份同步与日志交换（非市场交易）
 - 玩家可将本地存储转为全局存储（消耗能量 + 时间 = 物流成本）
 - 全局存储的资源在部署代码、支付维护费时自动扣除
 - 全局存储不能直接用于本地建造——需先转回本地
@@ -747,6 +747,8 @@ Corrosive = 1.5        # 建筑怕腐蚀
 **模组扩展**: Rhai 模组可注册新伤害类型（`actions.add_damage_type("Fire", 1.0)`）、设置抗性（`actions.set_resistance("Tough", "Fire", 0.3)`）、赋予属性（`actions.set_attribute(entity_id, "Flaming", true)`）。
 
 #### 特殊攻击方式
+
+> **Canonical 参数表见 [special-attack-table.md](specs/reference/special-attack-table.md)**。所有 body_part、damage_type、resistance、cost、cooldown、range、channel_time、counterplay 以该表为准。以下为概念描述，不得在实现中以本表数值替代 canonical 表。
 
 除了 HP 伤害，以下特殊攻击方式作为 Command 或 body part 能力存在：
 

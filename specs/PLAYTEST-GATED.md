@@ -2,7 +2,7 @@
 
 > 来源：R27 评审议会（10 reviewers + Speaker）  
 > 状态：B1-B5 + D1-D6 + S-H1~ML-12 已闭合（commit `65cb3d1`）  
-> 以下 3 项因需要 **playtest 数据或数学模型验证** 无法在文档层面闭合
+> 以下 4 项因需要 **playtest 数据或数学模型验证** 无法在文档层面闭合
 
 ---
 
@@ -24,6 +24,27 @@
 **涉及文件**: `design/gameplay.md`, `specs/gameplay/resource-ledger.md`, `specs/gameplay/economy-balance-sheet.md`
 
 **闭合条件**: playtest 产出 tick-by-tick 经济数据 → 与文档承诺对比 → 调整参数或文档
+
+---
+
+## PG-4: Standard 经济中期自维持区间 (D4/A)
+
+**来源**: R33 D4/A 裁决  
+**Speaker Verdict**: Standard 曲线 — 2-5 房良好代码/RCL/PvE/适度扩张下小幅正流量，20+递减，50 接近不可持续  
+**D-item 裁决**: D4/A — 重写 balance sheet，标注 playtest-gated ✅
+
+**涉及文件**: `design/economy-balance-sheet.md`
+
+**需要验证**:
+
+| 验证项 | 说明 |
+|-------|------|
+| 2-5 房良好代码下正流量可达性 | 自维持区间的 lower bound 是否实际可达 |
+| 20 房转入净亏损的边界精度 | 边际收益递减的转折点位置 |
+| Source 产出 × 效率乘数模型准确性 | 文档中 1.5×-2.0× 效率是否与现实代码优化产出匹配 |
+| RCL 升级带来的被动收入梯度 | Controller income 的数值是否过低或过高 |
+
+**闭合条件**: playtest 收集 ≥50 active players / ≥5000 tick 的经济数据，验证自维持区间的上下界 → 调参或调整文档
 
 ---
 

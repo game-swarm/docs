@@ -220,6 +220,7 @@ command_action:
       description: "Withdraw resources from global storage"
 
     # --- 1.3 Special Attack (8) ---
+    # Canonical parameters: see specs/reference/special-attack-table.md
     - name: Hack
       index: 14
       category: special_attack
@@ -243,9 +244,9 @@ command_action:
       category: special_attack
       parameters:
         - name: target_id
-          type: EntityId
+          type: PlayerId
           required: true
-      description: "Reduce target fuel budget"
+      description: "Reduce target player fuel budget"
 
     - name: Debilitate
       index: 17
@@ -1332,10 +1333,11 @@ mcp_tools:
       rate_limit_key: global
 
     # =========================================================================
-    # Arena (5 tools)
+    # Arena (1 active + 3 RFC)
     # =========================================================================
     - name: swarm_get_leaderboard
       category: Arena
+      rfc_status: LEADERBOARD
       input_schema:
         scope: string
         limit: u32
@@ -1347,10 +1349,11 @@ mcp_tools:
       replay_class: read_replay_safe
       visibility_filter: arena_only
       rate_limit_key: global
-      notes: "Arena competitive leaderboard — ranking enabled, rewards may apply. Not available in World mode."
+      notes: "RFC-LEADERBOARD: 排行榜为 Product 扩展项，P0 不实现。返回 ERR_FEATURE_GATED。"
 
     - name: swarm_tournament_create
       category: Arena
+      rfc_status: TOURNAMENT
       input_schema:
         name: string
         rules: TournamentRules
@@ -1364,9 +1367,11 @@ mcp_tools:
       replay_class: admin_critical
       visibility_filter: admin_scope
       rate_limit_key: per_admin
+      notes: "RFC-TOURNAMENT: Tournament/League 为 P1+ 上层编排，P0 不实现。返回 ERR_FEATURE_GATED。"
 
     - name: swarm_tournament_precommit
       category: Arena
+      rfc_status: TOURNAMENT
       input_schema:
         tournament_id: string
         player_id: PlayerId
@@ -1380,9 +1385,11 @@ mcp_tools:
       replay_class: idempotent_mutation
       visibility_filter: owner
       rate_limit_key: per_player
+      notes: "RFC-TOURNAMENT"
 
     - name: swarm_tournament_status
       category: Arena
+      rfc_status: TOURNAMENT
       input_schema:
         tournament_id: string
       output_schema:
@@ -1397,6 +1404,7 @@ mcp_tools:
       replay_class: read_replay_safe
       visibility_filter: none
       rate_limit_key: global
+      notes: "RFC-TOURNAMENT"
 
     - name: swarm_match_result
       category: Arena
@@ -1503,11 +1511,11 @@ mcp_tools:
       violation: "seq rollback or MAC mismatch → disconnect + audit log"
 
 # =============================================================================
-# 4. Host Functions — all 5 with ABI signatures, budgets, fuel costs, error priority
+# 4. Host Functions — all 6 with ABI signatures, budgets, fuel costs, error priority
 # =============================================================================
 host_functions:
   description: "WASM modules import these host functions to call engine services."
-  total_functions: 5
+  total_functions: 6
   functions:
     - name: host_get_terrain
       index: 1
@@ -1569,6 +1577,19 @@ host_functions:
       per_call_budget: null
       per_tick_budget: 1
 
+    - name: host_get_random
+      index: 6
+      abi_signature: "(sequence: u32, out_ptr: i32, out_len: i32) -> i32"
+      read_only: true
+      description: "Deterministic random bytes from engine PRNG"
+      seed: "(tick_seed, player_id, drone_id, sequence)"
+      max_output: "256 bytes"
+      per_call_fuel:
+        base: 100
+        incremental: "+1/output byte"
+      per_call_budget: null
+      per_tick_budget: 10
+
   total_host_call_budget: "1,000/tick/player"
   host_call_output_limits:
     host_path_find: "8 KB"
@@ -1576,6 +1597,7 @@ host_functions:
     host_get_world_config: "16 KB"
     host_get_world_rules: "16 KB"
     host_get_terrain: "8 KB"
+    host_get_random: "256 bytes"
 
   # ABI error priority table — per api-registry.md §4.5
   # When multiple error conditions are met simultaneously, the first matching
@@ -1891,6 +1913,13 @@ persistence:
 # Changelog
 # =============================================================================
 changelog:
+  - version: "0.4.2"
+    date: "2026-06-21"
+    changes:
+      - "R33 D1-A: Add host_get_random as 6th Host Function with seed=(tick_seed, player_id, drone_id, sequence), fuel=100+1/byte, max_output=256 bytes, per_tick_limit=10"
+      - "R33 D3-A: Overload target_id type EntityId → PlayerId; validation requires at least one visible entity proving target player existence"
+      - "R33 D7-A: Reference canonical special-attack-table.md for all 8 special attack parameters"
+      - "Host functions: total 5 → 6"
   - version: "0.4.1"
     date: "2026-06-20"
     changes:
