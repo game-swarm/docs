@@ -220,7 +220,7 @@ AI 玩家令牌: `swarm:deploy swarm:read swarm:debug`。
 
 ## 4. MCP 工具 — 部署与管理
 
-> **MCP 工具权威清单** 见 [API Registry §3.2](../reference/api-registry.md#32-game-api-工具清单-56) — 56 工具。
+> **MCP 工具权威清单** 见 [API Registry §3.2](../reference/api-registry.md#32-game-api-工具清单-57) — 57 工具。
 >
 > **认证工具权威定义** 见 [auth_api.idl.yaml](../reference/auth_api.idl.yaml) → [API Registry §3.2 Auth](../reference/api-registry.md#auth-2)。
 >
