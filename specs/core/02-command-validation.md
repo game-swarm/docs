@@ -603,7 +603,7 @@ refund_pct = max(0.1, 0.5 × (remaining_lifespan / total_lifespan))
  **RangedAttack** | `object_id.owner == player_id` | `object_id` 距 `target_id` ≤ 3 | N/A | N/A | N/A | `drone.body` 含 `RangedAttack`, `target.owner != player_id`, `fatigue==0` |
  **Heal** | `object_id.owner == player_id` | `object_id` 距 `target_id` ≤ 3 | N/A | N/A | N/A | `drone.body` 含 `Heal`, `target.hits < hits_max`, target 为友方 |
  **Spawn** | `spawn_id.owner == player_id` | N/A | `body.len() ≤ 50` (MAX_BODY_PARTS), u32 无回绕 | `body_cost ≤ spawn.energy` | N/A | `spawn.cooldown == 0`, 房间有空余 spawn 槽位, 不超房间能量上限 |
- **Recycle** | `object_id.owner == player_id` | `object_id` 距 `spawn_id` ≤ 1 | N/A | 资源返还计算无溢出 | N/A | `spawn_id` 是玩家 Spawn |
+ | **Recycle** | `object_id.owner == player_id` | N/A | N/A | 资源返还计算无溢出 | N/A | Drone 非 spawning 状态。Recycle 为 self-action — 仅需 `object_id` |
  **Hack** | `object_id.owner == player_id` | `object_id` 距 `target_id` ≤ 1 | N/A | Energy ≥ 1000 (消耗) | N/A | `drone.body` 含 `Claim`, target 非己方, `fatigue==0`, 冷却未到, 目标未被他人在 Hack 中 |
  **Drain** | `object_id.owner == player_id` | `object_id` 距 `target_id` ≤ 1 | N/A | `target` 有指定 resource 存量 > 0, `drone.carry_used < carry_capacity` | N/A | `drone.body` 含 `Work`+`Carry`, target 非己方, `fatigue==0`, 冷却未到 |
  | **Overload** | `object_id.owner == player_id` | `is_visible_to(target_player, attacker)` | N/A | Energy ≥ 300 (消耗) | N/A | `drone.body` 含 `RangedAttack`, target 非己方, 目标全局冷却 (50 tick), apply 阶段静默 clamp 至下限, `fatigue==0`, drone 冷却未到。fuel 恢复 `fuel_budget / 1000` per tick |
