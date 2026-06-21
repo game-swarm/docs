@@ -276,16 +276,15 @@ Drone 在 Phase 2b spawn_system 中创建——位于 death_mark（释放 room c
 ### 3.9 Recycle
 
 ```json
-{"type": "Recycle", "object_id": 1001, "spawn_id": 2001}
+{"type": "Recycle", "object_id": 1001}
 ```
 
- 检查项 | 失败码 |
---------|--------|
- `object_id` 是玩家拥有的 Drone | `NotOwner` |
- `spawn_id` 是玩家的 Spawn | `NotOwner` |
- `object_id` 在 spawn 范围内 (range = 1) | `OutOfRange` |
+| 检查项 | 失败码 |
+|--------|--------|
+| `object_id` 是玩家拥有的 Drone 或 Structure | `NotOwner` |
+| Drone 非 spawning 状态 | `CooldownActive` |
 
-返还 lifespan-proportional 比例（10%–50%）身体部件成本作为能量给 spawn。**权威公式见 §3.18 和 Resource Ledger §2.5**。禁止在此引用固定 50%。
+返还 lifespan-proportional 比例（10%–50%）身体部件/建筑成本到全局存储。**权威公式见 Resource Ledger §2.5**。Recycle 为 self-action — 仅需 `object_id`，无 `target_id`/`spawn_id`。
 
 ### 3.10 Hack（特殊攻击）
 
