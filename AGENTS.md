@@ -36,7 +36,7 @@ design/interface.md MCP 与 API — 工具, 命令模型, SDK
 specs/core/        核心引擎规范 (tick, 命令, WASM, 规则)
 specs/security/    安全规范 (MCP, 可见性, 来源)
 specs/gameplay/    游戏规范 (反馈循环, IDL)
-specs/future/      扩展路线 (T2 增量快照, T3 分片)
+specs/core/10-11/ 增量快照 + 多世界分片协议（原 T2/T3 已纳入核心）
 specs/reference/               API 参考 — 开发者面向的接口文档
 ```
 
