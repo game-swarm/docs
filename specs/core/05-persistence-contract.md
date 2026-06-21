@@ -31,24 +31,28 @@
 
 > **R22 B1**: 明确哪些 Field 必须在 FDB 事务中原子提交（replay-critical），哪些可以异步写入对象存储（debug/rich）。此声明是 `05-persistence-contract.md` 的最权威条款——所有其他文档引用 persistence 合同时以此为准。
 
-### 2.1 Replay-Critical（FDB 原子提交 — 不可降级）
+### 2.1 TickCommitRecord Fields（FDB 原子提交 — 不可降级）
 
-以下字段随每 tick FDB 事务原子提交，缺失任一则 tick 不可 replay：
+以下 10 个字段组成 TickCommitRecord，随每 tick FDB **同一事务**原子提交。缺失任一则 tick 不可 replay：
 
 | # | 字段 | 存储位置 | 用途 |
 |---|------|---------|------|
-| 1 | `tick` | FDB tick_head | tick 编号 |
-| 2 | `state_checksum` | FDB tick_head | world state 完整性验证 |
-| 3 | `system_manifest_hash` | FDB tick_manifest | ECS 系统版本/调度配置 hash |
-| 4 | `world_config_hash` | FDB tick_manifest | world.toml 配置 hash |
-| 5 | `mods_lock_hash` | FDB tick_manifest | 已激活 RuleMod 集合 hash |
-| 6 | `commands` + `rejections` | FDB tick_commands | 所有 validated command + rejection 记录 |
-| 7 | `fuel_ledger` | FDB tick_fuel | 每玩家 fuel 扣费明细 |
-| 8 | `deploy_activation_decision` | FDB tick_deploy | 本 tick 激活的部署列表（drone_id, module_hash, fdb_version_counter） |
-| 9 | `canonical_codec_version` | FDB tick_head | 序列化格式版本 |
-| 10 | `terminal_state` | FDB tick_head | tick 终端状态（verified/audit_gap/unreplayable/reconstructable） |
+| 1 | `commands` | FDB tick_commands | 所有 validated command 记录 |
+| 2 | `rejections` | FDB tick_commands | 所有 command rejection 记录 |
+| 3 | `fuel` | FDB tick_fuel | 每玩家 fuel 扣费明细 |
+| 4 | `deploy_activation_decision` | FDB tick_deploy | 本 tick 激活的部署列表（drone_id, module_hash, fdb_version_counter） |
+| 5 | `canonical_codec_version` | FDB tick_head | 序列化格式版本 |
+
+> **canonical_codec_version CI 校验**：`canonical_codec_version` 为 `u32` 单调递增整数。CI 管线维护 Rust (`serde_swarm`) 和 Go (`swarm-codec-go`) 双实现的确定性 hash fixture——对固定 world state dump，两实现产出的 `Blake3(canonical_serialize(state))` 必须完全一致。fixture 随 codec version 更新纳入 `specs/reference/codec_fixtures/`。
+| 6 | `snapshot_hash` | FDB tick_head | COLLECT 阶段快照 hash |
+| 7 | `commands_hash` | FDB tick_head | commands + rejections 的 Blake3 hash |
+| 8 | `state_checksum` | FDB tick_head | world state 完整性验证 |
+| 9 | `manifest_hash` | FDB tick_manifest | ECS 系统版本/调度配置 hash |
+| 10 | `world_config_hash` | FDB tick_manifest | world.toml 配置 hash |
 
 ### 2.2 Debug/Rich（对象存储异步写入 — 可降级）
+
+**Object Store 仅承载 RichTraceBlob**。对象存储中不存放 replay-critical 数据。对象存储写入失败仅导致 `terminal_state = audit_gap`（审计记录缺失，游戏状态可从相邻 tick 重建），**绝不会**导致 `unreplayable`——FDB 中 TickCommitRecord 的 10 个字段足够完成确定性 replay。
 
 以下字段写入对象存储 blob，缺失不影响 deterministic replay：
 

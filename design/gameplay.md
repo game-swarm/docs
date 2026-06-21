@@ -308,9 +308,9 @@ drone age 维护由两层设施构成：
 | `global_storage_enabled` | bool | true | 是否启用全局存储。false = 纯本地物流 |
 | `global_storage_capacity` | u32 | 1000000 | 全局存储上限（1,000,000 单位，world.toml 可调） |
 | `transfer_to_global_cost` | ResourceCost | `{Energy: 0.01}` | 本地→全局每单位资源的转换成本（默认 1%） |
-| `transfer_to_global_time` | u32 | 10 | 转换所需的 tick 数（不可为 0，防止瞬移补给） |
+| `global_deposit_delay` | u32 | 10 | 转换所需的 tick 数（不可为 0，防止瞬移补给） |
 | `transfer_from_global_cost` | ResourceCost | `{Energy: 0.05}` | 全局→本地每单位资源的转换成本（默认 5%） |
-| `transfer_from_global_time` | u32 | 5 | 全局→本地转换所需 tick 数（不可为 0） |
+| `global_withdraw_delay` | u32 | 100 | 全局→本地转换所需 tick 数（不可为 0） |
 
 **三种物流模式**：
 
@@ -335,16 +335,7 @@ drone age 维护由两层设施构成：
 
 **1. 累进存储税（Progressive Storage Tax）**
 
-玩家全局存储总量超过阈值后，超出部分按累进税率征收每 tick 维护费：
-
-| 存储量（占容量上限） | 税率（basis points, ×10000） |
-|---|---|
-| 0–30% | 0 bp（免税） |
-| 30–60% | 1 bp（每万单位 1 单位） |
-| 60–85% | 5 bp |
-| 85–100% | 20 bp |
-
-> 税率由世界规则配置 `global_storage_tax_tiers` 控制。Arena 模式默认免税（竞技公平）。
+> **权威源**：存储税 tier 定义见 `specs/core/08-resource-ledger.md` §2 统一参数表。以下为概念性描述——精确 tier 数值（阈值、税率 bp）以 Resource Ledger 为准。Arena 模式默认免税（竞技公平）。
 
 **2. 本地存储隐匿性（Stealth Advantage）**
 
@@ -355,8 +346,8 @@ drone age 维护由两层设施构成：
 
 **3. 全局↔本地转换需物流运输（No Teleport）**
 
-- `transfer_to_global_time`：本地→全局转换需 N tick（默认 10 tick）。资源在运输期间不可用。
-- `transfer_from_global_time`：全局→本地转换需 N tick（默认 5 tick）。大型帝国需提前规划补给线。
+- `global_deposit_delay`：本地→全局转换需 N tick（默认 10 tick）。资源在运输期间不可用。
+- `global_withdraw_delay`：全局→本地转换需 N tick（默认 100 tick）。大型帝国需提前规划补给线。
 - 转换期间资源处于"运输中"状态——可被敌方巡逻 drone 拦截（需 PvP 启用）。
 
 > 运输时间使全局存储不能作为"战斗中的即时补给"——这是一种非平凡的策略权衡。
@@ -364,8 +355,8 @@ drone age 维护由两层设施构成：
 | 规则 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
 | `global_storage_tax_tiers` | `[(u32, u32)]` | `[(30,0),(60,1),(85,5),(100,20)]` | 累进税率：(容量%, 税率 bp) |
-| `transfer_to_global_time` | u32 | 10 | 本地→全局转换所需 tick 数（不可为 0） |
-| `transfer_from_global_time` | u32 | 5 | 全局→本地转换所需 tick 数（不可为 0） |
+| `global_deposit_delay` | u32 | 10 | 本地→全局转换所需 tick 数（不可为 0） |
+| `global_withdraw_delay` | u32 | 100 | 全局→本地转换所需 tick 数（不可为 0） |
 | `global_storage_public` | bool | false | （计划中）全局存储是否完全公开 |
 
 #### 经济治理合同 (Economic Governance Contract)
@@ -388,8 +379,8 @@ drone age 维护由两层设施构成：
 | 规则 | 默认值 | 最小安全下限 | 说明 |
 |---|---|---|---|
 | `global_storage_tax_tiers` | `[(30,0),(60,1),(85,5),(100,20)]` | 最高税率 ≥ 10 bp | 防止无限囤积 |
-| `transfer_to_global_time` | 10 tick | 不可为 0 | 无即时补给 |
-| `transfer_from_global_time` | 5 tick | 不可为 0 | 需物流规划 |
+| `global_deposit_delay` | 10 tick | 不可为 0 | 无即时补给 |
+| `global_withdraw_delay` | 100 tick | 不可为 0 | 需物流规划 |
 | `global_storage_capacity` | 1,000,000 单位/玩家 | 无硬上限（税制抑制） | 服主可调 |
 
 ##### Vanilla 经济分类账
@@ -530,7 +521,7 @@ Swarm 是一个**可配置的游戏引擎平台**——每个世界实例（worl
 | **特殊攻击** | 包含 8 种核心目标设计：`Hack`, `Drain`, `Overload`, `Debilitate`, `Disrupt`, `Fortify`, `Leech`, `Fabricate`。全部 8 种为 Standard+ 核心能力——不存在 Tier 2/Phase/Future 语义。Tutorial/Novice 默认禁用，Standard/Arena 全量启用。服主可通过 `world.toml` 的 `vanilla.special_attacks_enabled` 列表覆盖 | 冷却时间与资源消耗见 §8 特殊攻击方式表格 |
 | **Controller 维修** | 硬上限：每 tick 总 age 回退 ≤ 自然增长的 50% | 详见 §3.1 Controller 结构定义 |
 | **可见性** | `fog_of_war = true`，`player_view = drone`，`public_spectate = false` | 玩家仅可见自己 drone 视野内的内容；公开观战默认关闭 |
-| **核心数值** | Work harvest: 1 unit/tick；Spawn cooldown: 5 tick；Tower attack: 50 dmg/10 tick cooldown/range 5；Source capacity: 3000/tick regen 300 | 编码前必需的最小默认值，确保 MVP feedback loop 可平衡 |
+| **核心数值** | Work harvest: 1 unit/tick；Spawn cooldown: 5 tick；Tower attack: 50 dmg/10 tick cooldown/range 5；Source capacity: 3000/tick regen 300 | 编码前必需的最小默认值，确保 feedback loop 可平衡 |
 | **展示/世界统计** | World 模式无公开排行榜，仅提供非竞争统计（`swarm_get_world_stats`）；Arena 模式通过 `swarm_get_world_stats` 提供段位统计 | 持久世界天然不公平（老玩家先发优势），竞技场模式为有限时间窗口的公平竞争 |
 | **新玩家保护** | 首次 spawn 后 **500 tick safe_mode** | 房间内无敌，不可被攻击/Claim/Hack，详见 §3.1a 新手房间分配策略 |
 | **新手过渡期 (soft_launch)** | safe_mode 结束后 1500 tick `soft_launch_duration` | 仅 PvE 威胁（中立 NPC、资源潮、公共事件）。PvP 不可用。结束后 50 tick 前广播警告 |
@@ -977,7 +968,7 @@ cost = { Energy = 10 }
 **模组扩展**：Rhai 模组可通过以下 API 注册新 body part：
 
 ```rust
-// Rhai API（远期扩展——MVP阶段通过world.toml [[custom_actions]]声明式配置）
+// Rhai API（扩展途径——通过 world.toml [[custom_actions]] 声明式配置）
 actions.add_body_part_type("Leech", #{
     action: "Leech",           // 新 CommandAction
     damage_type: "Corrosive",

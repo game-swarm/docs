@@ -79,7 +79,7 @@ Browser (Web UI)
          ▼
 ┌──────────────────┐
 │  Gateway/MCP      │  ← SSE 推送（text/event-stream）
-│  (仅 HTTP/SSE)    │     Token audience: swarm-aud-v1:browser-http:<server_id>:<world_id>:<player_id>
+│  (仅 HTTP/SSE)    │     Token audience: swarm-aud-v1:browser-ws:<server_id>:<world_id>:<player_id>
 └──────────────────┘
 ```
 

@@ -77,7 +77,8 @@
 | `allied_transfer_fee` | 200 | bp | 联盟转移费率 (2.00%) |
 | `allied_transfer_delay` | 200 | tick | 联盟转移延迟 |
 | `allied_transfer_cooldown` | 500 | tick | 同目标联盟转移冷却 |
-| `allied_daily_cap` | 10,000 | units | 每日联盟转移上限 |
+| `allied_daily_cap` | `max(10_000, receiver_gcl × 20_000)` | units | 每日联盟转移上限（按接收方 GCL 缩放，最低 10,000） |
+| `allied_daily_cap_world_multiplier` | 1.0 | float | 世界模式乘数（Standard=1.0, Arena=0.5, Tutorial=5.0） |
 | **Storage Tax (累进)** | | | |
 | `storage_tax_tiers` | `[(30,0),(60,1),(85,5),(100,20)]` | (容量%, bp) | 累进存储税 tier 定义 |
 | `storage_tax_tier_0_threshold` | 30% | capacity% | 0–30% 免税 |

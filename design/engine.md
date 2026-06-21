@@ -433,6 +433,8 @@ WASM tick() 输入 snapshot 受 per-player 256KB cap 约束：
 
 **Anti-abuse**：可见实体造成的 snapshot 压力纳入 room/entity cap、density tax 和 attacker cost 策略。敌对方可通过堆叠实体增加受害方 snapshot 压力——此行为不被禁止，但 snapshot truncation 不会因此泄露更多信息。
 
+**WASM 输出截断**：WASM `tick()` 输出上限 256KB。超出时整批丢弃（不保留前缀，不执行已解析指令）。产出 `output_truncated` 拒绝原因，写入 TickCommitRecord，通过 snapshot/status 通知玩家。详见 [Tick Protocol §9.7](../specs/core/01-tick-protocol.md#97-wasm-output-截断)。
+
 #### 3.4.5 Controller 维修公式
 
 Controller repair 降低 drone age。公式使用定点整数（basis points, × 10000）：
@@ -440,13 +442,11 @@ Controller repair 降低 drone age。公式使用定点整数（basis points, ×
 ```
 age_reduction = min(repair_per_drone, drone.age)
 total_reduction = Σ age_reduction per drone serviced (up to repair_capacity)
-
-// 硬上限：每 tick 总 age 回退 ≤ 自然增长 (+1/tick) 的 50%
-global_cap = floor(active_drones × 0.5)
-actual_reduction = min(total_reduction, global_cap)
 ```
 
 **维修距离**：Controller RCL1=1 格，RCL8=5 格。相邻格只有 6 个——大量 drone 排队形成物流拥挤。
+
+> **设计决策 (D7)**：移除全局 repair cap。维修仅受物理约束限制——(a) `repair_range`（RCL1=1 格 → RCL8=5 格），(b) `repair_capacity` 每 Controller 每 tick 可服务 drone 数，以及 (c) drone 物理分布（必须移动到 Controller 邻域才能被维修）。这些约束已足够防止维修被滥用，无需人工全局 cap。
 
 #### 3.4.6 Phase 2b DeathMark 读写语义
 

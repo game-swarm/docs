@@ -112,8 +112,8 @@ fn host_get_world_rules(rule_id_ptr: i32, rule_id_len: i32, out_ptr: i32, out_le
 **CommandAction 的唯一权威定义在 [API Registry](specs/reference/api-registry.md) §1**。所有 21 个 CommandAction 变体（11 core + 2 economy_operation + 8 special_attack）的完整 schema、参数、分类和 actor_id/object_id 语义以 Registry 为准。本文档及其他设计文档不得重新声明 CommandAction 列表或参数；只能引用 Registry。
 
 Notes:
-- Move: 4方向 (N/S/E/W)。8方向为 Future RFC
-- SendMessage: Future RFC: drone间消息传递。当前不在 Core CommandAction 中。
+- Move: 4方向 (N/S/E/W)。8方向为 Out-of-Scope RFC，不在当前核心定义中。
+- SendMessage: Out-of-Scope RFC: drone间消息传递。当前不在 Core CommandAction 中。
 
 ### 5.5 Host Function 成本模型
 

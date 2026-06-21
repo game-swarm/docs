@@ -186,7 +186,7 @@ WASM 模块通过 `tick(snapshot) → CommandIntent[]` JSON 返回指令。
 - 效果：指定伤害类型抗性×2，持续 50 tick
 - 冷却：150 tick | 消耗：200 Energy | 抗性：Corrosive | special_effect: `debilitate`
 
-### Leech ⏳ Tier 2
+### Leech
 吸血攻击——伤害的 50% 治疗自身。
 ```json
 { "sequence": 20, "action": { "type": "Leech", "object_id": "d1", "target_id": "e5" } }
@@ -195,7 +195,7 @@ WASM 模块通过 `tick(snapshot) → CommandIntent[]` JSON 返回指令。
 - 伤害：Corrosive 15 dmg，治疗自身 50%
 - 消耗：300 Energy | 抗性：Corrosive | special_effect: `leech`
 
-### Fabricate ⏳ Tier 2
+### Fabricate
 将敌方 drone 转化为己方建筑。
 ```json
 { "sequence": 21, "action": { "type": "Fabricate", "object_id": "d1", "target_id": "e5" } }
@@ -215,7 +215,7 @@ WASM 模块通过 `tick(snapshot) → CommandIntent[]` JSON 返回指令。
 
 （共 11 个 special_effect handler：8 个绑定默认 CustomAction + 3 个附加）
 
-> **Future RFC**: `SendMessage` 指令（drone 间消息传递）为 Future RFC，不在当前核心定义中。详见 [API Registry](api-registry.md) §1。
+> **Out-of-Scope RFC**: `SendMessage` 指令（drone 间消息传递）为 Out-of-Scope RFC，不在当前核心定义中。详见 [API Registry](api-registry.md) §1。
 
 ## 拒绝原因 — 见 [API Registry](api-registry.md) §2
 

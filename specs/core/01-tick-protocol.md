@@ -247,6 +247,7 @@ for (order_index, player_id) in player_order.iter().enumerate() {
 - 确定性：相同 `(tick_number, world_seed, 相同指令集)` → 相同顺序 → 相同世界状态
 - 公平性：每个 tick 玩家顺序随机轮换，长期期望均等
 - 不可预测：玩家无法提前知道自己在当前 tick 的排序位置
+- **PlayerId canonical sort**：`seeded_shuffle` 内部先按 `PlayerId` 字节序（lexicographic）排序 → 再对排序后的有序列表执行 Fisher-Yates shuffle（Blake3 XOF 驱动）——保证 shuffle 输入顺序确定性。shuffle 使用 rejection sampling 消除模偏差（`XOF.read_u64() % (N - i)` 当 `N - i` 不整除 2^64 时丢弃超出范围的采样值重试），确保每个排列概率均等。
 
 **种子轮换**：`world_seed` 定期轮换，防止长期观察推断种子空间。轮换周期通过 `world.toml` 配置：
 
@@ -393,9 +394,9 @@ Source E1: energy = 5
 
 #### 3.5.1 架构概述
 
-生产环境使用 **room-partition tick commit**，将世界按房间分片独立提交。每个房间在本次 tick 中执行的状态迁移由其所在的 FDB 事务分区独立原子提交。
+生产环境使用 **room-partition tick commit** 作为 FDB 写入优化——将世界按房间分片组织 FDB 事务写入，减少单事务冲突域，提升写入吞吐。逻辑上整个 tick 仍是**全局原子**的：所有房间的状态迁移在同一个全局 tick 边界内发生。
 
-**单事务模式仅用于开发/测试 profile**（≤ 50 active players, ≤ 100 rooms），生产环境强制 room-partition。不存在 best-effort 游戏状态降级路径——任何房间级提交失败均触发该房间快照恢复，不允许部分状态落地。
+**单事务模式仅用于开发/测试 profile**（≤ 50 active players, ≤ 100 rooms），生产环境强制 room-partition。room-partition 不影响游戏语义——任何组件（单房间、跨房间、GlobalTickCommit）提交失败均触发 **tick 放弃 + 全局快照恢复**，不允许部分状态落地。不存在 best-effort 游戏状态降级路径。
 
 #### 3.5.2 GlobalTickCommit 结构
 
@@ -412,14 +413,17 @@ struct GlobalTickCommit {
 #### 3.5.3 Room-Partition 提交流程
 
 ```
-Phase 2b 完成后:
-  1. 对每个活跃房间：独立 FDB 事务提交房间状态 delta
+Phase 2b 完成后（room-partition = FDB 写入优化，非独立提交语义）:
+  1. 对每个活跃房间：独立 FDB 事务写入房间状态 delta（写入分片）
      └─ room_txn.commit() → per_room_commit_hash
   2. 收集所有 per_room_commit_hashes
   3. 处理跨房间意图 (cross_room_intent_set)
-  4. 提交 GlobalTickCommit（全局 manifest 事务）
+  4. 提交 GlobalTickCommit（全局 manifest 事务 —— 原子提交点）
      └─ 成功 → tick 完成，tick_counter 递增
-     └─ 失败 → tick 放弃，所有房间快照恢复
+     └─ 失败 → tick 放弃，**所有房间**快照恢复（全局回滚）
+     └─ 任何单房间写入失败 → 同 GlobalTickCommit 失败处理（tick 放弃 + 全局回滚）
+
+**关键不变量**：不存在「部分房间已提交、其他房间未提交」的中间态——room-partition 仅是 FDB 写入分片策略，不产生 per-room 独立 commit 语义。
 ```
 
 #### 3.5.4 跨房间意图 (Cross-Room Intents)
@@ -439,8 +443,7 @@ Phase 2b 完成后:
      ├─ 任一 room commit 失败 → 该 intent 及其下游依赖 → REJECTED
      └─ 记录 rejection 到 cross_room_rejection_log
   3. 超时处理 (timeout_ms = 3000):
-     ├─ 超时 → deterministic rejection（所有未完成的 cross-room intent 标记 REJECTED）
-     └─ 或 tick abandon + snapshot restore（若 critical intent 超时）
+     └─ 超时 → tick abandon + global snapshot restore（全局原子模型——任何未完成 cross-room intent 均触发 tick 放弃）
   4. 无 partial commit：不存在"部分房间已提交、部分未提交"的中间态
 ```
 
@@ -450,12 +453,12 @@ Phase 2b 完成后:
 
 #### 3.5.5 错误恢复
 
-| 失败场景 | 处理 | 
-|---------|------|
-| 单房间 commit 失败 | 该房间 snapshot 恢复，其他房间独立推进 |
-| Cross-room intent 任一失败 | 涉及的 source + target 房间均回滚 |
-| GlobalTickCommit 失败 | 所有房间回滚，tick 放弃 |
-| Cross-room intent timeout | Deterministic reject OR tick abandon（取决于 intent 是否 critical） |
+| 失败场景 | 处理 | 说明 |
+|---------|------|------|
+| 单房间写入失败 | tick 放弃，全局快照恢复 | room-partition 仅是写入分片——单房间写入失败 = 全局 tick 无法完成 |
+| Cross-room intent 任一失败 | tick 放弃，全局快照恢复 | 跨房间操作无法 partial commit |
+| GlobalTickCommit 失败 | tick 放弃，全局快照恢复 | manifest 事务是原子提交点 |
+| Cross-room intent timeout | tick 放弃，全局快照恢复 | 全局原子模型——未完成 cross-room intent = 本 tick 游戏状态不完整 |
 
 #### Bevy World 快照范围清单
 
@@ -950,7 +953,16 @@ aging → decay → death_cleanup → pvp_block → room_state → controller_2b
 
 ### 9.7 WASM output 截断
 
-WASM `tick()` 输出上限 256KB。超出时整批丢弃——不保留部分解析的前缀。WASM 模块收到 `output_truncated` 拒绝码，下一 tick 可重新输出。
+WASM `tick()` 输出上限 256KB。超出时**整批丢弃**——不保留部分解析的前缀，不执行已解析的前 N 条指令。处理合同：
+
+| 状态 | 语义 | 处理 |
+|------|------|------|
+| **正常** | output ≤ 256KB | 完整指令列表入队执行 |
+| **Truncated** | output > 256KB | 整批丢弃，产出 `output_truncated` 拒绝原因 |
+| **记录** | — | 写入 TickCommitRecord：`wasm_output_truncated: true`，记录 `output_size_bytes` 和 `truncated_at` |
+| **通知** | — | 通过 snapshot/status 通知玩家：`wasm_output_status: "output_truncated"`，附带实际 output 大小 |
+
+WASM 模块收到 `output_truncated` 拒绝码，下一 tick 可重新输出缩减后的指令列表。引擎不执行前缀解析——杜绝部分执行导致的游戏状态不一致。
 
 ### 9.8 RuleMod / 动态 action 边界
 

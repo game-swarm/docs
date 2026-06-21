@@ -110,7 +110,7 @@ issue_certificate_bundle(
     public_key: Ed25519PublicKey,
     usages: ["client_auth", "code_signing", ...],
     scopes: ["swarm:deploy", "swarm:read", ...],
-    audience: "swarm-aud-v1:swarm-alpha:world_v1:42",
+    audience: "swarm-aud-v1:cli-rest:<server_id>:<world_id>:<player_id>",
     ttl_policy: CertificateTtlPolicy,
 ) → CertificateBundle
 ```
@@ -256,13 +256,23 @@ challenge: <server challenge>
 expires_at: <challenge_expires_at>
 ```
 
-服务端验证：
-1. `challenge_id` 存在、未过期、未消费，且 PoW 成立
-2. CSR 签名可由 CSR 内的 `public_key` 验证
-3. `username` 未被占用或已通过恢复流程证明可绑定
-4. requested usages/scopes/profile 在服务器策略允许范围内；`admin` usage 只能由 `admin_device` profile 请求，并需要现有管理员授权或离线 bootstrap
-5. `temporary_device` 与 `managed_device` 不得请求 `admin` usage，不得获得证书签发、续签其它设备、吊销证书或修改 CA/trust policy 的 scope
-6. 在同一事务中消费 challenge、创建或更新 user、记录 public key、签发用途隔离证书
+服务端验证——**多层准入链**（逐层过滤，任一层拒绝 → 请求丢弃）：
+
+| 层级 | 准入检查 | 说明 |
+|------|---------|------|
+| **L1: PoW** | `challenge_id` 存在、未过期、未消费，且 PoW 成立 | 基础工作量证明——消耗客户端 CPU，防止零成本注册洪泛 |
+| **L2: per-IP 限流** | 同 IP CSR 提交速率 ≤ 1/30s（可配置） | 防止单 IP 快速轮换账号绕过 PoW |
+| **L3: per-ASN 限流** | 同 ASN CSR 提交速率 ≤ 10/min（可配置） | 防止分布式 botnet 跨 IP 攻击 |
+| **L4: global semaphore** | 全局并发 CSR 验证 ≤ `min(cpu_cores, 4)` | 防止 PoW 验证（blake3 brute-force verify）耗尽 CPU |
+| **L5: bounded queue** | 排队 CSR ≤ 100；溢出 → `ERR_CSR_QUEUE_FULL` (HTTP 503) | 防止无界排队导致 OOM |
+| **L6: audit throttle** | 同 username 连续失败 ≥ 5 → 冷却 300s | 防止暴力枚举用户名 |
+
+通过准入链后进入 CSR payload 验证：
+1. CSR 签名可由 CSR 内的 `public_key` 验证
+2. `username` 未被占用或已通过恢复流程证明可绑定
+3. requested usages/scopes/profile 在服务器策略允许范围内；`admin` usage 只能由 `admin_device` profile 请求，并需要现有管理员授权或离线 bootstrap
+4. `temporary_device` 与 `managed_device` 不得请求 `admin` usage，不得获得证书签发、续签其它设备、吊销证书或修改 CA/trust policy 的 scope
+5. 在同一事务中消费 challenge、创建或更新 user、记录 public key、签发用途隔离证书
 
 ### 5.3 用途隔离证书
 
@@ -368,7 +378,7 @@ timestamp: <unix_ms>
 nonce: <nonce>
 certificate_id: <certificate_id>
 player_id: <player_id>
-audience: "transport:server_id:world_id:player_id"
+audience: "swarm-aud-v1:<transport>:<server_id>:<world_id>:<player_id>"
 ```
 
 验证顺序：
@@ -672,14 +682,14 @@ CSR 和恢复流程的额外 PoW 通过 `auth.recovery_pow` 配置项控制：
 
 ```toml
 [auth.recovery_pow]
-enabled = false          # 默认关闭
-difficulty_bits = 16     # 触发时的难度
+enabled = true           # 默认开启（16-bit 低难度 PoW 防滥用）
+difficulty_bits = 16     # 低难度（~65K 次尝试，<1ms Rust native）
 trigger_fail_count = 5   # 连续失败 N 次后触发
 trigger_window_seconds = 300  # 失败计数的滑动窗口
 ```
 
-- 默认关闭：CSR 提交只使用注册 PoW，恢复凭据依赖 per-account 限速 + dummy argon2id
-- 触发后：该 username 的恢复请求在 `trigger_window_seconds` 内要求额外 PoW
+- 默认开启：恢复凭据校验始终要求轻量 PoW（16-bit, ~65K 次尝试），与注册 PoW（24-bit）独立
+- 低风险环境（内网、离线部署、开发/测试）可在 world.toml 中关闭：`[auth.recovery_pow] enabled = false`
 - 服务端动态判断：检查 `auth/login_fail/<username>` 的 fail_count
 - 支持运行时开关，无需重启
 
@@ -791,17 +801,23 @@ WebSocket 连接按客户端类型分为两条安全路径：
     Swarm-Cert-Id: <certificate_id>
     Swarm-Timestamp: <unix_seconds>
     Swarm-Nonce: <random_96bit>
-    Swarm-Signature: ed25519:<canonical_signature>
+    Swarm-Signature: <ed25519 signature of canonical payload>
 
 服务端:
   1. 验证证书链 → 提取 public_key + usage(mcp_query)
   2. 验证 canonical payload: "SWARM-WS-V1\n<cert_id>\n<timestamp>\n<nonce>"
   3. 验证 nonce 未使用（FDB 去重）
   4. 验证 timestamp 在 ±30s 窗口内
-  5. 建立认证 WebSocket → 会话建立
+  5. 建立认证 WebSocket → 会话绑定 (cert_id, player_id, current_tick)
+  6. 后续每条消息必须携带 per-message seq + MAC/Ed25519 签名
+     - seq: 单调递增（每方向独立），接收方严格检查 `seq == last_seq + 1`
+     - MAC: 对 `SWARM-WS-MSG-V1\n<seq>\n<tick>\n<body_hash>` 的 Ed25519 签名
+     - **tick 绑定**：MAC payload 必须包含当前 tick 编号——防止跨 tick 消息重放
+     - seq 跳跃或 MAC 不匹配 → 断开连接 + 审计日志
+  7. 服务端回复也附独立 seq + 签名
 ```
 
-会话建立后，**每条可写消息必须携带递增序列号 + MAC/Ed25519 签名**：
+WebSocket 断开后需重新握手。会话内消息不计入 per-tick rate limit（握手时已完成身份绑定）。
 
 - `seq`: 单调递增序号（从 1 开始），接收方严格检查 `seq == last_seq + 1`
 - `mac`: 对 `SWARM-WS-MSG-V1\n<seq>\n<body_hash>` 的 Ed25519 签名，使用握手绑定的用户私钥

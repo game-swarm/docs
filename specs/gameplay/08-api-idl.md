@@ -274,13 +274,13 @@ global_storage_commands:
     params: { resource: ResourceName, amount: ResourceAmount }
     validator: [global_storage_enabled, has_local_resource, under_capacity, transfer_time_remaining(0)]
     cost: registry.transfer_to_global_cost() * amount
-    duration: transfer_to_global_time  # tick 数，运输期间资源不可用
+    duration: global_deposit_delay  # tick 数，运输期间资源不可用
 
   TransferFromGlobal:
     params: { resource: ResourceName, amount: ResourceAmount }
     validator: [global_storage_enabled, has_global_resource, transfer_time_remaining(0)]
     cost: registry.transfer_from_global_cost() * amount
-    duration: transfer_from_global_time
+    duration: global_withdraw_delay
 
 refund_policy:
   contention_lost: 0.5    # SourceEmpty, TileOccupied, TargetFull

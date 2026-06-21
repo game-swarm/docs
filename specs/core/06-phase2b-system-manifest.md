@@ -179,13 +179,16 @@ Serial Spine:
 - **Filter**: `Without<DeathMark>` — 跳过已标记死亡的实体。
 
 ### S11-S13: Combat Parallel Set A
-| System | ID | Reads | Writes |
-|--------|-----|-------|--------|
-| attack_system | `atk` | Drone (pos, body), Entity (pos, hits) | Entity (hits) |
-| ranged_attack_system | `rng_atk` | Drone (pos, body), Entity (pos) | Entity (hits) |
-| heal_system | `heal` | Drone (pos), Entity (hits, max_hits) | Entity (hits) |
 
-**Parallel safety**: 三个 system 按 `target_id` partition，同一 entity 只被一个 system 写入。Reduce 后由 S15 统一应用。`SpawningGrace` filter 在此层生效——新生 drone 被所有 combat system 跳过。
+| System | ID | Reads | Writes (per-system sub-buffer) |
+|--------|-----|-------|--------|
+| attack_system | `atk` | Drone (pos, body), Entity (pos, hits) | **PendingDamage[target_id]** (damage value) |
+| ranged_attack_system | `rng_atk` | Drone (pos, body), Entity (pos) | **PendingDamage[target_id]** (damage value) |
+| heal_system | `heal` | Drone (pos), Entity (hits, max_hits) | **PendingHeal[target_id]** (heal amount) |
+
+**Buffer 写入约定**：S11-S13 **不直接修改 Entity.hits**。三者各自写入线程局部的 per-system sub-buffer（`PendingDamage` / `PendingHeal`），由 S14 serial collector 归并后，**S15 damage_application 为 HitPoints 的 UNIQUE 写入者**。Combat intent（特殊攻击触发）写入 `CombatIntent` sub-buffer，由 S14 收集。
+
+**Parallel safety**: 三个 system 按 `target_id` partition，同一 entity 只被一个 system 写入对应的 sub-buffer。`SpawningGrace` filter 在此层生效——新生 drone 被所有 combat system 跳过。
 
 **R30 B1**: S11-S13 不再产生特殊攻击 intent。特殊攻击 intent 由 S01（Phase 2a 命令执行时）写入 `PendingSpecialAttackIntent` buffer。
 
@@ -203,8 +206,14 @@ Serial Spine:
 - **Must run before**: S22
 - **Note**: 此 reducer **不直接修改实体状态**——仅负责 intent 归并、排序、路由。实际状态变更由 S22 `status_advance_system` 串行执行。
 
-### S15: damage_application
+### S15: damage_application (UNIQUE HitPoints writer)
+
+**S15 是 HitPoints 的 UNIQUE 写入者**。所有伤害/治疗经过 S11-S13 的 `PendingDamage`/`PendingHeal` buffer → S14 serial collector → S15 统一 reduce + canonical key sort → 原子写入 `Entity.hits`。不存在任何其他 system 直接修改 HitPoints（S10 regen 除外，其在 S15 之前独立执行）。
+
+Canonical key 归约：S15 对 `PendingDamage[target_id]` 和 `PendingHeal[target_id]` 按 `target_id` 升序归并——同 target 的 damage 先合并（`net_damage = Σ attack - Σ heal`），再一次性写入 `Entity.hits`。这保证同一 entity 的 HitPoints 只在 S15 中被写入一次。
+
 - **ID**: `dmg_apply`
+- **HitPoints 写入契约**: **UNIQUE WRITER** — S15 是除 S10 regen 外唯一写 `Entity.hits` 的 system。CI 静态验证：任何其他 system 对 `HitPoints` 的写操作必须被拒绝。
 - **Reads**: PendingDamage buffer (from S11-S13), Entity (armor, resistances)
 - **Writes**: Entity (hits), DeathMark (if hits ≤ 0)
 - **Must run after**: S11, S12, S13, S14
@@ -362,6 +371,16 @@ for each active StatusState:
 - **Despawn**: 标记 `DeathMark` 但不立即移除。S25 收集所有 DeathMark 实体，按 `entity_id` 降序 despawn（避免 ID 复用问题）。
 - **同一实体先 Despawn 后 Create**: 新 entity 获得新的 `StableEntityId`，不与旧 ID 冲突。
 - **RoomCap 生命周期**: S07 `death_marker` 释放槽位 → S08 `spawn_system` 消费槽位。此区间内 RoomCap 处于中间态——其他 system 不得读取 RoomCap 做准入决策。
+
+### 3.1 EntityId 分配器确定性契约
+
+- `EntityId` 分配器为 **per-world 顺序单调递增**：新 entity 的 `StableEntityId = last_allocated_id + 1`，不依赖 HashMap 迭代顺序或 allocator 内部状态。
+- 跨 tick 分配保持连续（不跨 tick 跳跃），不回收已 despawn 实体的 ID。
+- **CI replay 验证**：随机采样 tick，对比两次独立 replay 的 entity 创建顺序与 `StableEntityId` 分配——必须逐位一致。
+
+### 3.2 S22 实体迭代顺序
+
+S22 `status_advance_system` 迭代实体顺序：`sorted(entities_with_active_status, StableEntityId)`。即先收集所有携带任意 active `StatusState` component 的实体，按 `StableEntityId` 升序迭代推进。此排序保证跨 replay / 跨平台确定性，不依赖 Bevy archetype 内部顺序。
 
 ---
 
