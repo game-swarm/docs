@@ -15,7 +15,7 @@
 | 分组 | Game API 工具数 | 说明 |
 |------|-----------------|------|
 | Onboarding | 10 | 信息、快照、房间、drone、文档与 schema 查询 |
-| Auth | 2 | `swarm_auth_login` / `swarm_auth_refresh` 简化形态 |
+| Auth | 3 | `swarm_register_challenge` / `swarm_submit_csr` / `swarm_cert_check` (证书链模型) |
 | Play | 16 | 世界读取、回放、可见性、controller/structure/economy 查询 |
 | Deploy | 7 | 部署、校验、状态、模块、世界配置与规则读取 |
 | Debug | 8 | TickTrace、模拟、dry-run、sandbox/profile、最后 tick 解释 |
@@ -24,7 +24,7 @@
 | Arena | 4 | 锦标赛创建、precommit、状态、比赛结果 |
 | Resources | 2 | `resources/list` / `resources/read` |
 | **Game API 小计** | **56** | `game_api.idl.yaml` active tools |
-| **Auth API** | **11** | `auth_api.idl.yaml` lifecycle + cert/device 工具 |
+| **Auth API** | **12** | `auth_api.idl.yaml` CSR lifecycle + device/recovery/federation 工具 |
 
 ### 部署
 
