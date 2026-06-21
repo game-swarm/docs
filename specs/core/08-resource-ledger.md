@@ -4,7 +4,9 @@
 >
 > **R15 B9 修复**。本文档定义 Swarm 引擎中所有资源流动的唯一切入点（Transfer Gateway），消除 local transfer / global transfer / allied transfer / PvE award 等多入口的资源逃逸路径。
 >
-> **R22 B2 修复**。本文档为 Swarm 经济系统的**唯一设计/数学权威**。所有费率、公式、参数以本文档为准。`economy.idl.yaml` 为机器 schema（引用本文档），`api-registry.md` 为生成产物（禁止手写经济数值）。
+> **R22 B2 修复**。本文档为 Swarm 经济系统的**唯一设计/数学权威**。所有费率、公式、参数以本文档为准，涵盖所有成本、费用、物流参数。`economy.idl.yaml` 为机器 schema（引用本文档），`api-registry.md` 为生成产物（禁止手写经济数值）。
+>
+> **R33 B5 修复**。本文档明确为经济系统的**数学/执行顺序权威**——所有成本/费用/物流参数唯一在此定义，其他文档（design/gameplay.md、design/economy-balance-sheet.md、design/engine.md）必须引用此文档参数。
 
 ## 原则
 
@@ -56,7 +58,7 @@
 | `SpawnCost` | Owner → Drone | 生成消耗 |
 | `UpkeepDeduction` | Owner → World | 维护费扣除 |
 | `StorageTax` | Storage → World | 存储税 |
-| `ContractSettlement` | Contract → Participants | 合约结算 (Future RFC) |
+| `ContractSettlement` | Contract → Participants | 合约结算 (Out-of-Scope) |
 
 ---
 
@@ -273,15 +275,15 @@ room_soft_cap = 10 (Standard) / 15 (Vanilla) / 20 (Tutorial)
 
 ---
 
-## 7. Future RFC 入口
+## 7. 远期入口
 
-以下入口为 Future RFC，**不进入当前 Resource Ledger**：
+以下入口为远期扩展，**不进入当前 Resource Ledger**：
 
 | 入口 | 状态 | 替代方案 |
 |------|------|---------|
-| Contract Settlement | Future RFC | Challenge Board 用非资源奖励 |
-| Merchant NPC | Future RFC | — |
-| Drone P2P Offer | Future RFC | Allied Transfer (受限) 部分覆盖 |
+| Contract Settlement | Out-of-Scope | Challenge Board 用非资源奖励 |
+| Merchant NPC | Out-of-Scope | — |
+| Drone P2P Offer | Out-of-Scope | Allied Transfer (受限) 部分覆盖 |
 
 ---
 

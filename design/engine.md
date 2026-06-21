@@ -242,10 +242,10 @@ Swarm:     Move = Action  → 每 tick 移动 OR 采集 OR 攻击 OR 建造
 此设计在 playtest 阶段可能被挑战——如果证据表明玩家普遍因 Move 占用 action slot 而流失，可重新评估。当前作为有意的设计选择冻结。
 | **Phase 2b (Deferred)** | ECS Systems (serial spine + parallel sets) | death_marker, spawn, spawning_grace, regeneration, combat (parallel set A), special_attack_reducer, damage_application, status buffer production (parallel set B: S16-S22b), status_advance_system (S22 serial unique writer), aging, decay, death_cleanup, pvp_block, room_state, controller_2b, resource_ledger — **R30 B1: 31 systems** | **被动系统**——有依赖关系的系统串行执行（保证正确性），无数据竞争的系统利用并行调度。不接收玩家命令，响应 2a 产生的状态变化。完整调度见 [Complete Tick Execution Manifest](specs/core/06-phase2b-system-manifest.md) |
 
-**Attack 与 combat_system 的职责分离**：
-- **Phase 2a Attack/RangedAttack 命令**：直接应用 damage（含抗性/伤害类型计算），立即反映到目标 HP
-- **Phase 2b combat_system**：仅处理非玩家命令的战斗——Tower 自动攻击、持续伤害效果（DoT）、叠加状态结算
-- 此分离保证「先到先得」竞争在 Attack 上生效，同时 Tower/DoT 统一在 2b 末尾结算
+**Attack 与 combat_system 的职责分离（R33 B7）**：
+- **Phase 2a Attack/RangedAttack/Heal 命令**：仅生成 `PendingDamage`/`PendingHeal` intent，**不直接修改目标 HP**。Phase 2a 校验基本合法性（body part 要求、cooldown、fatigue、target validity），但 damage/heal 的实际应用推迟到 Phase 2b。
+- **Phase 2b combat_system（S11-S13）**：统一收集 Phase 2a 产生的 PendingDamage/PendingHeal 以及 Tower 自动攻击、持续伤害效果（DoT）→ S14 special_attack_reducer 归并 → S15 damage_application 统一写入 Entity.hits。
+- 此分离保证「先到先得」竞争在 Phase 2a 校验层面生效（先通过校验的 Attack 先拿到 intent 优先级），但所有 HP 变更统一在 Phase 2b S15 确定——避免同 tick 内 Attack 顺序差异导致的不同 HP 结果。
 
 **Recycle 死亡路径**：Recycle 命令走标准 death_mark → death_cleanup 路径（与其他死亡一致），不在 Phase 2a 中立即 despawn。death_mark 在 2b 开头标记待死亡 entity 并释放 room cap 槽位，death_cleanup 在 2b 末尾执行实际 despawn。
 

@@ -350,14 +350,14 @@ TickCommitRecord {
 
 ## 8. Room-Partition FDB 事务策略
 
-> **R23 D6/B 裁决**：FDB room-partition transaction 纳入 Phase 1 合同。单事务 MVP 仅支持小规模验证；500/1000-player 场景必须使用 room-level partition。
+> **R23 D6/B 裁决**：FDB room-partition transaction 纳入核心合同。单事务模式仅支持小规模验证（≤ 50 active players, ≤ 100 rooms）；500/1000-player 场景必须使用 room-level partition（Shadow Write）。
 
 > **R32 B1**：模型从「per-room 独立 FDB commit + 全局回滚」升级为「shadow write + atomic publish」。Per-room 写入目标为 `/staging/{tick}/{room}`——staging 行不是已提交状态。GlobalTickCommit 是唯一的 publish 点，将 staging 行原子提升为 `/committed/` 路径。所有下游读取仅走 `/committed/`。Staging 孤立行由 GC 清理（< 15s）。详见 `specs/core/01-tick-protocol.md` §3.5。
 
 ### 8.1 分区策略
 
 ```
-单事务 MVP (默认):
+单事务模式 (默认):
   适用: ≤ 50 active players, ≤ 100 rooms
   策略: 整个 world 单 FDB 事务
   热区: tick_head + state_checksum + manifest (shared)
@@ -377,7 +377,7 @@ Room-Partition (500+ players):
 
 ### 8.2 实现约束
 
-| 约束 | 单事务 MVP | Room-Partition (Shadow Write) |
+| 约束 | 单事务模式 | Room-Partition (Shadow Write) |
 |------|-----------|---------------|
 | FDB 事务大小 | 单 tick < 10KB | 每 room staging < 2KB |
 | 对象存储异步写入超时 | 5s；3 次重试 | 5s；3 次重试 |

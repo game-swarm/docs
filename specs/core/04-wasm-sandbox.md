@@ -38,7 +38,17 @@
 └──────────────────────────────────────────┘
 ```
 
-**生命周期**: Sandbox 采用 **long-lived worker pool** 模型。WASM 模块在部署时预编译并缓存——`Blake3(module_hash || wasmtime_build_commit || wasmparser_version || validation_policy_version || target_arch || security_epoch)` 作为缓存键。每 tick：worker 从池中取出 → 重置 Wasmtime Store（清空线性内存、重置 fuel counter、重建 Instance） → 执行单一玩家的 `tick()` → 返回结果 → 返回池中。
+**生命周期**: Sandbox 采用 **long-lived worker pool** 模型。WASM 模块在部署时预编译并缓存——`Blake3(module_hash || wasmtime_build_commit || wasmparser_version || validation_policy_version || target_arch || security_epoch)` 作为缓存键。每 tick：worker 从池中取出 → 执行 **Store reset checklist**（以下所有步骤按序执行，任一失败 → worker 替换并审计）:
+
+1. **清空 WASM 线性内存**：全部页归零
+2. **重置 fuel counter**：`store.set_fuel(MAX_FUEL)`
+3. **重建 Instance**：从预编译 Module 重新实例化（含 host function 重新绑定）
+4. **epoch deadline 重置**：`store.set_epoch_deadline(1)` — 新 tick 开始
+5. **验证 Store 隔离**：检查实例化的 Instance 不含上一 tick 残留引用/状态
+6. **seccomp 验证**：确认 BPF filter 仍在生效（通过自检 syscall 验证返回 EPERM）
+7. **cgroup 验证**：确认 memory.max、cpu.max、pids.max 未被前次执行修改
+
+→ 执行单一玩家的 `tick()` → 返回结果 → 返回池中。
 
 **设计理由**: fork-per-tick 的隔离性更强，但以 500 活跃玩家计算，fork + seccomp + cgroup 初始化仅进程创建就需 2.5-5s，直接超出整个 tick 预算（3s）。Worker pool 配合严格 Store reset（清空 WASM 线性内存、重置 fuel counter、epoch deadline）和 cgroup/seccomp 持久绑定，在性能与隔离间取得平衡。防止跨 tick 资源累积的机制：Store reset 清空所有 WASM 可变状态；epoch deadline 保证单次 tick 时间上限；OOM killer + memory.max 处理内存泄漏。
 
@@ -262,9 +272,17 @@ cpu.max = 250000 3000000     // 每 3s tick 周期限 0.25 CPU 秒
 pids.max = 16                // 最多 16 线程（Wasmtime + 编译器）
 ```
 
-### 4.3 网络命名空间
+### 4.3 网络命名空间（R33 B8）
 
-sandbox 进程无网络命名空间。与引擎通过 Unix domain socket 通信（fd 在 seccomp 锁定前传入）。
+sandbox 进程拥有**独立 netns**，无网络接口、无路由表、无 iptables 规则。与引擎通过 Unix domain socket 通信（fd 在 seccomp 锁定前传入）。
+
+**网络隔离层（双层）**：
+| 层 | 机制 | 效果 |
+|----|------|------|
+| **L1: netns** | 独立网络命名空间，`ip link set lo down`，无任何物理/虚拟网卡 | 进程内任何 socket() 调用返回 EAFNOSUPPORT |
+| **L2: seccomp** | BPF filter 拒绝所有 socket 相关 syscall（socket/connect/bind/listen/accept/sendmsg/recvmsg） | 系统调用层阻断，防止 netns 逃逸或配置错误 |
+
+**验证命令**：`ip netns exec <sandbox_ns> ip link show` → 仅 lo（DOWN）；`ip netns exec <sandbox_ns> ip route show` → 空。
 
 ## 5. 恶意 WASM 样本库
 

@@ -1,10 +1,10 @@
-# MVP 反馈循环规范
+# 反馈循环规范 — Feedback Loop
 
 > 详见 design/modes.md
 
-## 1. MVP 反馈循环
+## 1. 反馈循环
 
-玩家的体验是一个闭环。MVP 必须为人类和 AI 玩家同时闭合：
+玩家的体验是一个闭环。系统必须为人类和 AI 玩家同时闭合：
 
 ```
       学习 (LEARN)    →      决策 (DECIDE)     →      行动 (ACT)
@@ -137,7 +137,7 @@ AI agent 开发循环强化：
 | `swarm_dry_run` | 预测指令结果 | 部署前验证——不用等 tick 才知道逻辑错误 |
 | `swarm_get_events` | 按需拉取事件 | 获取 deploy_accepted、first_tick_executed 等里程碑事件 |
 
-> **采用 polling-based 反馈模型**：不提供主动事件推送/MCP 事件订阅。AI agent 通过 `swarm_get_deploy_status` + `swarm_get_events` 轮询获取反馈。事件订阅（WebSocket push / MCP event订阅）列为 RFC——不在 MVP 范围。
+> **采用 polling-based 反馈模型**：不提供主动事件推送/MCP 事件订阅。AI agent 通过 `swarm_get_deploy_status` + `swarm_get_events` 轮询获取反馈。事件订阅（WebSocket push / MCP event订阅）列为 Out-of-Scope——通过 mod extension 实现。
 #### 人类玩家首次 PvP 引导
 
 ```
@@ -339,9 +339,9 @@ Drone 1003 本 tick 未行动。原因:
 - 代码在比赛开始时锁定（赛中不可改）
 - 赛后自动发布回放
 - 无自动匹配、无天梯排名、无赛季
-- Tournament/League 为 P1+ 上层编排，通过多场 Room Match 组合实现（不在 P0 MVP 范围）
+- Tournament/League 为上层编排，通过多场 Room Match 组合实现（Out-of-Scope，后续 Stage 交付）
 
-## 7. MVP 功能清单
+## 7. 功能清单
 
 - 教程房间（人类）
 - MCP 教程资源（AI）
