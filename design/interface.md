@@ -107,15 +107,13 @@ fn host_get_world_rules(rule_id_ptr: i32, rule_id_len: i32, out_ptr: i32, out_le
 - Rate Limit: 5/min
 - Replay Class: read_replay_safe
 
-### 5.4 Command Schema 与 RejectionReason
+### 5.4 CommandAction 定义 (单一事实源)
 
-参见 [API Registry](specs/reference/api-registry.md) §1 — CommandAction 完整定义（核心指令 + Global Storage + 特殊攻击 + Custom Actions）
+**CommandAction 的唯一权威定义在 [API Registry](specs/reference/api-registry.md) §1**。所有 21 个 CommandAction 变体（11 core + 2 economy_operation + 8 special_attack）的完整 schema、参数、分类和 actor_id/object_id 语义以 Registry 为准。本文档及其他设计文档不得重新声明 CommandAction 列表或参数；只能引用 Registry。
 
 Notes:
 - Move: 4方向 (N/S/E/W)。8方向为 Future RFC
 - SendMessage: Future RFC: drone间消息传递。当前不在 Core CommandAction 中。
-
-RejectionReason enum: 参见 [API Registry](specs/reference/api-registry.md) §2 — 47 canonical codes (35 game + 12 auth), 统一为 `ObjectNotFound`、`InsufficientResource`、`NotOwner` 等。详细上下文信息通过 `debug_detail` 字段传递（非 canonical wire code），参见 D2/B 设计决策。
 
 ### 5.5 Host Function 成本模型
 
@@ -127,28 +125,23 @@ Fuel deduction: 1 CPU cost unit = 1 wasmtime fuel unit。host call budget 独立
 
 Pathfinding 确定性要求：固定 neighbor order（NESW 顺时针）、cost type（均一 1）、tie-break（最小 room_id+entity_id）、cache key（from, to）、cache hit/miss 等价性。
 
-### 5.6 SwarmError / JSON-RPC Error Envelope
+### 5.6 SwarmError 错误格式
 
-统一错误格式（JSON-RPC）：
+统一错误格式由 [API Registry](specs/reference/api-registry.md) §8 SwarmError JSON-RPC Envelope 定义，包含：
 
-{
-  "jsonrpc": "2.0",
-  "error": {
-    "code": -32000,
-    "message": "描述",
-    "data": {
-      "swarm_error": "InsufficientResource",
-      "details": { "required": 200, "available": 50 },
-      "retry_allowed": false,
-      "idempotency_key": null
-    }
-  },
-  "id": 1
-}
+| 字段 | 说明 |
+|------|------|
+| `rejection_reason` | canonical RejectionReason wire enum (47 codes, 见 Registry §2) |
+| `debug_detail` | 非 canonical 上下文详情 (≤ 512 bytes)；详细程度由 `detail_level` 控制 |
+| `retry_allowed` | 是否可安全重试 (machine-readable) |
+| `idempotency_key` | 幂等重试 key (machine-readable) |
+| `retry_after_tick` | 建议最早重试 tick (machine-readable) |
 
-SwarmError 分类：
+所有错误上下文通过 `debug_detail` 传递，不在 wire enum 中增加新变体。condition → canonical RejectionReason → debug_detail template 的完整映射见 Registry §2.6。
+
+**SwarmError 分类 (非规范性指引)**:
 - retry_allowed=true: TimeoutExceeded, RateLimited, ConflictRetry
-- retry_allowed=false: InvalidCommand, InsufficientResource, NotAuthorized
+- retry_allowed=false: InsufficientResource, NotOwner, InvalidCommand
 - idempotent: deploy/validate 等可用 idempotency_key 安全重试
 
 ### 5.7 swarm_simulate 与 swarm_deploy

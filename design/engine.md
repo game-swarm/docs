@@ -207,7 +207,7 @@ Swarm 支持三个扩展层级：
   │   │   └── 冲突 → 丢弃 + 记录 RejectionReason
   │   └── Spawn 命令在 Phase 2a 中只校验不入队
   │   ├── Phase 2b: ECS Systems
-  │   │   └── > **权威系统调度见 [Complete Tick Execution Manifest](specs/core/06-phase2b-system-manifest.md)** — 29 systems（Phase 2a inline 6 + Phase 2b deferred 23）, serial spine + 3 parallel sets
+    │   │   └── > **权威系统调度见 [Complete Tick Execution Manifest](specs/core/06-phase2b-system-manifest.md)** — 31 systems（R30 B1：Phase 2a inline 6 + Phase 2b deferred 25），serial spine + 2 parallel sets
   ├── FDB 原子提交（全或无）
   └── tick_counter 推进
 
@@ -240,7 +240,7 @@ Swarm:     Move = Action  → 每 tick 移动 OR 采集 OR 攻击 OR 建造
 | **手感差异** | 新玩家会觉得 drone "迟钝"——移动一格后下一 tick 才能采集。这是**设计意图**：drone 不是即时代理，玩家需通过代码预判和批量调度来弥补单 drone 的动作延迟 |
 
 此设计在 playtest 阶段可能被挑战——如果证据表明玩家普遍因 Move 占用 action slot 而流失，可重新评估。当前作为有意的设计选择冻结。
-| **Phase 2b (Deferred)** | ECS Systems (serial spine + parallel sets) | death_marker, spawn, spawning_grace, regeneration, combat (parallel set A), special_attack_reducer, damage_application, status effects (parallel set B), aging, decay, death_cleanup, pvp_block, room_state, controller_2b, resource_ledger | **被动系统**——有依赖关系的系统串行执行（保证正确性），无数据竞争的系统利用并行调度。不接收玩家命令，响应 2a 产生的状态变化。完整调度见 [Complete Tick Execution Manifest](specs/core/06-phase2b-system-manifest.md) |
+| **Phase 2b (Deferred)** | ECS Systems (serial spine + parallel sets) | death_marker, spawn, spawning_grace, regeneration, combat (parallel set A), special_attack_reducer, damage_application, status buffer production (parallel set B: S16-S22b), status_advance_system (S22 serial unique writer), aging, decay, death_cleanup, pvp_block, room_state, controller_2b, resource_ledger — **R30 B1: 31 systems** | **被动系统**——有依赖关系的系统串行执行（保证正确性），无数据竞争的系统利用并行调度。不接收玩家命令，响应 2a 产生的状态变化。完整调度见 [Complete Tick Execution Manifest](specs/core/06-phase2b-system-manifest.md) |
 
 **Attack 与 combat_system 的职责分离**：
 - **Phase 2a Attack/RangedAttack 命令**：直接应用 damage（含抗性/伤害类型计算），立即反映到目标 HP
@@ -253,7 +253,7 @@ Swarm:     Move = Action  → 每 tick 移动 OR 采集 OR 攻击 OR 建造
 
 **RoomCap 生命周期约束**：`RoomCap` 的读写顺序为 `death_mark: W(release) → spawn: R(check) + W(consume)`。在 `death_mark_system` 与 `spawn_system` 之间的任何 ECS system 不得读取 RoomCap 做准入决策——此时槽位已释放但尚未被新 drone 消费，RoomCap 值处于中间态。新增 system 插入此区间时必须在 manifest 中声明对 RoomCap 的读写关系。
 
-**Phase 2b 并行策略**：Combat (S11-S13) 按 target_id partition 并行——attack_system、ranged_attack_system、heal_system 操作不重叠的 target 实体。Status Effects (S16-S22) 按 status subtype 并行——各系统操作互不重叠的 StatusState 子类型。decay (S24) 为独立串行系统（疲劳/冷却/结构衰减不与任何并行系统共享数据）。regeneration (S10) 在 damage_application (S15) 之前串行执行（防止 heal+regen 双倍回复）。完整调度及 R/W 矩阵见 [Complete Tick Execution Manifest](specs/core/06-phase2b-system-manifest.md)。
+**Phase 2b 并行策略**：Combat (S11-S13) 按 target_id partition 并行——attack_system、ranged_attack_system、heal_system 操作不重叠的 target 实体。Status Buffer Production (S16-S22b) 按 status subtype 并行——各系统写入互不重叠的 typed buffer（HackBuffer/DrainBuffer/OverloadBuffer/DebilitateBuffer/DisruptBuffer/FortifyBuffer/LeechBuffer/FabricateBuffer），不直接修改 StatusState。status_advance_system (S22) 为串行唯一 StatusState writer——从 S14 读取 canonical sorted pending_intents 并从 S16-S22b 读取 typed buffers，统一推进所有 StatusState。decay (S24) 为独立串行系统（疲劳/冷却/结构衰减不与任何并行系统共享数据）。regeneration (S10) 在 damage_application (S15) 之前串行执行（防止 heal+regen 双倍回复）。完整调度及 R/W 矩阵见 [Complete Tick Execution Manifest](specs/core/06-phase2b-system-manifest.md)。
 
 **两阶段快照架构**：阶段一不再为每个玩家独立序列化世界状态。改为：(1) tick 开始时一次性构建完整世界快照，按房间分片；(2) 每个玩家根据其 drone 所在位置，拼接可见房间的分片（默认 ≤9 个）。复杂度从 `O(玩家数 × 实体数)` 降为 `O(实体数 + 玩家数 × 可见房间数)`，消除每玩家重复序列化开销。快照构建在玩家 WASM 执行前完成，与玩家顺序无关，天然确定。
 
@@ -264,7 +264,7 @@ Swarm:     Move = Action  → 每 tick 移动 OR 采集 OR 攻击 OR 建造
 **确定性要求**：
 1. 相同的初始世界状态
 2. 相同的 Command 输入（已排序，canonical order 见 [interface.md §4](interface.md)）
-3. ECS System 执行顺序固定（见 [Complete Tick Execution Manifest](specs/core/06-phase2b-system-manifest.md)）
+3. ECS System 执行顺序固定（见 [Complete Tick Execution Manifest](specs/core/06-phase2b-system-manifest.md)，31 systems，R30 B1）
 4. 所有随机数来自确定种子 PRNG——shuffle seed 公式 `Blake3("shuffle" || world_seed || tick.to_le_bytes())`；per-entity stream seed `Blake3(stream_name || world_seed || entity_id.to_le_bytes() || tick.to_le_bytes())`
 
 **回放输入封套**（`TickInputEnvelope`，每 tick 持久化）：
@@ -412,7 +412,7 @@ WASM 实例使用 **long-lived worker pool + per-tick clean Store/Instance reset
 - **Pool**：大小按 `min(MAX_POOL, active_players)` 动态伸缩（见 §3.4.2 Worker Pool 推导）；空闲实例 5min 后回收
 - **Per-tick reset**：memory 清零、fuel 重置、WASI 全部关闭后重新按需开启
 - **WASI 默认全部关闭**，仅开启确定性子集（由 engine 编译期固定）
-- **禁用的 WASI**：clock、random、filesystem、network、env、process、threads、atomics、SIMD（默认禁用；允许 opt-in deterministic integer subset，需跨架构验证）
+- **禁用的 WASI**：clock、random、filesystem、network、env、process、threads、atomics、SIMD（默认禁用；允许 opt-in deterministic integer subset，需跨架构验证。R30: SIMD deterministic subset deferred — non-blocking）
 - **Worker 边界**：每个 worker 有独立 uid/cgroup；seccomp profile 限制 syscall；OOM score adj；rlimit（nproc、nofile、memlock）
 - **Recycle 策略**：每 worker 最多服务 1000 tick 后强制替换；OOM/trap/timeout 后立即替换并记入 audit log
 - **Wasmtime version 固定**：编译期锁定，升级后重编译所有缓存模块

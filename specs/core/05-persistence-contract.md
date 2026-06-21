@@ -1,4 +1,4 @@
-# Persistence Contract — FDB / TickTrace / WAL / Object Store 分层
+# Persistence Contract — FDB / TickCommitRecord / RichTraceBlob / WAL / Object Store 分层
 
 > 详见 design/engine.md
 >
@@ -9,7 +9,7 @@
 ## 原则
 
 1. **FDB 只写小对象**：tick head、state checksum、small manifest、object pointers + content hashes。
-2. **大 BLOB 进对象存储**：完整 TickTrace debug/rich trace、snapshot delta、replay artifacts、WASM module binaries。
+2. **大 BLOB 进对象存储**：RichTraceBlob（debug/rich trace）、snapshot delta、replay artifacts、WASM module binaries。
 3. **单写事务原子性**：FDB commit 是唯一权威持久化点。对象存储写入失败不破坏 FDB 状态完整性。
 4. **Hash 链贯穿**：FDB 记录的 content hash 证明对象存储中数据的完整性。
 5. **Replay-critical 与 debug/rich 分离**：FDB 事务原子提交 replay-critical subset（保证确定性回放与反作弊审计）；对象存储承载非关键的 rich trace/debug blob（可降级、可延迟、可丢失而不影响核心正确性）。
@@ -21,7 +21,7 @@
 | 存储层 | 存储内容 | 单条上限 | 保留期 |
 |--------|---------|:------:|--------|
 | **FDB** | tick head、state checksum、small manifest、object pointers、content hashes、audit rows | < 1KB/row | 永久（状态） |
-| **Object Store** | 完整 TickTrace、snapshot delta (full/diff)、replay artifacts、WASM binaries | < 10MB/object | 7d hot / 30d warm / 180d cold |
+| **Object Store** | RichTraceBlob、snapshot delta (full/diff)、replay artifacts、WASM binaries | < 10MB/object | 7d hot / 30d warm / 180d cold |
 | **WAL (Write-Ahead Log)** | 未提交的 apply 操作日志 | 滚动 | 提交后截断 |
 | **Keyframe Store** | 每 K tick 的完整世界状态快照 | < 100MB | 7d hot / 30d cold |
 
@@ -54,7 +54,7 @@
 
 | 字段 | 内容 | 降级行为 |
 |------|------|---------|
-| `tick_trace_blob` | 完整 TickTrace 序列化（含 debug detail, rich events, per-system metrics） | blob 缺失 → replay 可用但 rich audit 降级; 产生 `terminal_state = audit_gap` |
+| `rich_trace_blob` | RichTraceBlob 序列化（含 debug detail, rich events, per-system metrics） | blob 缺失 → replay 可用但 rich audit 降级; 产生 `terminal_state = audit_gap` |
 | `snapshot_delta_blob` | snapshotted entity 的详细状态变更 | blob 缺失 → 从相邻 keyframe 恢复 |
 | `replay_artifact_blob` | 可视化/调试用 annotation | blob 缺失 → 无影响 |
 
@@ -126,8 +126,8 @@ FAILED:
 Phase A: Apply 完成
   ├─ 所有系统执行完毕，world state 确定
   ├─ state_checksum = Blake3(canonical_serialize(world))
-  └─ TickTrace 完整序列化到内存 buffer
-  └─ 计算 content_hash = Blake3(compress(serialize(TickTrace)))
+  └─ RichTraceBlob 完整序列化到内存 buffer
+  └─ 计算 content_hash = Blake3(compress(serialize(RichTraceBlob)))
 
 Phase B: FDB 事务提交（原子 — 先于对象存储写入）
   ├─ BEGIN FDB TRANSACTION
@@ -145,7 +145,7 @@ Phase C: 对象存储异步写入（FDB commit 成功后触发）
   ├─ 入队异步任务：write_blob(tick, tick_trace_binary, object_id)
   ├─ 任务成功：
   │   ├─ UPDATE tick_manifest SET upload_status = "complete", object_store_etag = <etag>
-  │   └─ TickTrace blob 可被 replay 读取
+  │   └─ RichTraceBlob 可被 replay 读取
   ├─ 任务失败（网络/超时）：
   │   ├─ 重试最多 3 次（指数退避 1s/2s/4s）
   │   ├─ 3 次均失败 → UPDATE tick_manifest SET upload_status = "failed"
@@ -180,7 +180,7 @@ Phase D: WAL 截断
 - **FDB commit 成功 = tick 持久化完成**：`tick_manifest` 行证明 tick 已发生，`content_hash` 证明 blob 完整性。**blob 写入不再是 tick commit 的前提条件。**
 - **FDB 只存小对象**：`tick_manifest` 仅含 `object_id + content_hash + blob_size + upload_status`——无 blob 本体。
 - **FDB commit 失败 = tick 未发生**：world state 回滚到 Pre-Apply 快照，玩家 WASM 不重跑，tick 编号不递增。
-- **TickTrace hash chain 仅在 FDB commit 成功后追加**：prev_chain_hash 取自上一个已提交 tick，失败 tick 不产生链条目。
+- **TickCommitRecord hash chain 仅在 FDB commit 成功后追加**：prev_chain_hash 取自上一个已提交 tick，失败 tick 不产生链条目。
 
 ---
 
@@ -208,7 +208,7 @@ FDB commit 先于对象存储写入——以下为所有失败场景的处理：
 2. 从对象存储按 object_id 获取 tick_trace_blob
 3. 验证 Blake3(tick_trace_blob) == tick_manifest.content_hash
 4. 验证 tick_hash_chain 完整性：从上一个 keyframe tick 到目标 tick
-5. 反序列化 TickTrace
+5. 反序列化 TickCommitRecord
 6. 从最近 keyframe（≤ 目标 tick）恢复 world state
 7. 重放 delta chain: keyframe → 目标 tick
 ```
@@ -276,11 +276,11 @@ Replay verifier 以 **FDB commit 的 manifest/hash 为权威**，不重新扫描
   7. 最终 commit 成功后，commit_id 关联到成功的 attempt_id
 ```
 
-这意味着：**同一 tick 编号的 TickTrace 可能包含多个 attempt（attempt_id 递增），但 collect_id 始终不变**。Replay 只关心最终 committed 的 attempt——hash chain 验证以 FDB 中实际存在的链为准。跨 attempt 的燃料消耗上限 = `1 × MAX_FUEL`（首次 COLLECT 时的扣费即为最终扣费，重试不追加）。
+这意味着：**同一 tick 编号的 TickCommitRecord 可能包含多个 attempt（attempt_id 递增），但 collect_id 始终不变**。Replay 只关心最终 committed 的 attempt——hash chain 验证以 FDB 中实际存在的链为准。跨 attempt 的燃料消耗上限 = `1 × MAX_FUEL`（首次 COLLECT 时的扣费即为最终扣费，重试不追加）。
 
-### 7.1 TickTrace 标识字段
+### 7.1 TickCommitRecord 标识字段
 
-TickTrace 中新增以下标识字段以支持 attempt/collect/commit 追踪：
+TickCommitRecord 中新增以下标识字段以支持 attempt/collect/commit 追踪：
 
 | 字段 | 类型 | 语义 |
 |------|------|------|
@@ -288,10 +288,10 @@ TickTrace 中新增以下标识字段以支持 attempt/collect/commit 追踪：
 | `attempt_id` | `u32`（从 0 开始递增） | 本次 commit 尝试的序号。首次尝试 = 0，每次 retry +1。仅当 commit 成功或 tick 放弃时终止。 |
 | `commit_id` | `Blake3(collect_id || attempt_id || state_checksum)` | 成功 commit 的唯一标识。仅在 FDB commit 成功后生成。失败 attempt 无 commit_id。 |
 
-**TickTrace 结构**（R16 B3 扩展）：
+**TickCommitRecord 结构**（R16 B3 扩展）：
 
 ```
-TickTrace {
+TickCommitRecord {
     tick: u64,
     collect_id: Blake3,          // NEW — COLLECT 阶段唯一标识
     attempt_id: u32,             // NEW — 本次 commit 尝试序号
@@ -308,7 +308,7 @@ TickTrace {
 
 ### 7.2 Blob 损坏终端状态
 
-当对象存储中的 TickTrace blob 无法正常读取或验证时，引擎根据恢复能力将其归类为以下四种终端状态：
+当对象存储中的 RichTraceBlob 无法正常读取或验证时，引擎根据恢复能力将其归类为以下四种终端状态：
 
 | 终端状态 | 定义 | 触发条件 | 恢复能力 |
 |----------|------|---------|:--------:|
@@ -333,7 +333,7 @@ TickTrace {
            └─ 关键字段损坏 → terminal_state = unreplayable
 ```
 
-**与 hash chain 的关系**：TickTrace delta chain 按 tick 递增形成链——`chain[i] = Blake3(chain[i-1] || tick_trace_i)`。任一 tick 的 blob 进入 `unreplayable` 状态 → 链断裂 → replay verifier 可检测到损坏起始 tick。损坏 tick 之前的状态仍可验证，之后的需从最近有效 keyframe 重建。
+**与 hash chain 的关系**：RichTraceBlob delta chain 按 tick 递增形成链——`chain[i] = Blake3(chain[i-1] || tick_commit_record_i)`。任一 tick 的 blob 进入 `unreplayable` 状态 → 链断裂 → replay verifier 可检测到损坏起始 tick。损坏 tick 之前的状态仍可验证，之后的需从最近有效 keyframe 重建。
 
 ---
 
@@ -366,7 +366,7 @@ Room-Partition (500+ players):
 | 对象存储读取 | 延迟 < 100ms p99 | 不变 |
 | Keyframe 写入 | 异步，不阻塞 tick 循环 | 不变 |
 | WAL 写入 | 同步 | per-room WAL |
-| 内存 buffer | TickTrace 10MB max | 不变 |
+| 内存 buffer | RichTraceBlob 10MB max | 不变 |
 | Cross-room conflict | N/A | 2PC，超时 3s，fallback to best-effort |
 
 ### 8.3 Synthetic Benchmark 要求
@@ -392,5 +392,5 @@ Gate 失败 → 对应容量声明不可信，需降级规模或优化实现。
 ## 9. 与现有文档的关系
 
 - `design/engine.md` §3.3 (TickInputEnvelope)、§3.4.2 (容量合同)、§3.4.7 (keyframe)：本文件为权威持久化合同。engine.md 描述架构意图，本文档定义实现合同。
-- `specs/core/01-tick-protocol.md` §2.3 (快照)、§9.4 (TickTrace hash chain)：本文件补充持久化层面。
+- `specs/core/01-tick-protocol.md` §2.3 (快照)、§9.4 (TickCommitRecord 完整性)：本文件补充持久化层面。
 - `specs/core/02-command-validation.md`：apply 阶段在本文件的 "Phase A" 中执行。

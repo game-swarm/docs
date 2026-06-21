@@ -776,9 +776,13 @@ POST /mcp (JSON-RPC)
 
 客户端对敏感请求添加 `Swarm-Certificate-Chain`、`Swarm-Cert-Id`、`Swarm-Timestamp`、`Swarm-Nonce`、`Swarm-Signature`。服务端按 §5.4 验证证书链、usage、scope、audience、nonce 和签名。
 
-### 10.5a WebSocket 证书握手
+### 10.5a WebSocket 证书握手与会话安全
 
-WebSocket 连接建立时执行以下证书握手，禁止仅凭 `swarm-cert.<cert_id>` 建立认证连接：
+WebSocket 连接按客户端类型分为两条安全路径：
+
+**A. Agent/CLI 已认证会话（Authenticated WS）**：
+
+连接建立时执行证书握手，禁止仅凭 `swarm-cert.<cert_id>` 建立认证连接：
 
 ```
 客户端 → 服务端: WebSocket 升级请求
@@ -794,10 +798,28 @@ WebSocket 连接建立时执行以下证书握手，禁止仅凭 `swarm-cert.<ce
   2. 验证 canonical payload: "SWARM-WS-V1\n<cert_id>\n<timestamp>\n<nonce>"
   3. 验证 nonce 未使用（FDB 去重）
   4. 验证 timestamp 在 ±30s 窗口内
-  5. 建立认证 WebSocket → 后续消息免签名（会话内信任）
+  5. 建立认证 WebSocket → 会话建立
 ```
 
+会话建立后，**每条可写消息必须携带递增序列号 + MAC/Ed25519 签名**：
+
+- `seq`: 单调递增序号（从 1 开始），接收方严格检查 `seq == last_seq + 1`
+- `mac`: 对 `SWARM-WS-MSG-V1\n<seq>\n<body_hash>` 的 Ed25519 签名，使用握手绑定的用户私钥
+- 签名验证通过后消息才能被处理；seq 跳跃视为安全事件 → 断开连接 + 审计日志
+- 服务端回复也必须附 seq（独立计数器）+ 服务端签名
+
 WebSocket 断开后需重新握手。会话内消息不计入 per-tick rate limit（握手时已完成身份绑定）。
+
+**B. 浏览器/公开观众（Read-Only Spectator WS）**：
+
+浏览器 WebSocket 连接**仅允许只读订阅**——接收 SSE 风格的推送事件流，不得发送任何写操作或认证消息：
+
+- 公开 spectator WS 端点不接受 `Swarm-Certificate-Chain` 头部，不执行证书握手
+- 只读事件流仅包含公开世界状态（房间列表、在线玩家数、公开排行榜），不泄露玩家私有数据
+- **无 per-message 签名要求**（只读、无状态变更）
+- 速率限制：每个 spectator 连接最多 10 events/s
+
+> **决策记录 (D7)**：Agent/CLI WS 采用 per-message seq/MAC/signature，浏览器 spectator 跳过签名（只读订阅）。详见 [MCP 安全规范](specs/security/03-mcp-security.md) §2.5。
 
 ### 10.5b Admin 高权限操作认证
 

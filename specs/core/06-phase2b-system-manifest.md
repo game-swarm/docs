@@ -3,6 +3,8 @@
 > 详见 design/engine.md
 >
 > **R16 B2 修复**。本文档是 Swarm 引擎**全部 tick 系统执行顺序的唯一权威定义**——覆盖 Phase 2a inline 命令处理器与 Phase 2b 被动系统。所有其他文档（engine.md、01-tick-protocol.md、02-command-validation.md）引用此处，不得重新声明可冲突的系统列表或顺序。
+>
+> **R30 B1 修复**：Status Effects 拆分为「并行 buffer 生产」(S16-S21) + 「串行唯一 committer」(S22)。S22 移出 Parallel Set B。S01 写入 PendingSpecialAttackIntent；S14 从 S01 读取并归并。8 种特殊攻击（含 Leech/Fabricate）全部作为核心目标设计。
 
 ## 原则
 
@@ -11,6 +13,7 @@
 3. **Stable IDs**：每个 system 有固定 `system_id` 和 `version`，manifest hash 进入 TickTrace。
 4. **显式迭代顺序**：所有系统内实体迭代按 `StableEntityId` 或 canonical key 排序，不依赖 Bevy archetype order。
 5. **R/W 声明**：每个 system 声明 reads 和 writes 的 Component/Resource 集合，CI 验证无数据竞争。
+6. **Unique Writer Contract**：每种 status/component 有且仅有一个 system 写入。并行 set 内系统只写 typed buffer，不直接写 StatusState。
 
 ---
 
@@ -21,7 +24,8 @@ Serial Spine:
   ┌─────────────────────────────────────────────────────┐
   │ Phase 2a: Inline Command Handlers (serial)           │
   │ [S01] command_executor     (Move/Harvest/Attack/    │
-  │                             RangedAttack/Heal/Claim) │
+  │                             RangedAttack/Heal/Claim  │
+  │                             +PendingSpecialAttack)   │
   │ [S02] controller_system    (phase 2a inline)        │
   │ [S03] build_system         (Build)                  │
   │ [S04] recycle_system       (Recycle → DeathMark)    │
@@ -42,14 +46,19 @@ Serial Spine:
   │ [S14] special_attack_reducer (serial, pending→sort) │
   │ [S15] damage_application   (serial, reduces A)      │
   ├─────────────────────────────────────────────────────┤
-  │ Parallel Set B: Status Effects                       │
-  │ [S16] hack_system          ┐                        │
-  │ [S17] drain_system          │                        │
-  │ [S18] overload_system       ├─ parallel              │
-  │ [S19] debilitate_system     │  (disjoint targets)    │
-  │ [S20] disrupt_system        │  (body part match req) │
-  │ [S21] fortify_system        │                        │
-  │ [S22] status_advance_system ┘                        │
+  │ Parallel Set B: Status Effect Buffer Production      │
+  │ ┌─ S16-S21 只读 StatusState，写 typed buffer ─┐     │
+  │ │ [S16] hack_buffer          ┐                   │   │
+  │ │ [S17] drain_buffer          │                   │   │
+  │ │ [S18] overload_buffer       ├─ parallel         │   │
+  │ │ [S19] debilitate_buffer     │  (disjoint types) │   │
+  │ │ [S20] disrupt_buffer        │                   │   │
+  │ │ [S21] fortify_buffer        │                   │   │
+  │ │ [S22a] leech_buffer         │  (new — R30 B1)   │   │
+  │ │ [S22b] fabricate_buffer     ┘  (new — R30 B1)   │   │
+  │ └────────────────────────────────────────────────┘   │
+  ├─────────────────────────────────────────────────────┤
+  │ [S22] status_advance_system  (serial — 唯一 writer) │
   ├─────────────────────────────────────────────────────┤
   │ [S23] aging_system         (serial)                 │
   ├─────────────────────────────────────────────────────┤
@@ -64,13 +73,13 @@ Serial Spine:
   └─────────────────────────────────────────────────────┘
 ```
 
-**共计 29 个 system**（含 Phase 2a inline 处理器 + Phase 2b 被动系统 + Resource Ledger）。所有特殊攻击状态推进由 `status_advance_system` 统一处理，不分散到各攻击 system。
+**共计 31 个 system**（R30 B1: 新增 S22a leech_buffer + S22b fabricate_buffer，共 31）。所有特殊攻击状态推进由 `status_advance_system` (S22) **唯一**串行处理——S16-S22b 只写 typed buffer，不直接修改 StatusState。
 
-**关键时序修复**（R16 B2）：
-- **death_marker 在 spawn 之前**：RoomCap 槽位同 tick 释放 → spawn 可立即使用。
-- **spawning_grace 在 combat 之前**：新生 drone 获得出生 tick 无敌保护（`SpawningGrace { remaining: 1 }`），免疫所有敌对操作。
-- **regeneration 在 damage_application 之前**：自然回复先于伤害结算，防止 heal 与 regen 叠加双倍回复。
-- **special_attack_reducer**：parallel intent 收集 → `pending_intents` buffer → canonical priority sort → 交付 `status_advance_system`。
+**R30 B1 关键修复**：
+- **S22 移出 Parallel Set B**：作为串行唯一 StatusState writer，不再与其他 system 并行。
+- **S16-S22b 只写 typed buffer**：`HackBuffer`/`DrainBuffer`/`OverloadBuffer`/`DebilitateBuffer`/`DisruptBuffer`/`FortifyBuffer`/`LeechBuffer`/`FabricateBuffer`——由 S22 统一消费并写 StatusState。
+- **S01 写入 PendingSpecialAttackIntent**：Phase 2a 特殊攻击命令（Hack/Drain/Overload/Debilitate/Disrupt/Fortify/Leech/Fabricate）在命令执行时直接入队此 buffer。S11-S13 不再产生特殊攻击 intent。
+- **S14 从 S01 读取**：Reducer 从 `PendingSpecialAttackIntent`（S01）读取 intent → merge sort → reducer resolve → 交付 S22。
 
 ---
 
@@ -83,12 +92,12 @@ Serial Spine:
 ### S01: command_executor
 - **ID**: `cmd_exec`
 - **Phase**: 2a inline
-- **Handled Commands**: `Move`, `Harvest`, `Attack`, `RangedAttack`, `Heal`, `Claim`
+- **Handled Commands**: `Move`, `Harvest`, `Attack`, `RangedAttack`, `Heal`, `Claim`, `Hack`, `Drain`, `Overload`, `Debilitate`, `Disrupt`, `Fortify`, `Leech`, `Fabricate`
 - **Reads**: CommandQueue, WorldConfig, PlayerState, Drone, Room, Entity (owner, position, hits)
-- **Writes**: Drone (position, fatigue), Entity (hits), ResourceAmount, EventLog
+- **Writes**: Drone (position, fatigue), Entity (hits), ResourceAmount, EventLog, **PendingSpecialAttackIntent buffer** (R30 B1)
 - **Must run before**: S02
 - **Iteration key**: `command.sort_key` (priority_class, shuffle_index, source_rank, sequence, command_hash)
-- **Note**: Per-drone per-tick action quota enforced inline: max 1 main action per drone. Transfer/Withdraw 不计入但受 carry 容量约束。
+- **Note**: Per-drone per-tick action quota enforced inline: max 1 main action per drone. Transfer/Withdraw 不计入但受 carry 容量约束。**R30 B1**: 特殊攻击命令（Hack/Drain/Overload/Debilitate/Disrupt/Fortify/Leech/Fabricate）在 Phase 2a 执行时写入 `PendingSpecialAttackIntent` buffer——Phase 2a 只校验基本合法性（body part 要求、cooldown、target validity），不修改目标 state。实际 effect 由 Phase 2b S14→S22 pipeline 处理。
 
 ### S02: controller_system (phase 2a)
 - **ID**: `ctrl_2a`
@@ -133,7 +142,7 @@ Serial Spine:
 
 ---
 
-### Phase 2b: Deferred Systems (S07–S29)
+### Phase 2b: Deferred Systems (S07–S31)
 
 ### S07: death_marker
 - **ID**: `death_mark`
@@ -178,20 +187,21 @@ Serial Spine:
 
 **Parallel safety**: 三个 system 按 `target_id` partition，同一 entity 只被一个 system 写入。Reduce 后由 S15 统一应用。`SpawningGrace` filter 在此层生效——新生 drone 被所有 combat system 跳过。
 
+**R30 B1**: S11-S13 不再产生特殊攻击 intent。特殊攻击 intent 由 S01（Phase 2a 命令执行时）写入 `PendingSpecialAttackIntent` buffer。
+
 ### S14: special_attack_reducer
 - **ID**: `spec_atk_red`
-- **Reads**: PendingSpecialAttack intents buffer (from S11-S13), Entity (status components)
-- **Writes**: `pending_intents` buffer (canonical sorted), StatusState (seeded)
-- **Processing pipeline (R22 B3 — 完整执行表)**:
-  1. **Parallel collect**: S11-S13 产生的特殊攻击 intent（Hack/Drain/Overload/Debilitate/Disrupt/Fortify）写入 per-system sub-buffer
-  2. **Merge sort**: 收集所有 sub-buffer → 按 `(priority_class, intent_source.entity_id, intent_target.entity_id)` 确定性归并排序（serial collector，禁止依赖 nondeterministic push order）
-  3. **Reducer resolve**: 同一 target 的多个 intent 按**唯一权威优先级链**裁决：**Hack > Drain > Overload > Debilitate > Disrupt > Fortify**（此为 Swarm 引擎中该优先级链的唯一定义——`02-command-validation.md` 已删除旧优先级表）；冲突 intent 降级记录
+- **R30 B1 fix**: 从 S01 的 `PendingSpecialAttackIntent` buffer 读取 intents（非 S11-S13）；不直接写 StatusState。
+- **Reads**: `PendingSpecialAttackIntent` buffer (from S01), Entity (status components — read-only for existing state reference)
+- **Writes**: `pending_intents` buffer (canonical sorted + resolved)
+- **Processing pipeline (R30 B1)**:
+  1. **Collect**: S01 在 Phase 2a 执行的 8 种特殊攻击命令产生的 intent 已入队 `PendingSpecialAttackIntent` buffer
+  2. **Merge sort**: 按 `(priority_class, intent_source.entity_id, intent_target.entity_id)` 确定性归并排序
+  3. **Reducer resolve**: 同一 target 的多个 intent 按**唯一权威优先级链**裁决：**Hack > Drain > Overload > Debilitate > Disrupt > Fortify > Leech > Fabricate**（此为 Swarm 引擎中该优先级链的唯一定义）；冲突 intent 降级记录
   4. **Deliver to S22**: 排序+裁决后的 intents 交付 `status_advance_system` 统一推进
-  5. **Status advance (S22)**: 统一读入 intents → 更新 StatusState（duration--, expire, apply）→ 触发 damage/application
-  6. **Damage application (S15)**: 特殊攻击产生的 damage 通过 `damage_application` 统一应用
 - **Must run after**: S11, S12, S13
 - **Must run before**: S22
-- **Note**: 此 reducer 不直接修改实体状态——仅负责 intent 归并、排序、路由。实际状态变更由 S22 `status_advance_system` 执行。
+- **Note**: 此 reducer **不直接修改实体状态**——仅负责 intent 归并、排序、路由。实际状态变更由 S22 `status_advance_system` 串行执行。
 
 ### S15: damage_application
 - **ID**: `dmg_apply`
@@ -200,39 +210,38 @@ Serial Spine:
 - **Must run after**: S11, S12, S13, S14
 - **Filter**: `Without<SpawningGrace>` — 跳过出生保护中的实体。
 
-### S16-S22: Status Effects Parallel Set B
-| System | ID | Reads | Writes |
+### S16-S22b: Status Effect Buffer Production (Parallel Set B)
+
+**R30 B1**: S16-S22b **只读**现有 StatusState，**只写** typed effect buffer。不直接修改任何 StatusState component。所有 buffer 由 S22 统一消费。
+
+| System | ID | Reads | Writes (typed buffer) |
 |--------|-----|-------|--------|
-| hack_system | `hack` | HackState, Entity | HackState (stage++) |
-| drain_system | `drain` | DrainState, ResourceAmount | ResourceAmount (drain) |
-| overload_system | `overload` | OverloadState, FuelBudget | FuelBudget (reduce) |
-| debilitate_system | `debuff` | DebilitateState, Entity (efficiency) | Entity (efficiency) |
-| disrupt_system | `disrupt` | DisruptState, Entity (action), Entity (body_parts) | Entity (interrupted) — **要求 body part match**（R23 D3/A） |
-| fortify_system | `fort` | FortifyState, Entity (armor) | Entity (armor) |
-| status_advance_system | `status_adv` | All StatusState components, pending_intents (from S14) | StatusState (duration--, expire, apply intents) |
+| hack_buffer | `hack_buf` | HackState, Entity (owner) | `HackBuffer { target, stage_delta }` |
+| drain_buffer | `drain_buf` | DrainState, ResourceAmount | `DrainBuffer { target, amount }` |
+| overload_buffer | `overload_buf` | OverloadState, FuelBudget | `OverloadBuffer { target, fuel_reduction }` |
+| debilitate_buffer | `debuff_buf` | DebilitateState, Entity (efficiency) | `DebilitateBuffer { target, factor }` |
+| disrupt_buffer | `disrupt_buf` | DisruptState, Entity (action, body_parts) | `DisruptBuffer { target, interrupted }` — **要求 body part match**（R23 D3/A） |
+| fortify_buffer | `fort_buf` | FortifyState, Entity (armor) | `FortifyBuffer { target, armor_delta }` |
+| leech_buffer | `leech_buf` | LeechState, ResourceAmount, Entity (age) | `LeechBuffer { target, resource_drain, age_transfer }` — **新增 (R30 B1)** |
+| fabricate_buffer | `fab_buf` | FabricateState, Drone (body) | `FabricateBuffer { target, body_part_mod }` — **新增 (R30 B1)** |
 
-**Parallel safety**: 各 system 操作互不重叠的 Component 集合。`status_advance_system` 读取 S14 输出的 canonical sorted intents 并统一推进，不与其他 status system 冲突（不同 component）。
+**Parallel safety (R30 B1)**: 各 system 写入互不重叠的 typed buffer（`HackBuffer` ≠ `DrainBuffer` ≠ …）。所有 buffer 与 StatusState component 分离——S16-S22b 不写任何 StatusState，S22 作为唯一 StatusState writer 串行执行。无并行写入冲突。
 
-### Special Attack Unique Writer Contract (R22 B3)
+### S22: status_advance_system (serial — 唯一 StatusState writer)
 
-每种 status/component 有且仅有一个写入者 system。禁止多路径写同一状态：
+**R30 B1**: S22 移出 Parallel Set B，作为串行系统。**唯一写入**所有 StatusState component。
 
-| Status Component | 唯一 Writer (system_id) | 写入时机 |
-|------------------|------------------------|---------|
-| `HackState` | `status_adv` (S22) | status_advance 统一推进 |
-| `DrainState` | `status_adv` (S22) | status_advance 统一推进 |
-| `OverloadState` | `status_adv` (S22) | status_advance 统一推进 |
-| `DebilitateState` | `status_adv` (S22) | status_advance 统一推进 |
-| `DisruptState` | `status_adv` (S22) | status_advance 统一推进 |
-| `FortifyState` | `status_adv` (S22) | status_advance 统一推进 |
-| `PendingIntents` buffer | `spec_atk_red` (S14) | intent collect + merge sort |
-| Damage from special attack | `dmg_apply` (S15) | damage_application 统一处理 |
+- **ID**: `status_adv`
+- **Reads**: `pending_intents` (from S14), all typed buffers (`HackBuffer`/`DrainBuffer`/`OverloadBuffer`/`DebilitateBuffer`/`DisruptBuffer`/`FortifyBuffer`/`LeechBuffer`/`FabricateBuffer` from S16-S22b), existing StatusState
+- **Writes**: **All StatusState components** (`HackState`, `DrainState`, `OverloadState`, `DebilitateState`, `DisruptState`, `FortifyState`, `LeechState`, `FabricateState`), Entity (hits/armor/efficiency/interrupted via effect application), ResourceAmount (drain), FuelBudget (overload)
+- **Must run after**: S14, S16-S22b
+- **Must run before**: S23
+- **Note**: 统一消费 S14 的 canonical sorted intents 和 S16-S22b 的 typed buffers → 唯一推进所有 StatusState（duration--, expire, apply new intents, apply buffer effects）。
 
-**并发写入结构**: S11-S13 各自写入 per-system sub-buffer（线程局部，无竞争）。S14 serial collector 读取所有 sub-buffer → merge sort → 写入 canonical `pending_intents`。**禁止依赖 nondeterministic push order。**
-
-### Status Advance Execution Order (per tick, within S22)
+### Status Advance Execution Order (per tick, within S22 — R30 B1)
 
 ```
+// Phase 1: Apply new intents from S14 (new status applications)
 for each intent in pending_intents (canonically sorted):
     match intent.kind:
         Hack       → HackState.stage += 1; duration = hack_duration
@@ -241,23 +250,64 @@ for each intent in pending_intents (canonically sorted):
         Debilitate → Entity.efficiency *= debilitate_factor; duration = debilitate_duration
         Disrupt    → Entity.interrupted = true; duration = disrupt_duration
         Fortify    → Entity.armor += fortify_amount; duration = fortify_duration
+        Leech      → ResourceAmount -= leech_drain; Entity.age += age_transfer; duration = leech_duration
+        Fabricate  → Entity.body_parts.modify(fabricate_mod); duration = fabricate_duration
 
-    // Decrement all active status durations
-    for each active StatusState:
-        status.duration -= 1
-        if status.duration == 0 → expire effect (reverse temporary modifiers)
+// Phase 2: Apply buffer effects from S16-S22b (ongoing status tick effects)
+for each entity with active StatusState:
+    if HackBuffer[entity] → apply hack stage progression
+    if DrainBuffer[entity] → apply drain resource transfer
+    if OverloadBuffer[entity] → apply fuel reduction
+    if DebilitateBuffer[entity] → apply efficiency modifier
+    if DisruptBuffer[entity] → apply interrupt flag
+    if FortifyBuffer[entity] → apply armor modifier
+    if LeechBuffer[entity] → apply resource drain + age transfer
+    if FabricateBuffer[entity] → apply body part modification
+
+// Phase 3: Decrement durations + expire
+for each active StatusState:
+    status.duration -= 1
+    if status.duration == 0 → expire effect (reverse temporary modifiers)
 ```
 
-### Mode Unlock Strategy (D4/B 裁决 — Standard 全量启用)
+### Special Attack Unique Writer Contract (R30 B1)
+
+每种 StatusState component 有且仅有一个写入者 system（S22）。S16-S22b 写入 typed buffer（非 StatusState），S14 写入 `pending_intents` buffer。
+
+| Status Component | 唯一 Writer (system_id) | 写入时机 |
+|------------------|------------------------|---------|
+| `HackState` | `status_adv` (S22) | S22 Phase 1 — apply S14 intents |
+| `DrainState` | `status_adv` (S22) | S22 Phase 1 — apply S14 intents |
+| `OverloadState` | `status_adv` (S22) | S22 Phase 1 — apply S14 intents |
+| `DebilitateState` | `status_adv` (S22) | S22 Phase 1 — apply S14 intents |
+| `DisruptState` | `status_adv` (S22) | S22 Phase 1 — apply S14 intents |
+| `FortifyState` | `status_adv` (S22) | S22 Phase 1 — apply S14 intents |
+| `LeechState` | `status_adv` (S22) | S22 Phase 1 — apply S14 intents **(R30 B1 新增)** |
+| `FabricateState` | `status_adv` (S22) | S22 Phase 1 — apply S14 intents **(R30 B1 新增)** |
+| `HackBuffer` | `hack_buf` (S16) | S16 S22 Phase 2 input |
+| `DrainBuffer` | `drain_buf` (S17) | S17 S22 Phase 2 input |
+| `OverloadBuffer` | `overload_buf` (S18) | S18 S22 Phase 2 input |
+| `DebilitateBuffer` | `debuff_buf` (S19) | S19 S22 Phase 2 input |
+| `DisruptBuffer` | `disrupt_buf` (S20) | S20 S22 Phase 2 input |
+| `FortifyBuffer` | `fort_buf` (S21) | S21 S22 Phase 2 input |
+| `LeechBuffer` | `leech_buf` (S22a) | S22a S22 Phase 2 input |
+| `FabricateBuffer` | `fab_buf` (S22b) | S22b S22 Phase 2 input |
+| `PendingSpecialAttackIntent` | `cmd_exec` (S01) | S01 Phase 2a command execution |
+| `pending_intents` (resolved) | `spec_atk_red` (S14) | S14 merge sort + reducer |
+| Damage from special attack | `dmg_apply` (S15) | damage_application 统一处理 |
+
+**Buffer 生命周期**：所有 typed buffer（HackBuffer 等）和 `pending_intents` 在每个 tick 结束时由 S22 消费后清空。不跨 tick 持久化。跨 tick 的状态仅存在于 StatusState component 中。
+
+### Mode Unlock Strategy (R30 B1/D5 — 8 种全部核心目标)
 
 | Mode | Special Attacks | 理由 |
 |------|:--------------:|------|
 | Tutorial | 全部禁用 | 学习基础 Movement/Harvest/Build |
 | Novice | 全部禁用 | 保护新手体验 |
-| Standard | **全量启用** (Hack/Drain/Overload/Debilitate/Disrupt/Fortify) | 教程/SDK 强引导；学习者通过 code/docs 自学 |
+| Standard | **全量启用** (Hack/Drain/Overload/Debilitate/Disrupt/Fortify/Leech/Fabricate) | 教程/SDK 强引导；学习者通过 code/docs 自学 |
 | Arena | 全量启用 | 与 Standard 相同 |
 
-Standard 模式下 special attack 全量可用。教程 (`swarm_get_docs`) 和 SDK 模板提供分阶段学习路径，但不限制引擎能力。
+全部 8 种特殊攻击为核心目标设计——不存在 Tier 2/Phase/Future 语义。API Registry、validation matrix、R/W matrix、SDK examples 全覆盖。
 
 ### S23: aging_system
 - **ID**: `aging`
@@ -271,7 +321,7 @@ Standard 模式下 special attack 全量可用。教程 (`swarm_get_docs`) 和 S
 - **Reads**: Structure (hits), Drone (fatigue, cooldown), Room
 - **Writes**: Structure (hits--), Drone (fatigue--, cooldown--)
 - **Filter**: `Without<DeathMark>`
-- **Note**: 疲劳与冷却的自然衰减。Paralel Set C 简化为单一 serial system（decay 不与其他系统并行数据竞争已由之前排序保证）。
+- **Note**: 疲劳与冷却的自然衰减。Parallel Set C 简化为单一 serial system（decay 不与其他系统并行数据竞争已由之前排序保证）。
 
 ### S25: death_cleanup
 - **ID**: `death_cln`
@@ -315,46 +365,54 @@ Standard 模式下 special attack 全量可用。教程 (`swarm_get_docs`) 和 S
 
 ---
 
-## 4. Component R/W Matrix（全部 29 systems）
+## 4. Component R/W Matrix（全部 31 systems — R30 B1）
 
-以下矩阵定义每个 system 对核心 Component 的读写关系。`R`=只读，`W`=写入，`-`=不访问。
+以下矩阵定义每个 system 对核心 Component 的读写关系。`R`=只读，`W`=写入，`-`=不访问。**R30 B1**: 新增 `SpecAtkIntent` 列，`StatusState` 和 `SpecBuffer` 列拆分。
 
-| System (S##) | `Position` | `HitPoints` | `Fatigue` | `Energy/Carry` | `Cooldown` | `RoomCap` | `DeathMark` | `Owner` | `SpawningGrace` | `Controller` | `StatusState` | `ResourceLedger` |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| **S01 cmd_exec** | W | W | W | W | - | - | - | R | - | - | - | - |
-| **S02 ctrl_2a** | - | - | - | - | - | - | - | R | - | W | - | - |
-| **S03 build** | W | W | - | W | - | - | - | W | - | - | - | - |
-| **S04 recycle** | - | - | - | W | - | - | W | R | - | - | - | - |
-| **S05 transfer** | - | - | - | W | - | - | - | R | - | - | - | W |
-| **S06 spawn_val** | - | - | - | W | - | R | - | R | - | - | - | - |
-| **S07 death_mark** | - | R | - | - | - | W | W | R | - | - | - | - |
-| **S08 spawn** | W | W | - | W | W | W | - | W | - | - | - | - |
-| **S09 spawn_grace** | - | - | - | - | - | - | - | - | W | - | - | - |
-| **S10 regen** | - | W | - | - | - | - | - | - | - | - | - | - |
-| **S11 atk** | R | W | - | - | - | - | - | R | R | - | - | - |
-| **S12 rng_atk** | R | W | - | - | - | - | - | R | R | - | - | - |
-| **S13 heal** | R | W | - | - | - | - | - | R | R | - | - | - |
-| **S14 spec_atk_red** | - | - | - | - | - | - | - | R | - | - | W | - |
-| **S15 dmg_apply** | - | W | - | - | - | - | W | - | R | - | - | - |
-| **S16 hack** | - | - | - | - | - | - | - | R | - | - | W | - |
-| **S17 drain** | - | - | - | W | - | - | - | - | - | - | W | - |
-| **S18 overload** | - | - | - | W | - | - | - | - | - | - | W | - |
-| **S19 debuff** | - | - | - | - | - | - | - | - | - | - | W | - |
-| **S20 disrupt** | - | - | - | - | - | - | - | - | - | - | W | - |
-| **S21 fort** | - | - | - | - | - | - | - | - | - | - | W | - |
-| **S22 status_adv** | - | - | - | - | - | - | - | - | - | - | W | - |
-| **S23 aging** | - | - | - | - | - | - | W | - | - | - | - | - |
-| **S24 decay** | - | W | W | - | W | - | - | - | - | - | - | - |
-| **S25 death_cln** | - | - | - | W | - | - | W | - | - | - | - | - |
-| **S26 pvp_block** | - | - | - | - | - | - | - | R | - | - | - | - |
-| **S27 room_state** | - | - | - | - | - | - | - | R | - | W | - | - |
-| **S28 ctrl_p2b** | - | - | - | - | - | - | - | R | - | W | - | - |
-| **S29 res_ledger** | - | - | - | R | - | - | - | - | - | - | - | W |
+| System (S##) | `Position` | `HitPoints` | `Fatigue` | `Energy/Carry` | `Cooldown` | `RoomCap` | `DeathMark` | `Owner` | `SpawningGrace` | `Controller` | `SpecAtkIntent` | `SpecBuffer` | `StatusState` | `ResourceLedger` |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| **S01 cmd_exec** | W | W | W | W | - | - | - | R | - | - | **W** | - | - | - |
+| **S02 ctrl_2a** | - | - | - | - | - | - | - | R | - | W | - | - | - | - |
+| **S03 build** | W | W | - | W | - | - | - | W | - | - | - | - | - | - |
+| **S04 recycle** | - | - | - | W | - | - | W | R | - | - | - | - | - | - |
+| **S05 transfer** | - | - | - | W | - | - | - | R | - | - | - | - | - | W |
+| **S06 spawn_val** | - | - | - | W | - | R | - | R | - | - | - | - | - | - |
+| **S07 death_mark** | - | R | - | - | - | W | W | R | - | - | - | - | - | - |
+| **S08 spawn** | W | W | - | W | W | W | - | W | - | - | - | - | - | - |
+| **S09 spawn_grace** | - | - | - | - | - | - | - | - | W | - | - | - | - | - |
+| **S10 regen** | - | W | - | - | - | - | - | - | - | - | - | - | - | - |
+| **S11 atk** | R | W | - | - | - | - | - | R | R | - | - | - | - | - |
+| **S12 rng_atk** | R | W | - | - | - | - | - | R | R | - | - | - | - | - |
+| **S13 heal** | R | W | - | - | - | - | - | R | R | - | - | - | - | - |
+| **S14 spec_atk_red** | - | - | - | - | - | - | - | R | - | - | **R** | - | **R** | - |
+| **S15 dmg_apply** | - | W | - | - | - | - | W | - | R | - | - | - | - | - |
+| **S16 hack_buf** | - | - | - | - | - | - | - | R | - | - | - | **W** | **R** | - |
+| **S17 drain_buf** | - | - | - | W | - | - | - | - | - | - | - | **W** | **R** | - |
+| **S18 overload_buf** | - | - | - | W | - | - | - | - | - | - | - | **W** | **R** | - |
+| **S19 debuff_buf** | - | - | - | - | - | - | - | - | - | - | - | **W** | **R** | - |
+| **S20 disrupt_buf** | - | - | - | - | - | - | - | - | - | - | - | **W** | **R** | - |
+| **S21 fort_buf** | - | - | - | - | - | - | - | - | - | - | - | **W** | **R** | - |
+| **S22a leech_buf** | - | - | - | W | - | - | - | - | - | - | - | **W** | **R** | - |
+| **S22b fab_buf** | - | - | - | - | - | - | - | - | - | - | - | **W** | **R** | - |
+| **S22 status_adv** | - | W | - | W | - | - | - | - | - | - | - | **R** | **W** | - |
+| **S23 aging** | - | - | - | - | - | - | W | - | - | - | - | - | - | - |
+| **S24 decay** | - | W | W | - | W | - | - | - | - | - | - | - | - | - |
+| **S25 death_cln** | - | - | - | W | - | - | W | - | - | - | - | - | - | - |
+| **S26 pvp_block** | - | - | - | - | - | - | - | R | - | - | - | - | - | - |
+| **S27 room_state** | - | - | - | - | - | - | - | R | - | W | - | - | - | - |
+| **S28 ctrl_p2b** | - | - | - | - | - | - | - | R | - | W | - | - | - | - |
+| **S29 res_ledger** | - | - | - | R | - | - | - | - | - | - | - | - | - | W |
 
-**并行安全证明**：
+**Column legend (R30 B1)**:
+- `SpecAtkIntent` = `PendingSpecialAttackIntent` buffer — S01 writes, S14 reads
+- `SpecBuffer` = typed effect buffers (`HackBuffer`/`DrainBuffer`/.../`LeechBuffer`/`FabricateBuffer`) — S16-S22b write, S22 reads
+- `StatusState` = all status components (`HackState`/`DrainState`/.../`LeechState`/`FabricateState`) — S14 reads (reference), S16-S22b read (reference), **S22 is the ONLY writer**
+
+**并行安全证明 (R30 B1)**：
 
 - **Combat Parallel Set A (S11-S13)**: 按 `target_id` partition，同一 entity 只被一个 system 写入。`SpawningGrace` 列为 `R`（只读 filter，不修改）。
-- **Status Effects Parallel Set B (S16-S22)**: 各 system 写入互不重叠的 `StatusState` subtype（HackState ≠ DrainState ≠ OverloadState...）。`status_advance_system` 读取 S14 的 `pending_intents` 并统一写入所有 `StatusState`，与其他 system 无冲突（不同 component 实例）。
+- **Status Buffer Production Parallel Set B (S16-S22b)**: 各 system 写入互不重叠的 typed buffer（`HackBuffer` ≠ `DrainBuffer` ≠ …）。所有 system 只读 StatusState（不修改）。零并行写入冲突。
+- **S22 serial unique writer**: S22 是唯一 StatusState writer——读取所有 buffer 后串行推进。无并行写入者与 S22 竞争。
 - **World Maintenance (S24 decay)**: `HitPoints` 和 `Fatigue` 列在该阶段仅 decay 访问——S10 regen 已在之前完成且使用 `Without<DeathMark>` filter，无数据竞争。
 - **RoomCap 中间态保护**: S07→S08 之间无其他 system 读取 RoomCap。
 
@@ -369,7 +427,7 @@ manifest_hash = Blake3(
     system_id_1 || version_1 ||
     system_id_2 || version_2 ||
     ...
-    system_id_29 || version_29
+    system_id_31 || version_31
 )
 ```
 
@@ -381,11 +439,13 @@ manifest_hash = Blake3(
 
 | 检查项 | 方法 |
 |--------|------|
-| R/W 冲突检测 | 静态分析所有 29 system 的 Component access（基于 §4 矩阵） |
-| 并行安全 | 验证 parallel set 内 system 无共享写入；验证 RoomCap 中间态区间无 reader |
+| R/W 冲突检测 | 静态分析所有 31 system 的 Component access（基于 §4 矩阵） |
+| 并行安全 | 验证 parallel set 内 system 无共享写入；验证 RoomCap 中间态区间无 reader；验证 S22 是唯一 StatusState writer |
 | 迭代确定性 | CI 在 `--release` 和 `--debug` 下比较 `state_checksum` |
-| Manifest 一致性 | 验证代码中的 system 注册与本文档匹配（29 systems） |
+| Manifest 一致性 | 验证代码中的 system 注册与本文档匹配（31 systems） |
 | SpawningGrace filter | 验证所有 combat 系统（S11-S15）使用 `Without<SpawningGrace>` filter |
+| Unique Writer | 验证仅 S22 写入 StatusState；CI 拒绝任何其他 system 的 StatusState 写操作 |
+| Buffer 生命周期 | 验证 S22 消费后所有 typed buffer 和 pending_intents 被清空 |
 
 ---
 
@@ -393,5 +453,6 @@ manifest_hash = Blake3(
 
 | 版本 | 日期 | 变更 |
 |------|------|------|
-| 1.0.0 | 2026-06-18 | R15 B2 修复：初始版本。27 system，serial spine + 3 parallel sets。修复 `status_advance_system`/`aging_system` 缺失，明确 pvp_block 位置。 |
-| 2.0.0 | 2026-06-18 | R16 B2 修复：**Complete Tick Execution Manifest**——覆盖 Phase 2a inline 处理器 + Phase 2b 被动系统。29 systems。新增 `special_attack_reducer` (S14)、`spawn_validator` (S06)。修复时序：death_mark→spawn、spawning_grace→combat 之前、regeneration→damage_application 之前。新增 Component R/W 矩阵覆盖全部 29 systems。 |
+| 1.0.0 | 2026-06-18 | R15 B2 修复：初始版本。27 system，serial spine + 3 parallel sets。 |
+| 2.0.0 | 2026-06-18 | R16 B2 修复：29 systems。S14 special_attack_reducer、S06 spawn_validator。 |
+| 3.0.0 | 2026-06-21 | **R30 B1 修复**：Status Effects 拆分——S16-S22b 并行 buffer 生产 + S22 串行唯一 StatusState committer。新增 S22a leech_buffer + S22b fabricate_buffer（31 systems）。S01 写入 PendingSpecialAttackIntent。8 种特殊攻击全部核心目标。S14 从 S01 读取 intents。Unique Writer Contract 完备化。 |

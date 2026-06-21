@@ -19,7 +19,7 @@ Swarm 提供两种**并行核心玩法**。引擎统一，规则可配置。
 | **旁观** | public_spectate 控制 | 由房间可见性控制 |
 | **回放** | 自身可见，隐私分级 | 赛后生成回放（房间公开则回放公开） |
 | **关注点** | 持久性、创造力、涌现玩法 | 算法对抗、策略测试、演示观赏 |
-| **胜利条件** | 无——类似 MMO 持续沙盒，玩家自行设定目标（建造、控制、经济、社交）。不存在"游戏结束"状态 | 一方 drone=0 > 一方认输 > tick 到上限按剩余资产判定（drone数→建筑数→资源量）> 平局 |
+| **胜利条件** | 无——类似 MMO 持续沙盒，玩家自行设定目标（建造、控制、经济、社交）。不存在"游戏结束"状态 | **房间可配置**（房主在创建时选择）：`fixed_ticks`（达到 tick 上限后按剩余资产判定：drone数→建筑数→资源量→平局）、`destroy_all_structures`（摧毁敌方所有建筑）、`full_wipe`（消灭所有敌方 drone + 建筑）、`capture_points_consecutive`（连续控制据点 N tick）、`capture_points_cumulative`（累计控制据点 N tick） |
 | **PvE** | ✅ 世界生态层（中立 NPC、资源据点、世界事件、NPC 掉落） | ✅ 挑战模式（PvE scenario，计时评分） |
 | **领土平衡** | Empire upkeep 默认启用（protocol hook + Vanilla 公式），服主可关闭/替换。World 不设竞争榜单 | N/A |
 
@@ -140,7 +140,7 @@ Create -> Configure -> Ready -> Play -> Finish -> Replay
            选WASM     锁定代码          结果展示    (可公开)
 ```
 
-**终止条件**（按优先级）：一方 drone=0 > 一方认输 > tick 到上限按剩余资产判定（drone数->建筑数->资源量） > 平局。
+**终止条件**（按房间配置的 victory_condition，优先级由配置决定）：`fixed_ticks` 模式下：tick 到上限按剩余资产判定（drone数→建筑数→资源量）→平局。`destroy_all_structures` 模式下：一方所有建筑被摧毁。`full_wipe` 模式下：一方 drone 全灭 + 建筑全毁。`capture_points` 模式下：达到连续/累计控制 tick 数。
 
 #### 9.1.4 回放
 
