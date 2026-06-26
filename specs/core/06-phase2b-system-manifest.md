@@ -125,8 +125,8 @@ Serial Spine:
 - **Phase**: 2a inline
 - **Handled Commands**: `Build` (Spawn, Extension, Tower, Storage, Depot, Road, Container, Link, Terminal, Observer, Extractor, Lab, Factory, PowerSpawn, Nuker)
 - **Reads**: ConstructionSite, Room, ResourceAmount, WorldConfig
-- **Writes**: Structure (new), ConstructionSite (progress), ResourceAmount (cost deduction)
-- **Entity creation**: ✅ (immediate, inline — structure appears in current tick)
+- **Writes**: PendingEntityCreation buffer, ConstructionSite (progress), ResourceAmount (cost deduction)
+- **Entity creation**: ✅ — 写入 `PendingEntityCreation`，不在当前 tick 直接进入可交互实体集
 
 ### S04: recycle_system
 - **ID**: `recycle`
@@ -169,9 +169,9 @@ Serial Spine:
 - **ID**: `spawn`
 - **R16 B2 fix**: 移至 death_marker 之后，使用已释放的 RoomCap 槽位。
 - **Reads**: PendingSpawn buffer (from S06), DroneTemplate, Room, RoomCap
-- **Writes**: Drone (new entity), ResourceAmount (finalize)
-- **Entity creation**: ✅ — 新 Drone 追加到 `pending_entities`
-- **Note**: RoomCap 在 S07 释放后立即可用，同 tick spawn 无需等待。
+- **Writes**: PendingEntityCreation buffer, ResourceAmount (finalize)
+- **Entity creation**: ✅ — 新 Drone 写入 `PendingEntityCreation`
+- **Note**: RoomCap 在 S07 释放后立即可用，同 tick spawn 可完成准入与扣费，但创建结果本 tick 不可交互。
 
 ### S09: spawning_grace_system
 - **ID**: `spawn_grace`
@@ -380,7 +380,16 @@ for each active StatusState:
 
 ## 3. Entity Creation/Despawn Order
 
-- **Creation**: 所有新实体追加到 `pending_entities`，不立即可见。在当前 tick 所有 system 执行完毕后 flush（按 `StableEntityId` 排序）。
+### 3.0 Entity Creation Visibility Contract
+
+所有实体创建路径（Build、Spawn、Fabricate、脚本化系统创建）统一写入 `PendingEntityCreation` queue。新实体的 `StableEntityId` 可在当前 tick 内预分配并进入事件/trace，但实体数据在本 tick 结束 flush 前不加入可交互世界索引。
+
+| 标志 | 值 | 含义 |
+|------|----|------|
+| `visible_same_tick` | `false` | 同 tick 快照、查询、后续命令和系统扫描均不可见新实体 |
+| `interactable_same_tick` | `false` | 同 tick 不能被移动、攻击、治疗、转移、建造依赖或作为 target 解析 |
+
+- **Creation**: 所有新实体追加到 `PendingEntityCreation`，不立即可见/不可交互。在当前 tick 所有 system 执行完毕后 flush（按 `StableEntityId` 排序），从下一 tick 开始参与快照、命令校验和系统迭代。
 - **Despawn**: 标记 `DeathMark` 但不立即移除。S25 收集所有 DeathMark 实体，按 `entity_id` 降序 despawn（避免 ID 复用问题）。
 - **同一实体先 Despawn 后 Create**: 新 entity 获得新的 `StableEntityId`，不与旧 ID 冲突。
 - **RoomCap 生命周期**: S07 `death_marker` 释放槽位 → S08 `spawn_system` 消费槽位。此区间内 RoomCap 处于中间态——其他 system 不得读取 RoomCap 做准入决策。
