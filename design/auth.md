@@ -834,7 +834,7 @@ WebSocket 断开后需重新握手。会话内消息不计入 per-tick rate limi
 - **无 per-message 签名要求**（只读、无状态变更）
 - 速率限制：每个 spectator 连接最多 10 events/s
 
-> **决策记录 (D7)**：Agent/CLI WS 采用 per-message seq/MAC/signature，浏览器 spectator 跳过签名（只读订阅）。详见 [MCP 安全规范](specs/security/03-mcp-security.md) §2.5。
+> **决策记录 (D7)**：Agent/CLI WS 采用 per-message seq/MAC/signature，浏览器 spectator 跳过签名（只读订阅）。详见 [MCP 安全规范](../specs/security/03-mcp-security.md) §2.5。
 
 ### 10.5b Admin 高权限操作认证
 

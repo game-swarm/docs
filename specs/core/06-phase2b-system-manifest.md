@@ -226,7 +226,7 @@ Serial Spine:
 Canonical key 归约：S15 对 `PendingDamage[target_id]` 和 `PendingHeal[target_id]` 按 `target_id` 升序归并——同 target 的 damage 先合并（`net_damage = Σ attack - Σ heal`），再一次性写入 `Entity.hits`。这保证同一 entity 的 HitPoints 只在 S15 中被写入一次。
 
 - **ID**: `dmg_apply`
-- **HitPoints 写入契约**: **UNIQUE WRITER** — S15 是唯一写 `Entity.hits` 的 system。CI 静态验证：任何其他 system 对 `HitPoints` 的写操作必须被拒绝。
+- **HitPoints 写入契约**: **Combat (damage + heal) HitPoints writer** — S15 是战斗伤害/治疗的统一 HitPoints 写入者。S10 regen → `PendingHeal`；S22 Leech 等 status effect → `PendingDamage`。S24 decay 是独立 world maintenance writer（`Without<DeathMark>` filter），在 S22→S23→S24 串行中执行。CI 验证：S10/S22 不得直接写 HitPoints（必须走 buffer）；S24 的 HitPoints 写仅在 decay 域（验证 decay 写而不引起 combat buffer 冲突）。
 - **Reads**: PendingDamage buffer, PendingHeal buffer, Entity (armor, resistances)
 - **Writes**: Entity (hits), DeathMark (if hits ≤ 0)
 - **Must run after**: S11, S12, S13, S14
@@ -421,7 +421,7 @@ S22 `status_advance_system` 迭代实体顺序：`sorted(entities_with_active_st
 | **S07 death_mark** | - | R | - | - | - | W | W | R | - | - | - | - | - | - |
 | **S08 spawn** | W | W | - | W | W | W | - | W | - | - | - | - | - | - |
 | **S09 spawn_grace** | - | - | - | - | - | - | - | - | W | - | - | - | - | - |
-| **S10 regen** | - | W | - | - | - | - | - | - | - | - | - | - | - | - |
+| **S10 regen** | - | R | - | - | - | - | - | - | - | - | - | - | - | - |
 | **S11 atk** | R | - | - | - | - | - | - | R | R | - | - | - | - | - |
 | **S12 rng_atk** | R | - | - | - | - | - | - | R | R | - | - | - | - | - |
 | **S13 heal** | R | - | - | - | - | - | - | R | R | - | - | - | - | - |
@@ -429,7 +429,13 @@ S22 `status_advance_system` 迭代实体顺序：`sorted(entities_with_active_st
 | S15 dmg_apply | - | W | - | - | - | - | W | - | R | - | - | - | - | - |
 |   |   | **combat/heal domain** |   |   |   |   |   |   |   |   |   |   |   |
 
-> **Domain-specific writer 注**: S15 是 combat damage + heal 的 unique HitPoints writer——仅处理攻击和治疗的 HP 变更。S10 regeneration 是独立 writer（自然回复，在 combat 之前执行）。S22 status_advance_system 是另一类 HP 修改者（特殊攻击效果如 Leech drain），通过 StatusState→HP 路径在 S22 内部实现。三者写入同一 HitPoints component 但操作不同语义域（combat/heal vs regen vs special attack effect），时序保证无竞争（S10→S15→S22 串行）。
+> **Multi-writer HitPoints contract**: HitPoints 由三个独立 writer 按严格串行顺序写入，无竞争：
+> - **S10 regen** → `PendingHeal` buffer → S15 结算（不直接写 HitPoints）
+> - **S15 dmg_apply** → combat damage + heal + regen 统一结算写入 HitPoints
+> - **S24 decay** → world maintenance decay (Structure hits--)，在 S15/S22/S23 之后执行，S24 的 HP 写与 combat 域分离
+> - **S22 status_advance** → Leech 等 status effect HP 影响 → `PendingDamage` buffer → S15 结算（不直接写 HitPoints）
+> 
+> CI 验证规则：S10/S22 对 HitPoints 的 matrix entry 为 R（只读，写操作必须走 buffer）；S15 为 W（combat domain）；S24 为 W（decay domain，`Without<DeathMark>` filter）。S15→S22→S23→S24 串行执行保证无数据竞争。
 | **S16 hack_buf** | - | - | - | - | - | - | - | R | - | - | - | **W** | **R** | - |
 | **S17 drain_buf** | - | - | - | W | - | - | - | - | - | - | - | **W** | **R** | - |
 | **S18 overload_buf** | - | - | - | W | - | - | - | - | - | - | - | **W** | **R** | - |
@@ -438,7 +444,7 @@ S22 `status_advance_system` 迭代实体顺序：`sorted(entities_with_active_st
 | **S21 fort_buf** | - | - | - | - | - | - | - | - | - | - | - | **W** | **R** | - |
 | **S22a leech_buf** | - | - | - | W | - | - | - | - | - | - | - | **W** | **R** | - |
 | **S22b fab_buf** | - | - | - | - | - | - | - | - | - | - | - | **W** | **R** | - |
-| **S22 status_adv** | - | W | - | W | - | - | - | - | - | - | - | **R** | **W** | - |
+| **S22 status_adv** | - | R | - | W | - | - | - | - | - | - | - | **R** | **W** | - |
 | **S23 aging** | - | - | - | - | - | - | W | - | - | - | - | - | - | - |
 | **S24 decay** | - | W | W | - | W | - | - | - | - | - | - | - | - | - |
 | **S25 death_cln** | - | - | - | W | - | - | W | - | - | - | - | - | - | - |
@@ -457,7 +463,7 @@ S22 `status_advance_system` 迭代实体顺序：`sorted(entities_with_active_st
 - **Combat Parallel Set A (S11-S13)**: 按 `target_id` partition，同一 entity 只被一个 system 写入。`SpawningGrace` 列为 `R`（只读 filter，不修改）。
 - **Status Buffer Production Parallel Set B (S16-S22b)**: 各 system 写入互不重叠的 typed buffer（`HackBuffer` ≠ `DrainBuffer` ≠ …）。所有 system 只读 StatusState（不修改）。零并行写入冲突。
 - **S22 serial unique writer**: S22 是唯一 StatusState writer——读取所有 buffer 后串行推进。无并行写入者与 S22 竞争。
-- **World Maintenance (S24 decay)**: `HitPoints` 和 `Fatigue` 列在该阶段仅 decay 访问——S10 regen 已在之前完成且使用 `Without<DeathMark>` filter，无数据竞争。
+- **World Maintenance (S24 decay)**: `HitPoints` 和 `Fatigue` 列在该阶段仅 decay 访问——S10 regen 已完成并通过 S15 结算，无数据竞争。
 - **RoomCap 中间态保护**: S07→S08 之间无其他 system 读取 RoomCap。
 
 ---

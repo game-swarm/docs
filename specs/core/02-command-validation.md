@@ -599,19 +599,7 @@ refund_pct = max(0.1, 0.5 × (remaining_lifespan / total_lifespan))
  **Transfer** | `object_id.owner == player_id` | `object_id` 距 `target_id` ≤ 1 | `amount: u32`, 防溢出 (amount + target.current ≤ u32::MAX) | `drone.carry[res] ≥ amount` | N/A | `drone.body` 含 `Carry`, 目标有容量 (`InsufficientResource` 拒绝) |
  **Withdraw** | `object_id.owner == player_id` | `object_id` 距 `target_id` ≤ 1 | `amount: u32`, 防溢出 | `target.carry[res] ≥ amount` | N/A | `drone.body` 含 `Carry`, 自身有容量 |
  **Build** | `object_id.owner == player_id` | `object_id` 距 `(x,y)` ≤ 3 | N/A | `drone.carry[Energy] ≥ build_cost` | (x,y) 在玩家拥有 Controller 的房间内 | `drone.body` 含 `Work`+`Carry`, 格为空+Plain 地形, 在建 < 100 |
- **Attack** | `object_id.owner == player_id` | `object_id` 距 `target_id` ≤ 1 | N/A | N/A | N/A | `drone.body` 含 `Attack`, `target.owner != player_id`, `fatigue==0` |
- **RangedAttack** | `object_id.owner == player_id` | `object_id` 距 `target_id` ≤ 3 | N/A | N/A | N/A | `drone.body` 含 `RangedAttack`, `target.owner != player_id`, `fatigue==0` |
- **Heal** | `object_id.owner == player_id` | `object_id` 距 `target_id` ≤ 3 | N/A | N/A | N/A | `drone.body` 含 `Heal`, `target.hits < hits_max`, target 为友方 |
- | **Spawn** | `spawn_id.owner == player_id` | N/A | `body_parts.len() ≤ MAX_BODY_PARTS`, u32 无回绕 | `body_cost(body_parts) ≤ spawn.energy` | N/A | `spawn.cooldown == 0`, 房间有空余 spawn 槽位, 不超房间能量上限 |
- | **Recycle** | `object_id.owner == player_id` | N/A | N/A | 资源返还计算无溢出 | N/A | Drone 非 spawning 状态。Recycle 为 self-action — 仅需 `object_id` |
- **Hack** | `object_id.owner == player_id` | `object_id` 距 `target_id` ≤ 1 | N/A | Energy ≥ 1000 (消耗) | N/A | `drone.body` 含 `Claim`, target 非己方, `fatigue==0`, 冷却未到, 目标未被他人在 Hack 中 |
- **Drain** | `object_id.owner == player_id` | `object_id` 距 `target_id` ≤ 1 | N/A | `target` 有指定 resource 存量 > 0, `drone.carry_used < carry_capacity` | N/A | `drone.body` 含 `Work`+`Carry`, target 非己方, `fatigue==0`, 冷却未到 |
- | **Overload** | `object_id.owner == player_id` | `is_visible_to(target_player, attacker)` | N/A | Energy ≥ 300 (消耗) | N/A | `drone.body` 含 `RangedAttack`, target 非己方, 目标全局冷却 (50 tick), apply 阶段静默 clamp 至下限, `fatigue==0`, drone 冷却未到。fuel 恢复 `fuel_budget / 1000` per tick |
- **Debilitate** | `object_id.owner == player_id` | `object_id` 距 `target_id` ≤ 3 | N/A | Energy ≥ 200 (消耗) | N/A | `drone.body` 含 `Work`, target 非己方, `damage_type` ∈ DamageType 枚举, 无同类型叠加, `fatigue==0`, 冷却未到 |
- **Disrupt** | `object_id.owner == player_id` | `object_id` 距 `target_id` ≤ 1 | N/A | Energy ≥ 100 (消耗) | N/A | `drone.body` 含 `Attack`, target 非己方且为 Drone, `fatigue==0`, 冷却未到 |
- **Fortify** | `object_id.owner == player_id` | `object_id` 距 `target_id` ≤ 1 | N/A | Energy ≥ 400 (消耗) | N/A | `drone.body` 含 `Tough`, target 为己方/盟友, `fatigue==0`, 冷却未到 |
- | **Leech** | `object_id.owner == player_id` | `object_id` 距 `target_id` ≤ 1 | N/A | Energy ≥ 300 (消耗) | N/A | `drone.body` 含 `Attack`, target 非己方, `fatigue==0`, 冷却未到。damage_type=Corrosive, base_damage=15, heal=self 50%。canonical 参数见 special-attack-table.md |
- | **Fabricate** | `object_id.owner == player_id` | `object_id` 距 `target_id` ≤ 1 | N/A | Energy ≥ 2000 + Matter ≥ 500 (消耗) | N/A | `drone.body` 含 `Work`+`Carry`, target 非己方且为 Drone, `fatigue==0`, 冷却未到。5-tick channel（可被 Disrupt 打断）。canonical 参数见 special-attack-table.md |
+ | **Action dispatch** | 见 ActionRegistry | 见 ActionRegistry | 见 ActionRegistry | 见 ActionRegistry | 见 ActionRegistry | 全部 combat/effect action (3 基础 combat + 8 特殊) 通过 `CommandAction::Action { type, payload }` dispatch。权威校验参数见 [Vanilla Action Canonical Table](../reference/special-attack-table.md) 和 [API Registry §1.1 ActionRegistry](../reference/api-registry.md#11-actionregistry)。 |
  | **ClaimController** | `object_id.owner == player_id` | `object_id` 距 `target_id` ≤ 1 | N/A | N/A | N/A | `drone.body` 含 `Claim`, target 是 Controller |
 
 > **批级与系统级校验**（在逐指令校验之上）：  
@@ -673,7 +661,7 @@ refund_pct = max(0.1, 0.5 × (remaining_lifespan / total_lifespan))
 > **R35 D3**: RangedAttack 已移入 ActionRegistry，不再作为独立 CommandAction variant。以下校验规则适用于 Action `{ type: \"RangedAttack\", ... }` dispatch。
 
 ```json
-{ "action": "RangedAttack", "object_id": "d1", "target_id": "e5", "range": 3, "sequence": N }
+{ "type": "Action", "action_type": "RangedAttack", "object_id": "d1", "target_id": "e5", "range": 3, "sequence": N }
 ```
 
  校验规则 | 说明 |
@@ -688,7 +676,7 @@ refund_pct = max(0.1, 0.5 × (remaining_lifespan / total_lifespan))
 占领 Controller。drone 需 Claim body part。
 
 ```json
-{ "action": "ClaimController", "object_id": "d1", "target_id": "c1", "sequence": N }
+{ "type": "Action", "action_type": "ClaimController", "object_id": "d1", "target_id": "c1", "sequence": N }
 ```
 
  校验规则 | 说明 |
@@ -702,7 +690,7 @@ refund_pct = max(0.1, 0.5 × (remaining_lifespan / total_lifespan))
 回收 drone，退还资源。
 
 ```json
-{ "action": "Recycle", "object_id": "d1", "sequence": N }
+{ "type": "Action", "action_type": "Recycle", "object_id": "d1", "sequence": N }
 ```
 
  | 规则 | 说明 |
@@ -718,7 +706,7 @@ refund_pct = max(0.1, 0.5 × (remaining_lifespan / total_lifespan))
 #### Disrupt
 
 ```json
-{ "action": "Disrupt", "object_id": "d1", "target_id": "e5", "sequence": N }
+{ "type": "Action", "action_type": "Disrupt", "object_id": "d1", "target_id": "e5", "sequence": N }
 ```
 
  属性 | 值 |
@@ -732,7 +720,7 @@ refund_pct = max(0.1, 0.5 × (remaining_lifespan / total_lifespan))
 #### Fortify
 
 ```json
-{ "action": "Fortify", "object_id": "d1", "target_id": "f2", "sequence": N }
+{ "type": "Action", "action_type": "Fortify", "object_id": "d1", "target_id": "f2", "sequence": N }
 ```
 
  属性 | 值 |
@@ -746,7 +734,7 @@ refund_pct = max(0.1, 0.5 × (remaining_lifespan / total_lifespan))
 #### Hack
 
 ```json
-{ "action": "Hack", "object_id": "d1", "target_id": "e5", "sequence": N }
+{ "type": "Action", "action_type": "Hack", "object_id": "d1", "target_id": "e5", "sequence": N }
 ```
 
  属性 | 值 |
@@ -760,7 +748,7 @@ refund_pct = max(0.1, 0.5 × (remaining_lifespan / total_lifespan))
 #### Drain
 
 ```json
-{ "action": "Drain", "object_id": "d1", "target_id": "s1", "sequence": N }
+{ "type": "Action", "action_type": "Drain", "object_id": "d1", "target_id": "s1", "sequence": N }
 ```
 
  属性 | 值 |
@@ -774,7 +762,7 @@ refund_pct = max(0.1, 0.5 × (remaining_lifespan / total_lifespan))
 #### Overload
 
 ```json
-{ "action": "Overload", "object_id": "d1", "target_id": 42, "sequence": N }
+{ "type": "Action", "action_type": "Overload", "object_id": "d1", "target_id": 42, "sequence": N }
 ```
 
  属性 | 值 |
@@ -788,7 +776,7 @@ refund_pct = max(0.1, 0.5 × (remaining_lifespan / total_lifespan))
 #### Debilitate
 
 ```json
-{ "action": "Debilitate", "object_id": "d1", "target_id": "e5", "damage_type": "Kinetic", "sequence": N }
+{ "type": "Action", "action_type": "Debilitate", "object_id": "d1", "target_id": "e5", "damage_type": "Kinetic", "sequence": N }
 ```
 
  属性 | 值 |
@@ -802,7 +790,7 @@ refund_pct = max(0.1, 0.5 × (remaining_lifespan / total_lifespan))
 #### Leech
 
 ```json
-{ "action": "Leech", "object_id": "d1", "target_id": "e5", "sequence": N }
+{ "type": "Action", "action_type": "Leech", "object_id": "d1", "target_id": "e5", "sequence": N }
 ```
 
  属性 | 值 |
@@ -816,7 +804,7 @@ refund_pct = max(0.1, 0.5 × (remaining_lifespan / total_lifespan))
 #### Fabricate
 
 ```json
-{ "action": "Fabricate", "object_id": "d1", "target_id": "e5", "structure_type": "Extension", "sequence": N }
+{ "type": "Action", "action_type": "Fabricate", "object_id": "d1", "target_id": "e5", "structure_type": "Extension", "sequence": N }
 ```
 
  属性 | 值 |
