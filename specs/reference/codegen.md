@@ -19,19 +19,19 @@
 
 ## 禁止手写的数值
 
-以下数值**只存在于 IDL 中**，API Registry 由 codegen 生成。任何手写副本为错误：
+以下数值**只存在于 IDL 中**，API Registry 由 codegen 生成。任何手写副本为错误；本文档只引用 Registry，不重新声明计数：
 
-> ⚠️ **本文档自身为手工维护**。本文档中的数值（CommandAction 数量、RejectionReason 数量等）需在 IDL 变更时手动更新。`hermes codegen generate --check` 可检测漂移，但仍需人工确认本文档与 IDL 的一致性。建议 CI 同时检查本文档中的计数声明与 `--check` 输出的一致性。
+> ⚠️ **本文档自身为手工维护**。CommandAction、MCP tool、RejectionReason、Host function 等计数以 [API Registry](api-registry.md) 为准。`hermes codegen generate --check` 可检测生成产物漂移。
 
-- CommandAction 数量 (当前 21)
-- MCP tool 数量 (当前 56 active)
-- RejectionReason 数量 (当前 47)
-- Host function 数量 (当前 5)
-- `MAX_DRONES_PER_PLAYER` (50)
-- Body part costs
-- Storage tax tiers
-- Refund rates
-- Rate limits
+- CommandAction 数量（见 Registry §1）
+- MCP tool 数量（见 Registry §3）
+- RejectionReason 数量（见 Registry §2）
+- Host function 数量（见 Registry §4，当前 6）
+- `MAX_DRONES_PER_PLAYER`（见 Registry §5）
+- Body part costs（见 Registry §11）
+- Storage tax tiers（见 Registry §10）
+- Refund rates（见 Registry §10）
+- Rate limits（见 Registry §3.1）
 
 ## CI Gate
 
