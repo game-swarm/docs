@@ -345,7 +345,7 @@ Dragonfly nonce 仅用于 `read_replay_safe` 和 `idempotent_mutation`。所有 
 
 #### MCP/REST 方法授权矩阵
 
-每个 MCP 方法必须标注以下维度。**Admin category 的权威 per-tool rate limit 以 [API Registry §3.2](../reference/api-registry.md#32-game-api-工具清单-57) 和 §3.1 通用 Rate Limit 表为准**——本表仅作权限模型示例，不得声明可冲突的 admin rate limit 数值。
+每个 MCP 方法必须标注以下维度。**Admin category 的权威 per-tool rate limit 以 [API Registry §3.2](../specs/reference/api-registry.md#32-game-api-工具清单-57) 和 §3.1 通用 Rate Limit 表为准**——本表仅作权限模型示例，不得声明可冲突的 admin rate limit 数值。
 
 | 方法 | Replay Class | Required Scope | Rate Limit | Visibility Filter | Admin Override |
 |------|-------------|----------------|------------|-------------------|----------------|

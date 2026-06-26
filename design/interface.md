@@ -112,7 +112,7 @@ fn host_get_random(sequence: u64, out_ptr: i32, out_len: i32) -> i32;
 
 ### 5.4 CommandAction 定义 (单一事实源)
 
-**CommandAction 的唯一权威定义在 [API Registry](specs/reference/api-registry.md) §1**。所有 21 个 CommandAction 变体（11 core + 2 economy_operation + 8 special_attack）的完整 schema、参数、分类和 actor_id/object_id 语义以 Registry 为准。本文档及其他设计文档不得重新声明 CommandAction 列表或参数；只能引用 Registry。
+**CommandAction 的唯一权威定义在 [API Registry](specs/reference/api-registry.md) §1**。所有 11 个 CommandAction 变体 + `Action` dispatch 的完整 schema、参数、分类和 actor_id/object_id 语义以 Registry 为准。combat/effect 能力（包括 vanilla `Attack`/`RangedAttack`/`Heal` 与 8 个 special action）通过 ActionRegistry 派发，不作为顶层 CommandAction 变体计数。本文档及其他设计文档不得重新声明 CommandAction 列表或参数；只能引用 Registry。
 
 Notes:
 - Move: 4方向 (N/S/E/W)。8方向为 Out-of-Scope RFC，不在当前核心定义中。
@@ -136,7 +136,7 @@ Pathfinding 确定性要求：固定 neighbor order（NESW 顺时针）、cost t
 |------|------|
 | `error.code` | numeric JSON-RPC error code；Swarm application error 固定使用 `-32000`，不得填 RejectionReason 字符串 |
 | `error.message` | 人类可读摘要 |
-| `error.data.rejection_reason` | canonical RejectionReason wire enum string (47 codes, 见 Registry §2) |
+| `error.data.rejection_reason` | canonical RejectionReason wire enum string (48 codes, 见 Registry §2) |
 | `error.data.debug_detail` | 非 canonical 上下文详情 (≤ 512 bytes)；详细程度由 `detail_level` 控制 |
 | `error.data.retry_allowed` | 是否可安全重试 (machine-readable) |
 | `error.data.idempotency_key` | 幂等重试 key (machine-readable) |
