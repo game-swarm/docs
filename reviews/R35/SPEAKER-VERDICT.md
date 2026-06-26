@@ -257,3 +257,32 @@ R36 前必须满足以下条件：
 - D-items：7
 
 Speaker 不替用户裁决 D-items。下一步建议先逐项裁决 D1..D7，再启动 R35 fix wave；修复后重新运行 closure verification，而不是直接进入 R36。
+
+---
+
+## D-items 裁决结果（2026-06-26）
+
+| D | 议题 | 裁决 | 方向 |
+|----|------|:--:|------|
+| D1 | API Error Envelope | **A** | 标准 JSON-RPC numeric `error.code` + `error.data.rejection_reason` |
+| D2 | `host_get_random` 参数宽度 | **A** | 统一 `u64 sequence` |
+| D3 | Combat Action 建模 | **B+ 通用化** | 全部 11 种 combat action（Attack + RangedAttack + Heal + 8 special attacks）统一进 Action 注册系统；`CommandAction` 仅保留非战斗基础操作（Move/Build/Spawn/Transfer/Recycle/Deploy/Admin/Terminal...） |
+| D4 | Deploy Upload Flow | **A** | 同步 `swarm_deploy(wasm_bytes, metadata, code_signature)` |
+| D5 | CSR Email Binding | **A** | CSR 不接收 email；证书签发后用 `swarm_bind_email` 绑定 |
+| D6 | Vanilla 起始资源 | **A** | 单一 `{Energy: 5000}` |
+| D7 | Alliance 上限 | **B** | 每玩家最多 10 个 active alliance |
+
+**D3 细化说明**：
+
+`CommandAction` enum 移除全部 combat variant（Attack/RangedAttack/Heal/Hack/Drain/Overload/Debilitate/Disrupt/Fortify/Leech/Fabricate），新增单一 `Action { type, payload }` variant。
+
+Action 注册框架：
+- `ActionRegistry` 统一管理全部 combat/effect action（11 vanilla + mod 扩展）
+- Vanilla actions 作为内置注册项，不接受 mod 覆盖
+- World mod 可注册新 action type，不改 core enum
+- Phase 2a `command_executor` (S01) 不再处理任何 combat logic
+- Action dispatch 独立于 S01，在 Phase 2a 中作为独立 dispatch 阶段执行
+
+**D7 细化说明**：
+
+上限 10 但需补充联盟输血限制：同一 tick 内同一 alliance 的 Allied Transfer 总流量受 `alliance_transfer_cap_per_tick` 约束，防止 10 人联盟绕过 anti-snowball。
