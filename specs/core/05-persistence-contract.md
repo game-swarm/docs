@@ -130,7 +130,7 @@ FAILED:
 
 ## 3. Tick Commit 序列
 
-> **D5/B 裁决**：对象存储写入改为异步——FDB commit 先完成，blob upload 在后台执行。FDB 仅存储 manifest + content_hash + pointer，不等待 blob 写入结果。
+> **R39 D5 裁决 (A)**：生产环境统一 per-room staging payload + GlobalTickCommit manifest-only publish。直接 `UPDATE entity/resource/controller/... rows` 仅用于 dev/test small profile（≤ 50 active players, ≤ 100 rooms），且必须标注不适用 production。
 
 每个 tick 结束时执行以下持久化序列：
 
@@ -147,8 +147,8 @@ Phase B: FDB 事务提交（原子 — 先于对象存储写入）
   ├─ INSERT tick_manifest (tick, object_id, content_hash, blob_size, upload_status = "pending")
   │   └─ 注意：object_store_etag 此时为 NULL（blob 尚未写入）
   ├─ INSERT tick_hash_chain (tick, chain_hash = Blake3(prev_chain_hash || tick_head_hash))
-  ├─ FOR each persistent state mutation:
-  │   └─ UPDATE entity/resource/controller/... rows
+  ├─ FOR each persistent state mutation (production: skip — use staging+manifest publish):
+  │   └─ UPDATE entity/resource/controller/... rows  // dev/test small profile only; production uses Shadow Write (see §3.5)
   ├─ COMMIT
   └─ 若 COMMIT 成功 → tick 持久化完成（world state 已安全）
      若 COMMIT 失败 → 事务回滚，tick 放弃
@@ -372,7 +372,7 @@ Room-Partition (500+ players):
     /committed/head/{tick}            → global tick head（唯一 publish 点）
     /committed/manifest/{tick}        → room hashes + cross-room intent log
   Conflict range: per-room staging transaction 不跨 room 冲突
-  Cross-room operations: 在 staging 写入后、GlobalTickCommit 中统一裁决——全或无
+  Cross-room operations: 在 staging 写入**前**于 Bevy World 内裁决（R39 D6），再对 affected rooms 写 staging payload。全或无。
   GC: staging 孤立行每 10s 扫描清理（检查 /committed/head/{tick} 是否存在）
 ```
 
