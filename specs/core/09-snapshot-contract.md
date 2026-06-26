@@ -18,6 +18,8 @@
 
 ## 1. Snapshot Truncation Contract（快照截断合同）— H3
 
+> **与 Execution Rollback Snapshot 的边界**：本文档定义 per-player **感知快照（perception snapshot）** 的截断规则——即 COLLECT 阶段交付给 WASM `tick()` 和 MCP `swarm_get_snapshot` 的可见世界视图。**执行回滚快照（execution rollback snapshot）** 是引擎内 Bevy World 深拷贝，用于 FDB commit 失败时恢复世界状态，其规则定义在 `01-tick-protocol.md` §Bevy World 快照范围清单。两者是独立概念，不可混用。
+
 ### 1.1 触发条件
 
 引擎在每 tick 结束时为每个 **player** 生成感知快照（per-player perception snapshot），覆盖该 player 所有 active drone 的集体视野。快照以 player actor context 为粒度（非 per-drone），序列化为 JSON 后若超过 **256KB** 上限，触发截断：
