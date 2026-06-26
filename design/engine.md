@@ -258,7 +258,7 @@ Swarm:     Move = Action  → 每 tick 移动 OR 采集 OR 攻击 OR 建造
 
 **两阶段快照架构**：阶段一不再为每个玩家独立序列化世界状态。改为：(1) tick 开始时一次性构建完整世界快照，按房间分片；(2) 每个玩家根据其 drone 所在位置，拼接可见房间的分片（默认 ≤9 个）。复杂度从 `O(玩家数 × 实体数)` 降为 `O(实体数 + 玩家数 × 可见房间数)`，消除每玩家重复序列化开销。快照构建在玩家 WASM 执行前完成，与玩家顺序无关，天然确定。
 
-**WASM 预编译**：玩家上传 WASM 模块时，引擎在部署阶段立即编译为原生码并存储（非 tick 时 JIT）。tick 时只需实例化已编译模块，消除首次加载的编译延迟。编译后的模块按 `(module_hash, wasmtime_version)` 缓存，Wasmtime 版本升级时自动重编译。
+**WASM 预编译**：玩家上传 WASM 模块时，引擎在部署阶段先验证客户端签名覆盖的 `wasm_module_hash`，再立即编译为原生码并计算服务端派生的 `compiled_artifact_hash`（非 tick 时 JIT）。tick 时只需实例化已编译模块，消除首次加载的编译延迟。编译后的模块按 `(compiled_artifact_hash, wasmtime_version)` 缓存，Wasmtime 版本升级时自动重编译。
 
 ### 3.3 确定性保证与回放
 
