@@ -222,7 +222,7 @@ Swarm 支持三个扩展层级：
 
 | 阶段 | 执行模型 | 包含的命令/系统 | 分类原则 |
 |------|---------|---------------|---------|
-| **Phase 2a (Inline)** | 串行 inline 应用 | Move, Harvest, Attack, RangedAttack, Heal, Claim, Build, Recycle, Transfer, Withdraw, Spawn (validate only) | **玩家提交的命令**——效果依赖执行顺序，且「先到先得」竞争有意义。对 Bevy World 做立即修改，后续命令基于最新状态校验 |
+| **Phase 2a (Inline)** | 串行 inline 应用 | Move, Harvest, ClaimController, Build, Recycle, Transfer, Withdraw, TransferToGlobal, TransferFromGlobal, Spawn (validate only), Action dispatch (via ActionRegistry) | **玩家提交的命令**——效果依赖执行顺序，且「先到先得」竞争有意义。对 Bevy World 做立即修改或产生命令 intent，后续命令基于最新状态校验 |
 
 **Move 作为 Main Action 的设计理由**：Move 与 Harvest/Attack/Build 竞争同一个 per-drone per-tick action slot。此设计偏离了大多数 RTS 的「移动 + 行动」双动作模型，是 Swarm 有意的简化和 philosophic commitment：
 
@@ -242,14 +242,15 @@ Swarm:     Move = Action  → 每 tick 移动 OR 采集 OR 攻击 OR 建造
 此设计在 playtest 阶段可能被挑战——如果证据表明玩家普遍因 Move 占用 action slot 而流失，可重新评估。当前作为有意的设计选择冻结。
 | **Phase 2b (Deferred)** | ECS Systems (serial spine + parallel sets) | death_marker, spawn, spawning_grace, regeneration, combat (parallel set A), special_attack_reducer, damage_application, status buffer production (parallel set B: S16-S22b), status_advance_system (S22 serial unique writer), aging, decay, death_cleanup, pvp_block, room_state, controller_2b, resource_ledger — **R30 B1: 31 systems** | **被动系统**——有依赖关系的系统串行执行（保证正确性），无数据竞争的系统利用并行调度。不接收玩家命令，响应 2a 产生的状态变化。完整调度见 [Complete Tick Execution Manifest](specs/core/06-phase2b-system-manifest.md) |
 
-**Attack 与 combat_system 的职责分离（R33 B7）**：
-- **Phase 2a Attack/RangedAttack/Heal 命令**：仅生成 `PendingDamage`/`PendingHeal` intent，**不直接修改目标 HP**。Phase 2a 校验基本合法性（body part 要求、cooldown、fatigue、target validity），但 damage/heal 的实际应用推迟到 Phase 2b。
-- **Phase 2b combat_system（S11-S13）**：统一收集 Phase 2a 产生的 PendingDamage/PendingHeal 以及 Tower 自动攻击、持续伤害效果（DoT）→ S14 special_attack_reducer 归并 → S15 damage_application 统一写入 Entity.hits。
-- 此分离保证「先到先得」竞争在 Phase 2a 校验层面生效（先通过校验的 Attack 先拿到 intent 优先级），但所有 HP 变更统一在 Phase 2b S15 确定——避免同 tick 内 Attack 顺序差异导致的不同 HP 结果。
+**Action dispatch 与 combat_system 的职责分离（R35 D3）**：
+- **CommandAction 边界**：IDL 中 `CommandAction` 不再包含 `Attack`/`RangedAttack`/`Heal` 等 combat variant；所有 combat 与特殊攻击统一编码为 `Action { type, payload }`。
+- **Phase 2a Action dispatch**：`ActionRegistry` 根据 `type` 查找 handler，校验 body part、cooldown、fatigue、target validity 与 payload schema。`Attack`/`RangedAttack`/`Heal` handler 只生成 `PendingDamage`/`PendingHeal` intent，**不直接修改目标 HP**；8 种 special action handler 只生成 status intent。
+- **Phase 2b combat/status pipeline**：combat intent 与 Tower 自动攻击、持续伤害效果（DoT）进入 S15 damage_application 统一写入 `Entity.hits`；special action intent 经 S14 reducer → S22 status_advance_system 统一推进。
+- 此分离保证「先到先得」竞争在 Phase 2a 校验层面生效（先通过校验的 action 先拿到 intent 优先级），但所有 HP 变更统一在 Phase 2b 确定——避免同 tick 内 action 顺序差异导致的不同 HP 结果。
 
 **Recycle 死亡路径**：Recycle 命令走标准 death_mark → death_cleanup 路径（与其他死亡一致），不在 Phase 2a 中立即 despawn。death_mark 在 2b 开头标记待死亡 entity 并释放 room cap 槽位，death_cleanup 在 2b 末尾执行实际 despawn。
 
-**Spawn 时序说明**：spawn_system 在 death_mark 之后（room cap 槽位已释放）运行，紧接着 `spawning_grace_system` 为新生 drone 附加 1 tick 的无敌帧，然后进入 combat/decay。新生 drone 获得 `SpawningGrace { remaining: 1 }` 组件——在本 tick 内免疫所有伤害（含特殊攻击和衰减），下一 tick 恢复正常参与战斗。此机制防止"出生即斩"——对手在 Spawn 旁部署 RangedAttack drone 无法秒杀新生 drone。
+**Spawn 时序说明**：spawn_system 在 death_mark 之后（room cap 槽位已释放）运行，紧接着 `spawning_grace_system` 为新生 drone 附加 1 tick 的无敌帧，然后进入 combat/decay。新生 drone 获得 `SpawningGrace { remaining: 1 }` 组件——在本 tick 内免疫所有伤害（含 special action 和衰减），下一 tick 恢复正常参与战斗。此机制防止"出生即斩"——对手在 Spawn 旁部署 RangedAttack drone 无法秒杀新生 drone。
 
 **RoomCap 生命周期约束**：`RoomCap` 的读写顺序为 `death_mark: W(release) → spawn: R(check) + W(consume)`。在 `death_mark_system` 与 `spawn_system` 之间的任何 ECS system 不得读取 RoomCap 做准入决策——此时槽位已释放但尚未被新 drone 消费，RoomCap 值处于中间态。新增 system 插入此区间时必须在 manifest 中声明对 RoomCap 的读写关系。
 

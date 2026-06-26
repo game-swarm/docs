@@ -518,7 +518,7 @@ Swarm 是一个**可配置的游戏引擎平台**——每个世界实例（worl
 | **身体部件** | 8 种标准件：`MOVE`, `CARRY`, `WORK`, `ATTACK`, `RANGED_ATTACK`, `HEAL`, `CLAIM`, `TOUGH` | 每种部件的 cost/age_modifier/能力 见 `[[body_part_types]]` 默认定义 |
 | **伤害类型** | 6 种：`Kinetic`, `Thermal`, `EMP`, `Sonic`, `Corrosive`, `Psionic` | 默认抗性均为 1.0，详见 §8 伤害与武器类型定义 |
 | **物流模式** | **模式 B（轻物流）** | 全局传输 1% 损耗，本地建造 5% 损耗。模式 A（无损耗）和模式 C（重物流）为可选项 |
-| **特殊攻击** | 包含 8 种核心目标设计：`Hack`, `Drain`, `Overload`, `Debilitate`, `Disrupt`, `Fortify`, `Leech`, `Fabricate`。全部 8 种为 Standard+ 核心能力——不存在 Tier 2/Phase/Future 语义。Tutorial/Novice 默认禁用，Standard/Arena 全量启用。服主可通过 `world.toml` 的 `vanilla.special_attacks_enabled` 列表覆盖 | 冷却时间与资源消耗见 §8 特殊攻击方式表格 |
+| **Vanilla Action** | 包含 11 种官方 action：3 种基础 combat（`Attack`, `RangedAttack`, `Heal`）+ 8 种 special action（`Hack`, `Drain`, `Overload`, `Debilitate`, `Disrupt`, `Fortify`, `Leech`, `Fabricate`）。全部通过 `ActionRegistry` dispatch；`CommandAction` 不再含 combat variant。Tutorial/Novice 默认禁用 special action，Standard/Arena 全量启用。服主可通过 `world.toml` 的 `vanilla.special_attacks_enabled` 列表覆盖 | 冷却时间与资源消耗见 §8 Action 表格 |
 | **Controller 维修** | 硬上限：每 tick 总 age 回退 ≤ 自然增长的 50% | 详见 §3.1 Controller 结构定义 |
 | **可见性** | `fog_of_war = true`，`player_view = drone`，`public_spectate = false` | 玩家仅可见自己 drone 视野内的内容；公开观战默认关闭 |
 | **核心数值** | Work harvest: 1 unit/tick；Spawn cooldown: 5 tick；Tower attack: 50 dmg/10 tick cooldown/range 5；Source capacity: 3000/tick regen 300 | 编码前必需的最小默认值，确保 feedback loop 可平衡 |
@@ -746,11 +746,11 @@ Corrosive = 1.5        # 建筑怕腐蚀
 
 **模组扩展**: Rhai 模组可注册新伤害类型（`actions.add_damage_type("Fire", 1.0)`）、设置抗性（`actions.set_resistance("Tough", "Fire", 0.3)`）、赋予属性（`actions.set_attribute(entity_id, "Flaming", true)`）。
 
-#### 特殊攻击方式
+#### Vanilla Action 方式
 
 > **Canonical 参数表见 [special-attack-table.md](specs/reference/special-attack-table.md)**。所有 body_part、damage_type、resistance、cost、cooldown、range、channel_time、counterplay 以该表为准。以下为概念描述，不得在实现中以本表数值替代 canonical 表。
 
-除了 HP 伤害，以下特殊攻击方式作为 Command 或 body part 能力存在：
+Vanilla Ruleset 提供 11 种 action：`Attack`/`RangedAttack`/`Heal` 是基础 combat action，写入 `PendingDamage`/`PendingHeal` intent；以下 8 种 special action 通过 `ActionRegistry` handler 写入 status intent，不作为独立 `CommandAction` variant 存在：
 
 | 攻击方式 | 触发 body part | 效果 | 冷却 | 资源消耗 | 抗性 |
 |---------|--------------|------|------|---------|------|
@@ -769,16 +769,17 @@ Corrosive = 1.5        # 建筑怕腐蚀
 |---|---|---|
 | Tutorial | 全部禁用 | 新手引导阶段不需要特殊攻击 |
 | Novice | 全部禁用 | 低强度世界，专注基础经济/物流 |
-| Standard | 全部 8 种可用（Hack, Drain, Overload, Debilitate, Disrupt, Fortify, Leech, Fabricate） | 标准体验 |
-| Advanced | 全部 8 种 + 服主自定义 `[[custom_actions]]` | 完全开放的模组世界 |
+| Standard | 全部 11 种 vanilla action 可用（3 basic combat + Hack, Drain, Overload, Debilitate, Disrupt, Fortify, Leech, Fabricate） | 标准体验 |
+| Advanced | 全部 11 种 vanilla action + 服主自定义 `[[custom_actions]]` | 完全开放的模组世界 |
 
 > 服主可通过 `world.toml` 中的 `vanilla.special_attacks_enabled` 列表覆盖默认解锁策略（如 Standard 世界禁用 Leech 和 Fabricate）。
 
 **通用规则**：
-- 特殊攻击与 HP 伤害互斥——同一 body part 在同一 tick 只能执行一种
-- 特殊攻击的"命中判定"取决于 body part 数量与目标防御的差值，非简单的命中/未命中
-- 持续型攻击（Drain/Hack）在 drone 移动或被 Disrupt 时中断
-- 所有特殊攻击受 `damage_multiplier` 世界规则影响（倍率作用于成功率/效果量）
+- Action 与 HP 伤害互斥——同一 body part 在同一 tick 只能执行一种 action
+- Special action 的"命中判定"取决于 body part 数量与目标防御的差值，非简单的命中/未命中
+- 持续型 special action（Drain/Hack）在 drone 移动或被 Disrupt 时中断
+- 所有 combat/special action 通过 `ActionRegistry` 查找 handler；handler 只写 intent buffer，不直接写 `HitPoints`
+- 所有 special action 受 `damage_multiplier` 世界规则影响（倍率作用于成功率/效果量）
 
 **Neutral 状态**（Hack 夺取后）:
 - `owner = Neutral (0)`——不归任何玩家所有
@@ -931,10 +932,10 @@ cost = { Energy = 10 }
 | `cost` | `{String: u32}` | ✅ | 生成该 body part 的资源消耗，key 为资源名 |
 | `age_modifier` | i32 | 否 | 对 drone age_max 的修改量（TOUGH +100 延寿、ATTACK -80 折寿）。默认 0 |
 
-**Body part → CommandAction 绑定规则**：
-- 一个 CommandAction 可被多个 body part 触发
-- 新 body part 绑定到**已有 CommandAction** 时，只需定义不同的 damage_type/base_damage/cost——引擎自动复用该 action 的校验和应用逻辑
-- 引入**新 CommandAction** 时（如 `Leech`），需在引擎中注册新的 `CommandAction` 变体 + 对应的 validate/apply handler + 在 IDL 中暴露给 SDK
+**Body part → Action 绑定规则**：
+- 一个 action type 可被多个 body part 触发
+- 新 body part 绑定到**已有 action type** 时，只需定义不同的 damage_type/base_damage/cost——引擎自动复用该 ActionRegistry handler 的校验和应用逻辑
+- 引入**新 action** 时（如 `Leech`），需在 `ActionRegistry` 注册 action type + 对应 validate/apply handler；IDL 继续使用通用 `Action { type, payload }` 暴露给 SDK
 
 **模组扩展**：Rhai 模组可通过以下 API 注册新 body part：
 
@@ -951,11 +952,11 @@ cost = { Energy = 10 }
 | `cost` | `{String: u32}` | ✅ | 生成该 body part 的资源消耗，key 为资源名 |
 | `age_modifier` | i32 | 否 | 对 drone age_max 的修改量（TOUGH +100 延寿、ATTACK -80 折寿）。不指定则默认为 0 |
 
-**Body part → CommandAction 绑定规则**：
+**Body part → Action 绑定规则**：
 
 ```
 ┌──────────────────┐      ┌─────────────────────┐
-│ BodyPart.name     │ ──▶  │ CommandAction        │
+│ BodyPart.name     │ ──▶  │ ActionRegistry       │
 │ + damage_type     │      │ + damage 计算         │
 │ + base_damage     │      │ + 校验 (body part 存在) │
 │ + range           │      │ + 消耗 (冷却/资源)     │
@@ -963,9 +964,9 @@ cost = { Energy = 10 }
 └──────────────────┘
 ```
 
-- 一个 CommandAction 可被多个 body part 触发（如 `Move` 只能由 `Move` part 触发，但 `Attack` 在未来可由 `Claw`/`Bite` 等多个 part 触发）
-- 新 body part 绑定到**已有 CommandAction** 时，只需定义不同的 damage_type/base_damage/cost ——引擎自动复用该 action 的校验和应用逻辑
-- 引入**新 CommandAction** 时（如 `Leech`），需在引擎中注册新的 `CommandAction` 变体 + 对应的 validate/apply handler + 在 IDL 中暴露给 SDK
+- 一个 action type 可被多个 body part 触发（如 `Move` 只能由 `Move` part 触发，但 `Attack` 在未来可由 `Claw`/`Bite` 等多个 part 触发）
+- 新 body part 绑定到**已有 action type** 时，只需定义不同的 damage_type/base_damage/cost ——引擎自动复用该 ActionRegistry handler 的校验和应用逻辑
+- 引入**新 action** 时（如 `Leech`），需在 `ActionRegistry` 注册 action type + 对应 validate/apply handler；IDL 继续使用通用 `Action { type, payload }` 暴露给 SDK
 
 **模组扩展**：Rhai 模组可通过以下 API 注册新 body part：
 
@@ -985,12 +986,12 @@ actions.add_body_part_type("Leech", #{
 
 Move、Attack、Harvest 等每个 action 在 snapshot 和 replay 中保留完整溯源链：**command → state diff → code line**。引擎在每 tick 应用 command 后，将 `(command, entity_id, state_diff)` 三元组写入 `TickTrace`。前端和 MCP 调试工具可通过 `swarm_trace_command(entity_id, tick)` 查询该实体在指定 tick 的指令及其导致的全部状态变更，并关联到 WASM 源码行（需编译时嵌入 debug symbol section）。此溯源链对 AI agent 调试特别关键——agent 可通过 MCP 执行「为什么我的 drone 在 tick 542 没有采集？」并得到完整因果链。
 
-#### 自定义 CommandAction（`[[custom_actions]]`）
+#### 自定义 Action（`[[custom_actions]]`）
 
-当新 body part 需要的动作无法映射到已有 CommandAction 时，需注册新的 CommandAction 变体：
+当新 body part 需要的动作无法映射到已有 action type 时，需注册新的 ActionRegistry handler：
 
 ```toml
-# world.toml — 自定义 CommandAction（需引擎编译时注册）
+# world.toml — 自定义 Action（通过 ActionRegistry 注册）
 
 [[custom_actions]]
 name = "Scramble"
@@ -1005,11 +1006,11 @@ cost = { Energy = 400 }
 
 ```
 1. world.toml 中声明 [[custom_actions]]
-   → 引擎启动时解析，动态注册 CommandAction 变体
+   → 引擎启动时解析，动态注册 ActionRegistry entry
 2. 每个 custom action 需提供对应的 validate/apply handler：
    - 已有 special_effect 的（如 heal_self, scramble_commands）引擎内置
    - 全新效果的需通过 Rhai 模组提供 handler
-3. IDL 自动生成——新 CommandAction 自动暴露给 SDK 和 MCP
+3. IDL 自动生成——新 action type 通过 `Action { type, payload }` 暴露给 SDK 和 MCP
 4. WASM 模块通过 tick() → Command[] 使用新 action（与内置 action 语法一致）
 ```
 
@@ -1017,7 +1018,7 @@ cost = { Energy = 400 }
 
 | 字段 | 类型 | 必需 | 说明 |
 |------|------|------|------|
-| `name` | string | ✅ | 唯一标识符，生成 `CommandAction::{name}` 变体 |
+| `name` | string | ✅ | 唯一 action type，作为 `Action { type, payload }` 的 `type` |
 | `description` | string | ✅ | 人类可读描述 |
 | `damage_type` | string | 否 | 伤害类型，引用 `[[damage_types]]` |
 | `base_damage` | u32 | 否 | 基础伤害值 |
@@ -1149,7 +1150,7 @@ resistance = "Psionic"
 **默认 world.toml 中的特殊攻击注册**：
 
 ```toml
-# 以下 8 个特殊攻击在默认 world.toml 中预注册
+# 以下 8 个 special action 在默认 world.toml 中预注册；加上 Attack/RangedAttack/Heal 共 11 种 vanilla action
 # 服主可禁用（注释/删除）或修改参数
 
 [[custom_actions]]
