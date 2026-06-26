@@ -644,7 +644,7 @@ refund_pct = max(0.1, 0.5 × (remaining_lifespan / total_lifespan))
 - tick N 的指令在 tick N 执行阶段被拒绝 → 退还 credit 记入玩家的 `next_tick_fuel_credit`
 - tick N+1 开始时，玩家 fuel budget = `MAX_FUEL + next_tick_fuel_credit`（不超过 `MAX_FUEL × 1.1`）
 - 同 tick 内不得通过故意竞争失败来获取额外计算预算
-- **Deploy-reset 规则**: refund credit 与玩家绑定。若玩家在 tick N+1 执行了任何部署操作（`swarm_deploy` / `MCP_Deploy` / `Deploy`），tick N 及之前累计的 refund credit 清零。防止 v1 刷 refund → v2 消费的跨模块预算转移。**例外**: 同一 session 内的迭代部署（同 session_id）不清除 credit——不惩罚正常迭代。
+- **Deploy-reset 规则（R35 A-H1）**: refund credit 与玩家 session 绑定。当部署 manifest 在 tick N 原子提交（MANIFEST_COMMIT）时，同事务内累计的 refund credit 清零。防止 v1 刷 refund → v2 消费的跨模块预算转移。**例外**: 同一 session 内的迭代部署（同 session_id）不清除 credit——不惩罚正常迭代。
 
 ### 7.3 退还上限与滥用检测
 
