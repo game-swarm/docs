@@ -17,7 +17,7 @@
 | `WASM` | drone tick() 输出 | player_id (server-injected) | ✅ 是 | 完整 | fuel budget | 快照范围 | 10M fuel/tick |
 | `MCP_Deploy` | AI 部署 WASM 代码 | CodeSigningCertificate + signed DeployPayload | ❌ 否 | 完整 | 10/h | N/A | N/A |
 | `MCP_Query` | AI 查询世界/调试 | ClientAuthCertificate + signed request | ❌ 否 | 完整 | 50/tick | 快照范围 | N/A |
-| `Admin` | 管理操作 | AdminCertificate + signed request | ❌ 否 | 完整 | 无限制 | 全局 | N/A |
+| `Admin` | 管理操作 | AdminCertificate + signed request | ❌ 否 | 完整 | 见 API Registry per-tool admin rate limit | 全局 | N/A |
 | `Replay` | 回放重放 | system (no player) | ❌ 否 | 完整 | N/A | 回放历史 | N/A |
 | `TestHarness` | 自动化测试 | test_context | ❌ 否 | 完整 | N/A | 测试世界 | N/A |
 | `Tutorial` | 教程引导 | tutorial_session + world_id | ⚠️ 仅教程世界 | 完整 | 10/tick | 教程房间 | N/A |

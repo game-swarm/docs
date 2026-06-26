@@ -2,7 +2,7 @@
 
 > **R15 B7 + B6/D3/D4 修复**。本文档证明 Vanilla/Standard 世界的 maintenance curve 与 anti-snowball 目标一致性，并提供 1/5/20/50 房间的数值闭环验证。**所有费率、公式以 `specs/core/08-resource-ledger.md` §2 统一参数表为唯一权威源。**
 >
-> **> playtest-gated**：以下具体参数为示意性估算（illustrative estimates）。实际平衡点需 playtest 收集 tick-by-tick 经济数据后校准。精确参数推迟至实施/playtest 阶段通过数据驱动确定——不应在 spec 阶段硬编码具体赤字数字。
+> **Canonical target curve 初始参数化**：以下具体参数为目标经济曲线的示意性估算（illustrative estimates），用于表达 2–10 房间自维持、20 房后递减、50 房软上限的目标状态。后续 playtest 仅用于校准参数，不改变本文定义的目标曲线语义。
 
 ## 1. Maintenance Curve
 
@@ -177,7 +177,7 @@ upkeep = base_upkeep × rooms × (1 + rooms / room_soft_cap)
 
 ### 2.7 收支平衡汇总表 (Standard 模式)
 
-以下汇总表提供 1/2/3/5/10/20/50 房间的收支对比。**所有数值为示意性估算（illustrative estimates）——精确参数和平衡点推迟至 Resource Ledger spec 实施/playtest 阶段确定。** 利用率假设：1-3 房间 <30% 存储（免税），5 房间 ~40%，10 房间 ~55%，20 房间 ~70%，50 房间 ~90%。
+以下汇总表提供 1/2/3/5/10/20/50 房间的收支对比。**所有数值为 canonical target curve 的初始参数化（illustrative estimates）；后续 playtest 仅用于校准 Resource Ledger 参数。** 利用率假设：1-3 房间 <30% 存储（免税），5 房间 ~40%，10 房间 ~55%，20 房间 ~70%，50 房间 ~90%。
 
 || 房间数 | 收入/tick (基础) | 收入/tick (优化) | 维护费/tick | 存储税/tick | 净流量趋势 | 说明 |
 ||:------:|:--------:|:--------:|:---------:|:---------:|:---------:|------|
@@ -189,7 +189,7 @@ upkeep = base_upkeep × rooms × (1 + rooms / room_soft_cap)
 || 20 | 1,320 | 2,340 | 3,000 | 120 | **大额亏损** | 边际收益显著递减——自维持区间上限 |
 || 50 | 4,075 | 5,900 | 15,000 | 600 | **严重亏损** | 软上限逼近，顶尖玩家维持 |
 
-> **自维持区间：2-10 房间**。良好代码（×1.5-2.0 效率）+ 适度 RCL 升级 + PvE 补充下，Standard 经济可实现小幅正流量。20 房间边际收益显著递减，50 房间接近不可持续——形成自然天花板。此区间为 playtest-gated：具体平衡点需实际玩家数据校准，详见 `specs/PLAYTEST-GATED.md` PG-1。
+> **自维持区间：2-10 房间**。良好代码（×1.5-2.0 效率）+ 适度 RCL 升级 + PvE 补充下，Standard 经济可实现小幅正流量。20 房间边际收益显著递减，50 房间接近不可持续——形成自然天花板。此区间是 canonical target curve；实际玩家数据仅用于校准参数，详见 `specs/PLAYTEST-GATED.md` PG-1。
 
 > `¹` 1 房间 free_upkeep 期内；free_upkeep 结束后维护费恢复 → 净流量 -33（基础）。free_upkeep 默认 2000 tick，初始资源包 `{Energy: 5000}` 足够度过此阶段。
 >
@@ -197,7 +197,7 @@ upkeep = base_upkeep × rooms × (1 + rooms / room_soft_cap)
 >
 > **代码效率乘数含义**：1.5×-2.0× 表示减少 idle 时间、优化路径、减少拥堵——随着房间扩张，效率从 1.5× 逐渐提升到 2.0× 需要持续优化投入。200% (2×) 仅在完美路径 + 无拥堵 + 最优 body 组合下可达。
 >
-> **设计目标**：**中期自维持可达**（2-10 房间良好代码下小幅盈余），边际收益递减确保无限扩张不可持续（20 房后转入净亏损）。精确平衡参数（base_upkeep、room_soft_cap、效率曲线）推迟至实施/playtest 阶段通过数据驱动校准——不应在 spec 阶段硬编码具体赤字数字。
+> **设计目标**：**中期自维持可达**（2-10 房间良好代码下小幅盈余），边际收益递减确保无限扩张不可持续（20 房后转入净亏损）。本文给出 canonical target curve 的初始参数化；后续 playtest 仅用于校准 `base_upkeep`、`room_soft_cap`、效率曲线等参数。
 
 ## 3. 模式差异
 
@@ -213,7 +213,7 @@ upkeep = base_upkeep × rooms × (1 + rooms / room_soft_cap)
 | `global_deposit_delay` | 10 | 10 | 10 |
 | `global_withdraw_delay` | 100 | 100 | 100 |
 | `safe_mode_duration` | 2000 | 500 | 500 |
-| `starting_resources` | `{Energy: 10000, Minerals: 5000}` | `{Energy: 5000, Minerals: 2000}` | `{Energy: 5000, Minerals: 2000}` |
+| `starting_resources` | `{Energy: 10000}` | `{Energy: 5000}` | `{Energy: 5000}` |
 | `free_upkeep_controllers` | 3 | 1 | 1 |
 | `free_upkeep_drones` | 5 | 3 | 3 |
 | `free_upkeep_ticks` | 3000 | 2000 | 2000 |

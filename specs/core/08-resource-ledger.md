@@ -96,7 +96,7 @@
 | `recycle_refund_base` | 5000 | bp | 基础退还比例 (50%) |
 | `recycle_refund_min` | 1000 | bp | 最低退还比例 (10%) |
 | **New Player Gate** | | | |
-| `new_player_transfer_lock` | 500 | tick | 新玩家禁止接收资源 |
+| `new_player_transfer_lock` | 500 | tick | 新玩家 player↔player 转移双向锁：禁止发送与接收 |
 | `soft_launch_duration` | 1500 | tick | safe_mode 结束后 PvE-only 保护期 |
 
 ### 2.2 存储税 tiered 公式
@@ -134,7 +134,7 @@ storage_tax(tick) = Σ over each tier i where storage_pct > tier_threshold[i]:
 - 前 `free_upkeep_controllers` 个 controller 和前 `free_upkeep_drones` 个 drone 在 `free_upkeep_ticks` 内免 `UpkeepDeduction`
 - 超过免维护数量的 drone/controller 正常扣费
 - 免维护到期后，最后一个免维护 tick 结束时一次性重算剩余容量，无追溯扣费
-- 反 smurf 约束：免维护绑定 player identity，同一身份（证书）只享受一次；新身份需等待 `new_player_transfer_lock` 满后方可接收任何资源
+- 反 smurf 约束：免维护绑定 player identity，同一身份（证书）只享受一次；新身份在 `new_player_transfer_lock` 期内不得向其他玩家发送资源，也不得从其他玩家接收资源
 
 #### Growth Path 示例（Standard World，1 room → RCL3 → 5 rooms）
 
@@ -168,9 +168,11 @@ recycle_refund = max(body_cost × recycle_refund_min / 10000, recycle_refund)
 
 即 drone 在寿命 10% 时回收退还 10%，在寿命 100% 时退还 50%。`recycle_refund_base` = 5000 bp (50%)，`recycle_refund_min` = 1000 bp (10%)。新手保护（Tutorial 前 500 tick）退还 100%，由 world.toml `tutorial_recycle_refund_full_ticks` 控制。
 
+`new_player_transfer_lock` canonical 语义：锁定期内禁止任何 player↔player 资源转移的发送与接收，覆盖 `AlliedTransfer`、本地 player transfer 以及未来 `ContractSettlement`。该锁不影响玩家自身账户内的 `GlobalDeposit` / `GlobalWithdraw`（local↔global 转换）、`PvEAward`、`RecycleRefund`、`BuildCost`、`SpawnCost` 或其它非交易式账本操作。
+
 Allied transfer 附加约束：
 - 双方必须是同一联盟成员 ≥ 100 tick
-- 双方均非 `new_player_transfer_lock` 期内
+- 双方均非 `new_player_transfer_lock` 期内（发送方与接收方都必须已解锁）
 - 同目标两次转移间 ≥ `allied_transfer_cooldown`
 - 24h 内对同一接收者 ≤ `allied_daily_cap`
 

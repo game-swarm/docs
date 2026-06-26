@@ -1,6 +1,6 @@
 # Engine 架构
 
-> 引擎架构域文件。从 design/README.md 拆分。详细规范见 `specs/core/01-tick-protocol.md`。
+> 引擎架构域文件。从 design/README.md 拆分。详细规范见 `../specs/core/01-tick-protocol.md`。
 
 ## 3. Engine（Rust）
 
@@ -207,7 +207,7 @@ Swarm 支持三个扩展层级：
   │   │   └── 冲突 → 丢弃 + 记录 RejectionReason
   │   └── Spawn 命令在 Phase 2a 中只校验不入队
   │   ├── Phase 2b: ECS Systems
-    │   │   └── > **权威系统调度见 [Complete Tick Execution Manifest](specs/core/06-phase2b-system-manifest.md)** — 31 systems（R30 B1：Phase 2a inline 6 + Phase 2b deferred 25），serial spine + 2 parallel sets
+    │   │   └── > **权威系统调度见 [Complete Tick Execution Manifest](../specs/core/06-phase2b-system-manifest.md)** — 31 systems（R30 B1：Phase 2a inline 6 + Phase 2b deferred 25），serial spine + 2 parallel sets
   ├── FDB 原子提交（全或无）
   └── tick_counter 推进
 
@@ -240,7 +240,7 @@ Swarm:     Move = Action  → 每 tick 移动 OR 采集 OR 攻击 OR 建造
 | **手感差异** | 新玩家会觉得 drone "迟钝"——移动一格后下一 tick 才能采集。这是**设计意图**：drone 不是即时代理，玩家需通过代码预判和批量调度来弥补单 drone 的动作延迟 |
 
 此设计在 playtest 阶段可能被挑战——如果证据表明玩家普遍因 Move 占用 action slot 而流失，可重新评估。当前作为有意的设计选择冻结。
-| **Phase 2b (Deferred)** | ECS Systems (serial spine + parallel sets) | death_marker, spawn, spawning_grace, regeneration, combat (parallel set A), special_attack_reducer, damage_application, status buffer production (parallel set B: S16-S22b), status_advance_system (S22 serial unique writer), aging, decay, death_cleanup, pvp_block, room_state, controller_2b, resource_ledger — **R30 B1: 31 systems** | **被动系统**——有依赖关系的系统串行执行（保证正确性），无数据竞争的系统利用并行调度。不接收玩家命令，响应 2a 产生的状态变化。完整调度见 [Complete Tick Execution Manifest](specs/core/06-phase2b-system-manifest.md) |
+| **Phase 2b (Deferred)** | ECS Systems (serial spine + parallel sets) | death_marker, spawn, spawning_grace, regeneration, combat (parallel set A), special_attack_reducer, damage_application, status buffer production (parallel set B: S16-S22b), status_advance_system (S22 serial unique writer), aging, decay, death_cleanup, pvp_block, room_state, controller_2b, resource_ledger — **R30 B1: 31 systems** | **被动系统**——有依赖关系的系统串行执行（保证正确性），无数据竞争的系统利用并行调度。不接收玩家命令，响应 2a 产生的状态变化。完整调度见 [Complete Tick Execution Manifest](../specs/core/06-phase2b-system-manifest.md) |
 
 **Action dispatch 与 combat_system 的职责分离（R35 D3）**：
 - **CommandAction 边界**：IDL 中 `CommandAction` 不再包含 `Attack`/`RangedAttack`/`Heal` 等 combat variant；所有 combat 与特殊攻击统一编码为 `Action { type, payload }`。
@@ -254,7 +254,7 @@ Swarm:     Move = Action  → 每 tick 移动 OR 采集 OR 攻击 OR 建造
 
 **RoomCap 生命周期约束**：`RoomCap` 的读写顺序为 `death_mark: W(release) → spawn: R(check) + W(consume)`。在 `death_mark_system` 与 `spawn_system` 之间的任何 ECS system 不得读取 RoomCap 做准入决策——此时槽位已释放但尚未被新 drone 消费，RoomCap 值处于中间态。新增 system 插入此区间时必须在 manifest 中声明对 RoomCap 的读写关系。
 
-**Phase 2b 并行策略**：Combat (S11-S13) 按 target_id partition 并行——attack_system、ranged_attack_system、heal_system 操作不重叠的 target 实体。Status Buffer Production (S16-S22b) 按 status subtype 并行——各系统写入互不重叠的 typed buffer（HackBuffer/DrainBuffer/OverloadBuffer/DebilitateBuffer/DisruptBuffer/FortifyBuffer/LeechBuffer/FabricateBuffer），不直接修改 StatusState。status_advance_system (S22) 为串行唯一 StatusState writer——从 S14 读取 canonical sorted pending_intents 并从 S16-S22b 读取 typed buffers，统一推进所有 StatusState。decay (S24) 为独立串行系统（疲劳/冷却/结构衰减不与任何并行系统共享数据）。regeneration (S10) 在 damage_application (S15) 之前串行执行（防止 heal+regen 双倍回复）。完整调度及 R/W 矩阵见 [Complete Tick Execution Manifest](specs/core/06-phase2b-system-manifest.md)。
+**Phase 2b 并行策略**：Combat (S11-S13) 按 target_id partition 并行——attack_system、ranged_attack_system、heal_system 操作不重叠的 target 实体。Status Buffer Production (S16-S22b) 按 status subtype 并行——各系统写入互不重叠的 typed buffer（HackBuffer/DrainBuffer/OverloadBuffer/DebilitateBuffer/DisruptBuffer/FortifyBuffer/LeechBuffer/FabricateBuffer），不直接修改 StatusState。status_advance_system (S22) 为串行唯一 StatusState writer——从 S14 读取 canonical sorted pending_intents 并从 S16-S22b 读取 typed buffers，统一推进所有 StatusState。decay (S24) 为独立串行系统（疲劳/冷却/结构衰减不与任何并行系统共享数据）。regeneration (S10) 在 damage_application (S15) 之前串行执行（防止 heal+regen 双倍回复）。完整调度及 R/W 矩阵见 [Complete Tick Execution Manifest](../specs/core/06-phase2b-system-manifest.md)。
 
 **两阶段快照架构**：阶段一不再为每个玩家独立序列化世界状态。改为：(1) tick 开始时一次性构建完整世界快照，按房间分片；(2) 每个玩家根据其 drone 所在位置，拼接可见房间的分片（默认 ≤9 个）。复杂度从 `O(玩家数 × 实体数)` 降为 `O(实体数 + 玩家数 × 可见房间数)`，消除每玩家重复序列化开销。快照构建在玩家 WASM 执行前完成，与玩家顺序无关，天然确定。
 
@@ -265,7 +265,7 @@ Swarm:     Move = Action  → 每 tick 移动 OR 采集 OR 攻击 OR 建造
 **确定性要求**：
 1. 相同的初始世界状态
 2. 相同的 Command 输入（已排序，canonical order 见 [interface.md §4](interface.md)）
-3. ECS System 执行顺序固定（见 [Complete Tick Execution Manifest](specs/core/06-phase2b-system-manifest.md)，31 systems，R30 B1）
+3. ECS System 执行顺序固定（见 [Complete Tick Execution Manifest](../specs/core/06-phase2b-system-manifest.md)，31 systems，R30 B1）
 4. 所有随机数来自确定种子 PRNG——shuffle seed 公式 `Blake3("shuffle" || world_seed || tick.to_le_bytes())`；per-entity stream seed `Blake3(stream_name || world_seed || entity_id.to_le_bytes() || tick.to_le_bytes())`
 5. **确定性数据结构**：`ResourceRegistry`、entity 迭代、player 列表等需要确定性键排序的场景使用 `BTreeMap`（标准库全序排列，跨平台一致迭代顺序）。`IndexMap` 保留用于有序资源类型等插入顺序确定的场景。禁止 `std::HashMap`（迭代顺序跨运行非确定）。
 
@@ -408,7 +408,9 @@ Worker pool 水平可扩展——运营商根据 active_players 调整 worker_po
 
 **Per-player fair-share admission**: 引擎全局预算（如 pathfinding 100,000 explored nodes/tick）按活跃玩家数均分。每玩家份额 = `floor(global_budget / active_players)`。若 active_players 为 0，不执行分配。玩家超出其份额 → 当前调用 deterministic reject（路径返回部分结果或 `ERR_BUDGET_EXHAUSTED`）。引擎在 tick 开始时计算份额，整个 tick 内份额不变。份额按调用顺序消耗——先到先得，后续超份额即拒。此机制防止单玩家垄断全局寻路资源，保证公平性。
 
-> **权威容量定义**：所有容量上限和准入策略以 `specs/reference/api-registry.md` §5「全局容量限制」为准。engine.md 本节仅作性能合同（budget），数值引用自 registry 的权威列。
+> **权威容量定义**：所有容量上限和准入策略以 `../specs/reference/api-registry.md` §5「全局容量限制」为准。engine.md 本节仅作性能合同（budget），数值引用自 registry 的权威列。
+
+> **新玩家 transfer lock**：资源转移锁语义以 `../specs/core/08-resource-ledger.md` §2.1 为准。`new_player_transfer_lock` 是 player↔player 双向锁，锁定期内同时禁止发送与接收，覆盖 AlliedTransfer 和本地 player transfer；不影响同一玩家自身 local↔global 转换。
 
 **Arena 独立预算**：Arena 使用独立的 tick/collect/simulate budget，不继承 World 的 3s 模型。Arena pathfinding 和 visibility 缓存大小减半（5,000 / 25,000）。
 
@@ -431,7 +433,7 @@ WASM tick() 输入 snapshot 受 per-player 256KB cap 约束：
 | 状态 | 语义 | 处理 |
 |------|------|------|
 | **正常** | snapshot ≤ cap | 完整传入 |
-| **Truncated** | snapshot > cap | 按确定性截断顺序（距离桶 → entity_id 字典序，从最远桶末尾移除）截断；`snapshot.truncated=true`；暴露 `omitted_counts` 和 bucket 统计。**权威截断合同见 [Snapshot Contract](specs/core/09-snapshot-contract.md) §1** |
+| **Truncated** | snapshot > cap | 按确定性截断顺序（距离桶 → entity_id 字典序，从最远桶末尾移除）截断；`snapshot.truncated=true`；暴露 `omitted_counts` 和 bucket 统计。**权威截断合同见 [Snapshot Contract](../specs/core/09-snapshot-contract.md) §1** |
 | **Rejected** | 保护性拒绝（如 OOM 攻击） | 返回 deterministic empty input + `over_budget_rejected` 错误码 |
 
 **截断顺序**: 距离桶 0(self) > 1(adjacent) > 2(near) > 3(mid) > 4(far) > 5(very far) > 6(out of sight)，同桶内 entity_id 字典序。关键实体（自身/Controller/target/己方 drone/攻击者）不可截断。详见 Snapshot Contract §1.3–1.4。

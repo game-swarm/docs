@@ -713,7 +713,7 @@ trigger_window_seconds = 300  # 失败计数的滑动窗口
 | `swarm_change_password` | `old_password`, `new_password` | `SuccessResult` | 修改 recovery password（已登录） |
 | `swarm_request_password_reset` | `email` | `ResetRequestResult` | 请求 key/certificate 恢复（发送邮件） |
 | `swarm_admin_create_password_reset` | `username`, `reason` | `AdminPasswordResetResult` | 管理员生成恢复链接 |
-| `swarm_confirm_password_reset` | `reset_token`, `new_password?`, `new_csr?` | `CertificateBundle` | 确认恢复 + 签发新证书 |
+| `swarm_confirm_password_reset` | `reset_token`, `recovery_reason`, `new_password?`, `new_csr?` | `CertificateBundle` | 确认恢复 + 按恢复策略签发新证书 |
 | `swarm_register_passkey` | `passkey_attestation`, `device_label` | `SuccessResult` | 绑定 passkey 恢复因子 |
 | `swarm_recover_with_passkey` | `passkey_assertion`, `new_csr`, `certificate_profile`, `device_label?` | `CertificateBundle` | 使用 passkey 恢复并签发新证书 |
 | `swarm_bind_email` | `email` | `SuccessResult` | 绑定/更换邮箱 |
@@ -1010,12 +1010,16 @@ Web UI 和 MCP 均提供设备证书管理：
 
 #### 恢复默认策略（D4 裁决）
 
-| 恢复场景 | 默认行为 |
-|----------|----------|
-| stolen-device | 吊销全部旧证书 |
-| all-certs-lost | 吊销全部旧证书 |
-| device-swap（旧设备仍可控） | 保留，用户可手动吊销 |
-| forgot-password（同设备） | 保留 |
+恢复确认流程必须携带 `recovery_reason`，服务端在同一 FDB 事务内签发新证书、吊销所有现有 refresh token，并按下表执行旧证书处理策略。客户端不得用“用户选择”覆盖安全默认；用户界面只能在允许保留的场景中提供后续手动吊销入口。
+
+| `recovery_reason` | 恢复场景 | 默认行为 |
+|-------------------|----------|----------|
+| `stolen-device` | 设备被盗或私钥疑似泄露 | 吊销全部旧证书 |
+| `all-certs-lost` | 所有证书/设备不可访问 | 吊销全部旧证书 |
+| `device-swap` | 旧设备仍可控的设备迁移 | 保留旧证书，用户可手动吊销 |
+| `forgot-password` | 同设备重置 recovery password | 保留旧证书 |
+
+未提供或未知 `recovery_reason` 的恢复确认请求必须拒绝（`invalid_recovery_reason`），不得回退到“默认保留”。管理员生成恢复链接时也必须记录对应 `recovery_reason`，确认阶段以 token 记录中的值为准，防止客户端降级安全策略。
 
 ---
 
@@ -1069,6 +1073,7 @@ POST /mcp (JSON-RPC) 或 GET /auth/reset?token=xxx 浏览器
   "method": "swarm_confirm_password_reset",
   "params": {
     "reset_token": "abc123...",
+    "recovery_reason": "all-certs-lost",
     "new_csr": "base64:SWARM-CSR-V1...",
     "certificate_profile": "regular_device",
     "device_label": "replacement laptop",
@@ -1080,8 +1085,8 @@ POST /mcp (JSON-RPC) 或 GET /auth/reset?token=xxx 浏览器
 - 验证 token：未过期、未使用、匹配 FDB `auth/reset/` 记录
 - 验证 `new_csr` 签名与 requested profile/scope，签发新的应用层证书 bundle
 - 若提供 `new_password`：argon2id hash 新 recovery password → 更新 FDB
-- 标记 token 已消费，同时吊销该用户所有现有 refresh token；是否吊销旧证书由用户选择，默认保留未撤销证书
-- 若恢复原因是“所有证书丢失”，UI 应提示用户检查并吊销不可访问设备对应证书
+- 标记 token 已消费，同时吊销该用户所有现有 refresh token；旧证书处理必须按 §10.9 `recovery_reason` 策略表执行
+- `stolen-device` / `all-certs-lost` 默认吊销全部旧证书；`device-swap` / `forgot-password` 可保留旧证书并在 UI 中提供手动吊销入口
 
 ### 11.3 管理员生成恢复链接
 
