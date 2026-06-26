@@ -137,7 +137,7 @@ AI agent 开发循环强化：
 | `swarm_dry_run` | 预测指令结果 | 部署前验证——不用等 tick 才知道逻辑错误 |
 | `swarm_get_events` | 按需拉取事件 | 获取 deploy_accepted、first_tick_executed 等里程碑事件 |
 
-> **采用 polling-based 反馈模型**：不提供主动事件推送/MCP 事件订阅。AI agent 通过 `swarm_get_deploy_status` + `swarm_get_events` 轮询获取反馈。事件订阅（WebSocket push / MCP event订阅）列为 Out-of-Scope——通过 mod extension 实现。
+> **采用 polling-based 反馈模型**：MCP 不提供 Agent-facing 事件订阅。AI agent 通过 `swarm_get_deploy_status` + `swarm_get_events` 轮询获取反馈；SSE 仅作为 Gateway/Engine 内部事件通道，不暴露为 MCP subscription。
 #### 人类玩家首次 PvP 引导
 
 ```

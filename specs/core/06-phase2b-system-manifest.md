@@ -186,7 +186,7 @@ Serial Spine:
 - **ID**: `regen`
 - **R16 B2 fix**: 移至 damage_application 之前。自然回复先于伤害结算，防止 heal 与 regen 叠加双倍回复（double-dip）。
 - **Reads**: Entity (hits, max_hits), Room
-- **Writes**: Entity (hits++, capped at max_hits)
+- **Writes**: PendingHeal buffer (natural regen intent)
 - **Must run after**: S09
 - **Must run before**: S15 (damage_application)
 - **Filter**: `Without<DeathMark>` — 跳过已标记死亡的实体。
@@ -221,13 +221,13 @@ Serial Spine:
 
 ### S15: damage_application (UNIQUE HitPoints writer)
 
-**S15 是 HitPoints 的 UNIQUE 写入者**。所有伤害/治疗经过 S11-S13 的 `PendingDamage`/`PendingHeal` buffer → S14 serial collector → S15 统一 reduce + canonical key sort → 原子写入 `Entity.hits`。不存在任何其他 system 直接修改 HitPoints（S10 regen 除外，其在 S15 之前独立执行）。
+**S15 是 HitPoints 的 UNIQUE 写入者**。所有伤害/治疗/自然回复/状态效果 HP 变化都先写入 `PendingDamage`/`PendingHeal` typed buffer，再由 S15 统一 reduce + canonical key sort → 原子写入 `Entity.hits`。不存在任何其他 system 直接修改 HitPoints。
 
 Canonical key 归约：S15 对 `PendingDamage[target_id]` 和 `PendingHeal[target_id]` 按 `target_id` 升序归并——同 target 的 damage 先合并（`net_damage = Σ attack - Σ heal`），再一次性写入 `Entity.hits`。这保证同一 entity 的 HitPoints 只在 S15 中被写入一次。
 
 - **ID**: `dmg_apply`
-- **HitPoints 写入契约**: **UNIQUE WRITER** — S15 是除 S10 regen 外唯一写 `Entity.hits` 的 system。CI 静态验证：任何其他 system 对 `HitPoints` 的写操作必须被拒绝。
-- **Reads**: PendingDamage buffer (from S11-S13), Entity (armor, resistances)
+- **HitPoints 写入契约**: **UNIQUE WRITER** — S15 是唯一写 `Entity.hits` 的 system。CI 静态验证：任何其他 system 对 `HitPoints` 的写操作必须被拒绝。
+- **Reads**: PendingDamage buffer, PendingHeal buffer, Entity (armor, resistances)
 - **Writes**: Entity (hits), DeathMark (if hits ≤ 0)
 - **Must run after**: S11, S12, S13, S14
 - **Filter**: `Without<SpawningGrace>` — 跳过出生保护中的实体。**注意**: S15 亦需 `Without<DeathMark>` guard —— 已标记死亡的实体不应再接收伤害/治疗。此 guard 防止 S07-S08 区间的 DeathMark 实体因并行 race 被重复伤害应用。
@@ -255,7 +255,7 @@ Canonical key 归约：S15 对 `PendingDamage[target_id]` 和 `PendingHeal[targe
 
 - **ID**: `status_adv`
 - **Reads**: `pending_intents` (from S14), all typed buffers (`HackBuffer`/`DrainBuffer`/`OverloadBuffer`/`DebilitateBuffer`/`DisruptBuffer`/`FortifyBuffer`/`LeechBuffer`/`FabricateBuffer` from S16-S22b), existing StatusState
-- **Writes**: **All StatusState components** (`HackState`, `DrainState`, `OverloadState`, `DebilitateState`, `DisruptState`, `FortifyState`, `LeechState`, `FabricateState`), Entity (hits/armor/efficiency/interrupted via effect application), ResourceAmount (drain), FuelBudget (overload)
+- **Writes**: **All StatusState components** (`HackState`, `DrainState`, `OverloadState`, `DebilitateState`, `DisruptState`, `FortifyState`, `LeechState`, `FabricateState`), PendingDamage buffer, Entity (armor/efficiency/interrupted via effect application), ResourceAmount (drain), FuelBudget (overload)
 - **Must run after**: S14, S16-S22b
 - **Must run before**: S23
 - **Note**: 统一消费 S14 的 canonical sorted intents 和 S16-S22b 的 typed buffers → 唯一推进所有 StatusState（duration--, expire, apply new intents, apply buffer effects）。
@@ -272,7 +272,7 @@ for each intent in pending_intents (canonically sorted):
         Debilitate → Entity.efficiency *= debilitate_factor; duration = debilitate_duration
         Disrupt    → Entity.interrupted = true; duration = disrupt_duration
         Fortify    → Entity.armor += fortify_amount; duration = fortify_duration
-        Leech      → ResourceAmount -= leech_drain; Entity.age += age_transfer; duration = leech_duration
+        Leech      → PendingDamage += leech_damage; Entity.age += age_transfer; duration = leech_duration
         Fabricate  → Entity.body_parts.modify(fabricate_mod); duration = fabricate_duration
 
 // Phase 2: Apply buffer effects from S16-S22b (ongoing status tick effects)
@@ -283,7 +283,7 @@ for each entity with active StatusState:
     if DebilitateBuffer[entity] → apply efficiency modifier
     if DisruptBuffer[entity] → apply interrupt flag
     if FortifyBuffer[entity] → apply armor modifier
-    if LeechBuffer[entity] → apply resource drain + age transfer
+    if LeechBuffer[entity] → enqueue PendingDamage + apply age transfer
     if FabricateBuffer[entity] → apply body part modification
 
 // Phase 3: Decrement durations + expire

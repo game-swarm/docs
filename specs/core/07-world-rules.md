@@ -991,7 +991,7 @@ cost = { Energy = 300 }
 name = "Debilitate"
 description = "施加易伤——指定伤害类型抗性×2，持续 50 tick"
 special_effect = "debilitate"
-special_param = 2.0
+special_param_bps = 20000          # fixed<u32,4>: 2.0
 cooldown = 150
 cost = { Energy = 200 }
 
@@ -1006,7 +1006,7 @@ cost = { Energy = 100 }
 name = "Fortify"
 description = "护盾+净化——所有抗性×0.5，清除负面状态"
 special_effect = "fortify"
-special_param = 0.5
+special_param_bps = 5000           # fixed<u32,4>: 0.5
 cooldown = 300
 cost = { Energy = 400 }
 
@@ -1017,7 +1017,7 @@ damage_type = "Corrosive"
 base_damage = 15
 range = 1
 special_effect = "leech"
-special_param = 0.5
+special_param_bps = 5000           # fixed<u32,4>: 0.5
 cost = { Energy = 300 }
 
 [[custom_actions]]
@@ -1039,7 +1039,7 @@ cost = { Energy = 2000, Matter = 500 }
  `base_damage` | u32 | 否 | 基础伤害值 |
  `range` | u32 | ✅ | 生效距离 |
  `special_effect` | string | 否 | 特殊效果标识符，引用 `[[special_effects]]` 中定义的 name |
- `special_param` | float | 否 | 特殊效果参数 |
+ | `special_param_bps` / `special_param_ppm` | typed fixed-point | 否 | 特殊效果参数。倍率使用 `special_param_bps`（basis points，10000 = 1.0）；细粒度比例使用 `special_param_ppm`（parts-per-million，1_000_000 = 1.0）。禁止使用 float，避免跨平台舍入差异 |
  `cooldown` | u32 | 否 | 冷却时间（tick） |
  `cost` | `{String: u32}` | 否 | 每次使用消耗（body part spawn 成本在 `[[body_part_types]]` 中独立定义） |
 

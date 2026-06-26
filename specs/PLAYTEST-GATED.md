@@ -12,7 +12,7 @@
 **Speaker Verdict**: D-H1 — 列入 Direction High  
 **D-item 裁决**: D4 — Novice 默认 onboarding / Standard = seasoned deflationary ✅
 
-**阻塞原因**: D4 裁决了方向，但 Standard balance sheet 中 1/5/20/50 房 net flow 全为负，而 resource-ledger.md 声称 "tick 2000+ 自维持"。需要 **实际玩家数据** 来验证：
+**阻塞原因**: D4 裁决了方向，但 Standard balance sheet 中 1/5/20/50 房 net flow 全为负，而 08-resource-ledger.md 声称 "tick 2000+ 自维持"。需要 **实际玩家数据** 来验证：
 
 | 需要的数据 | 说明 |
 |-----------|------|
@@ -21,7 +21,7 @@
 | drone upkeep 全部配置统一后的实际影响 | 修正小房间 drone upkeep 缺失导致的假象 |
 | Harvest 效率上限的典型值 | "代码优化缩小缺口" 可量化的前提 |
 
-**涉及文件**: `design/gameplay.md`, `specs/gameplay/resource-ledger.md`, `specs/gameplay/economy-balance-sheet.md`
+**涉及文件**: `design/gameplay.md`, `specs/core/08-resource-ledger.md`, `design/economy-balance-sheet.md`
 
 **闭合条件**: playtest 产出 tick-by-tick 经济数据 → 与文档承诺对比 → 调整参数或文档
 
@@ -54,17 +54,17 @@
 **Speaker Verdict**: D-H3 — 列入 Direction High  
 **D-item 裁决**: D5 — **保留全部 8 个** 作为目标设计，补齐未完整定义的状态机 ✅
 
-**状态机缺口** (需 playtest 验证平衡性):
+**状态机状态**: 已规范化，待 playtest 验证平衡性。权威参数见 `specs/reference/special-attack-table.md`；命令校验与状态机见 `specs/core/02-command-validation.md` §3.10-3.19。
 
-| 攻击 | 缺失 | 需 playtest 验证 |
+| 攻击 | 已规范化项 | 需 playtest 验证 |
 |------|------|-----------------|
-| **Hack Neutral 窗口** | Neutral 期内能否被 Claim？被攻击？死亡归属？ | Hack 的频率是否过强？50 Energy Hack 夺取 2400 Energy drone 的性价比 |
-| **Overload 多攻击者** | 累积上限未定义 — 3+ 攻击者可持续压制同一目标 | 50 tick 全局冷却是否足够？是否存在协同压制漏洞？ |
-| **Hack 成功率公式** | 未定义与目标 body cost 的关系 | 高价值 drone 是否应该更难被 Hack？ |
-| **Fabricate 目标结构** | 转化出的建筑类型未指定 | 若转化出 Spawn 会产生领土主权问题 |
-| **Leech/Debilitate** | 交互矩阵不完整 | 与其他 special attack 的叠加规则 |
+| **Hack Neutral 窗口** | Neutral、控制锁、反制窗口已在 command-validation 中定义 | Hack 的频率与价值交换是否过强 |
+| **Overload 多攻击者** | 50 tick per-target 全局冷却与下限证明已规范化 | 是否仍存在协同压制体感问题 |
+| **Hack 成功率公式** | 参数入口归一到 special-attack-table / ActionRegistry | 高价值 drone 是否应进一步调成功率 |
+| **Fabricate 目标结构** | Fabricate action 参数与 channel 规则已规范化 | 转化建筑类型与主权交互是否平衡 |
+| **Leech/Debilitate** | 叠加/反制矩阵已规范化 | 与其他 special attack 的组合是否过强 |
 
-**涉及文件**: `specs/core/02-command-validation.md` §3.10-3.16, `design/gameplay.md`
+**涉及文件**: `specs/reference/special-attack-table.md`, `specs/core/02-command-validation.md` §3.10-3.19, `design/gameplay.md`
 
 **闭合条件**: playtest 验证 8 个 special attack 的博弈深度 → 补齐缺失的状态转换 → 调参
 
@@ -84,7 +84,7 @@
 | global↔local 费率不对称 (1% vs 5%) | 数学理由或玩家可接受的解释 | 6% round-trip 成本需要被理解而非被抱怨 |
 | Storage tax 0.1%/tick | 实际 playtest 中的资源流失曲线 | 验证是否过于惩罚长期存储 |
 
-**涉及文件**: `specs/gameplay/resource-ledger.md`, `specs/gameplay/economy-balance-sheet.md`
+**涉及文件**: `specs/core/08-resource-ledger.md`, `design/economy-balance-sheet.md`
 
 **闭合条件**: playtest 收集实际经济数据 → 将 bp/tick 转换为人类时间尺度 → 明确 PvE 定位
 

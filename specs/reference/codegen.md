@@ -25,7 +25,7 @@
 
 - CommandAction 数量（见 Registry §1）
 - MCP tool 数量（见 Registry §3）
-- RejectionReason 数量（见 Registry §2）
+- RejectionReason 数量（见 Registry §2，当前 48）
 - Host function 数量（见 Registry §4，当前 6）
 - `MAX_DRONES_PER_PLAYER`（见 Registry §5）
 - Body part costs（见 Registry §11）

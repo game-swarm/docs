@@ -12,8 +12,8 @@
 
 **Core IDL vs World Action Manifest 边界**：
 
-- **Core IDL**（本文件 §2-4）：定义基础 envelope/ABI/host functions、内置基础指令（Move/Harvest/Build 等标准动作）、基础 CommandIntent 结构。Core IDL 长期稳定，ABI 版本号控制兼容性。
-- **World Action Manifest**（引擎从 world.toml `[[custom_actions]]` + `[[special_effects]]` 动态生成）：定义特定世界的自定义 action（特殊攻击、模组扩展）。包含 canonical hash（`Blake3(manifest)`）、版本 tag、TickTrace 绑定。WASM 模块通过 `target_manifest_hash` 声明兼容的世界版本。
+- **Core IDL**（本文件 §2-4）：定义基础 envelope/ABI/host functions、非战斗基础指令（Move/Harvest/Transfer/Withdraw/Build/Spawn/Recycle/ClaimController/TransferToGlobal/TransferFromGlobal）以及统一 `Action { type, payload }` dispatch。Core IDL 长期稳定，ABI 版本号控制兼容性。
+- **World Action Manifest / ActionRegistry**：定义 vanilla combat/effect action（Attack/RangedAttack/Heal + 8 special attacks）与模组扩展 action。包含 canonical hash（`Blake3(manifest)`）、版本 tag、TickTrace 绑定。WASM 模块通过 `target_manifest_hash` 声明兼容的世界版本。
 
 ```
 game_api.idl  (单一真相)
@@ -29,7 +29,7 @@ game_api.idl  (单一真相)
 
 **Schema 不可扩展性**：所有 JSON schema（CommandIntent、每个 Command action、MCP tool input/output、REST API response）默认设置 `additionalProperties: false`——拒绝未知字段。唯一例外需在本文件中显式声明。此规则防止字段注入攻击和实现分叉：不同实现者看到同一 schema 不会因未知字段处理策略不同而产生分歧。
 
-**扩展 action 的字段**：自定义 action（通过 `[[custom_actions]]` 注册）的参数结构由 World Action Manifest 定义并通过 IDL 生成对应的子 schema。`CommandIntent.action` 使用 `oneOf` 按 `action.type` 分发到对应子 schema——自定义 action 的 `additionalProperties: false` 仅作用于其自身子 schema，不影响 CommandIntent envelope。
+**扩展 action 的字段**：`CommandIntent.action` 使用 `Action { type, payload }` 派发到 ActionRegistry。vanilla action 与 mod action 的参数结构由 World Action Manifest 定义并通过 IDL 生成对应子 schema；每个子 schema `additionalProperties: false`，不影响 CommandIntent envelope。
 
 **ABI 向后兼容**：`abi_version` 每次 host function 签名变更时递增。ABI 公告期如下：
 | 变更类型 | 公告期 | 旧模块行为 |
@@ -65,7 +65,7 @@ enums:
   StructureType: [Spawn, Extension, Tower, Storage, Link, Extractor, Lab,
                   Terminal, Nuker, Observer, PowerSpawn, Factory, Depot]
   RejectionReason:
-    # > 权威定义见 [API Registry](../reference/api-registry.md) §2 — 47 变体 (35 game + 12 auth)
+    # > 权威定义见 [API Registry](../reference/api-registry.md) §2 — 48 变体
     - ObjectNotFound
     - NotOwner
     - NotMovable
@@ -138,21 +138,6 @@ commands:
     validator: [exists, owner, drone, body_part(Work,Carry), in_your_room, tile_empty, plain_terrain, under_construction_limit(100), in_range(3)]
     cost: registry.build_cost(structure)
 
-  Attack:
-    params: { object_id: ObjectId, target_id: ObjectId }
-    validator: [exists, owner, drone, body_part(Attack), enemy_target, in_range(1), fatigue]
-    cost: {}
-
-  RangedAttack:
-    params: { object_id: ObjectId, target_id: ObjectId }
-    validator: [exists, owner, drone, body_part(RangedAttack), enemy_target, in_range(3), fatigue]
-    cost: {}
-
-  Heal:
-    params: { object_id: ObjectId, target_id: ObjectId }
-    validator: [exists, owner, drone, body_part(Heal), friendly_target, damaged, in_range(3)]
-    cost: {}
-
   Spawn:
     params: { spawn_id: ObjectId, body: Vec<BodyPart> }
     validator: [exists, owner, is_spawn, cooldown_zero, body_size(50), has_energy(body_cost), room_drone_cap]
@@ -172,51 +157,12 @@ commands:
     validator: [exists, owner, drone, body_part(Claim), is_controller, in_range(1)]
     cost: {}
 
-  # ═════════════════════════════════════
-  # 特殊攻击
-  # ═════════════════════════════════════
-
-  Hack:
-    params: { object_id: ObjectId, target_id: ObjectId }
-    validator: [exists, owner, drone, body_part(Claim), target_drone, not_hacked, in_range(1), fatigue]
-    cost: { Energy: 1000 }
-    cooldown: 200         # 全局冷却
-    description: "施加控制锁逐步夺取 drone——5 tick 渐进控制后转为 Neutral"
-
-  Drain:
-    params: { object_id: ObjectId, target_id: ObjectId, resource: ResourceName? }
-    validator: [exists, owner, drone, body_part(Work,Carry), target_structure, enemy_target, target_has_resource, carry_space, in_range(1), fatigue]
-    cost: { Energy: 200 }
-    cooldown: 50          # 每 drone 冷却
-    description: "从目标建筑/存储窃取资源，每 tick 转移 carry_capacity 单位"
-
-  Overload:
-    params: { object_id: ObjectId, target_id: PlayerId }
-    validator: [exists, owner, drone, body_part(RangedAttack), target_player, enemy_target, visible_target, target_global_cooldown(50), fatigue]
-    cost: { Energy: 300 }
-    cooldown: 200         # 每 drone 冷却
-    description: "消耗目标 fuel budget 500k（短期压制，可恢复）。下限 MAX_FUEL×0.2，已触下限时静默 no-op。恢复 fuel_budget/1000 per tick。Fortify/Purge 清除效果。"
-
-  Debilitate:
-    params: { object_id: ObjectId, target_id: ObjectId, damage_type: DamageType }
-    validator: [exists, owner, drone, body_part(Work), enemy_target, valid_damage_type, not_debilitated(damage_type), in_range(3), fatigue]
-    cost: { Energy: 200 }
-    cooldown: 150         # 每 drone 冷却
-    description: "施加易伤状态——指定伤害类型抗性×2，持续 50 tick"
-
-  Disrupt:
-    params: { object_id: ObjectId, target_id: ObjectId }
-    validator: [exists, owner, drone, body_part(Attack), target_drone, enemy_target, in_range(1), fatigue]
-    cost: { Energy: 100 }
-    cooldown: 50          # 每 drone 冷却
-    description: "打断目标持续动作（Drain/Hack 控制锁等），不造成伤害"
-
-  Fortify:
-    params: { object_id: ObjectId, target_id: ObjectId? }
-    validator: [exists, owner, drone, body_part(Tough), target_self_or_ally, in_range(1), fatigue]
-    cost: { Energy: 400 }
-    cooldown: 300         # 每 drone 冷却
-    description: "护盾（所有抗性×0.5）+ 清除目标所有负面状态，持续 100 tick"
+  Action:
+    params: { type: String, payload: Map<String, JsonValue> }
+    dispatch: ActionRegistry
+    validator: registry.action(type).schema_and_validator(payload)
+    cost: registry.action(type).cost(payload)
+    description: "统一 action dispatch；Attack/RangedAttack/Heal 与 8 个 special attack 均为 ActionRegistry vanilla action，mod action 由 world action manifest 扩展。"
 
 # ═════════════════════════════════════
 # Body Part 默认成本表（权威来源）
@@ -311,42 +257,42 @@ git diff --exit-code        # 生成代码与提交代码一致 → 不一致则
 
 ## 5. 可配置命令
 
-**所有特殊攻击通过 world.toml 的 `[[custom_actions]]` + `[[special_effects]]` 可配置注册**，非硬编码。
+**所有特殊攻击均为 ActionRegistry vanilla action**。参数、冷却、消耗和效果以 [Vanilla Action Canonical Table](../reference/special-attack-table.md) 与 [API Registry §1.1 ActionRegistry](../reference/api-registry.md#11-actionregistry) 为权威源；World Action Manifest 仅负责暴露当前世界启用的 action set 与 mod 扩展 action。
 
 ### 5.1 变体列表
 
- CommandAction | body part | special_effect | 说明 |
---------------|-----------|---------------|------|
- `RangedAttack` | RangedAttack | — | 远程攻击，parts × 25，范围 3 |
- `ClaimController` | Claim | — | 占领 Controller |
- | `Recycle` | — | — | 回收 drone，退还 lifespan-proportional body part 资源（10%-50%，详见 resource-ledger §2.5） |
- `Disrupt` | Attack | `disrupt` | 打断目标动作，50 tick CD |
- `Fortify` | Tough | `fortify` | 护盾 + 净化，300 tick CD |
- `Hack` | Claim | `hack` | 夺取 drone → Neutral，200 tick CD |
- `Drain` | Carry+Work | `drain` | 窃取资源，50 tick CD |
- `Overload` | RangedAttack | `overload` | 消耗配额 -500k，200 tick CD |
- `Debilitate` | Work | `debilitate` | 易伤 ×2，150 tick CD |
- `Leech` | custom | `leech` | 吸血 50%，Corrosive 15 dmg |
- `Fabricate` | custom | `fabricate` | 转化建筑，500 tick CD |
+ | ActionRegistry action | body part | 类别 | 说明 |
+ |--------------|-----------|------|------|
+ | `Attack` | Attack | basic_combat | 近战攻击，parts × 30，范围 1 |
+ | `RangedAttack` | RangedAttack | basic_combat | 远程攻击，parts × 25，范围 3 |
+ | `Heal` | Heal | basic_combat | 治疗/修复目标 |
+ | `Hack` | Claim | special_attack | 夺取 drone → Neutral，200 tick CD |
+ | `Drain` | Carry+Work | special_attack | 窃取资源，50 tick CD |
+ | `Overload` | RangedAttack | special_attack | 消耗配额 -500k，200 tick CD |
+ | `Debilitate` | Work | special_attack | 易伤 ×2，150 tick CD |
+ | `Disrupt` | Attack | special_attack | 打断目标动作，50 tick CD |
+ | `Fortify` | Tough | special_attack | 护盾 + 净化，300 tick CD |
+ | `Leech` | Attack | special_attack | 吸血 50%，Corrosive 15 dmg |
+ | `Fabricate` | Work+Carry | special_attack | 转化建筑，500 tick CD |
 
 ### 5.2 注册规则
 
-- 以上变体在引擎启动时从 world.toml 动态注册，注册链路：
+- 以上 vanilla action 在引擎启动时从 ActionRegistry 注册，注册链路：
   ```
-  [[special_effects]]  →  定义效果类型（handler / target / duration / resistance）
+  vanilla action metadata → 定义 schema / validator / cost / cooldown / effect handler
          │
          ▼
-  [[custom_actions]]   →  引用 special_effect = "name"，定义 CD / cost / damage
+  ActionRegistry        → 注册 Attack/RangedAttack/Heal + 8 special attack
          │
          ▼
-  引擎 CommandAction 注册表  →  自动绑定 validate/apply handler
+  CommandAction::Action { type, payload } dispatch
          │
          ▼
   IDL 代码生成器  →  扫描注册表 → 生成所有 target 语言的绑定
   ```
 - `[[body_part_types]]` 定义 body part → action 绑定（如 `Claim` part → `Hack` action）
-- `[[special_effects]]` 定义效果类型（11 个内置 handler：`hack`, `drain`, `overload`, `debilitate`, `disrupt`, `fortify`, `leech`, `fabricate`, `heal_self`, `scramble_commands`, `convert_to_structure`）
-- 服主可在 world.toml 中新增 `[[custom_actions]]` 条目引用已有 `[[special_effects]]` ——无需改 Rust 代码
+- `[[special_effects]]` 定义可复用效果 handler；vanilla special attack 已预注册为 ActionRegistry action，不通过 `[[custom_actions]]` 注册
+- 服主可通过 World Action Manifest/Rhai 模组注册 mod action；不得覆盖 vanilla action 名称
 - 需全新 handler 时通过 Rhai 模组注册
 - SDK 和 MCP schema 自动包含所有已注册 action
 
@@ -364,7 +310,7 @@ SDK 由引擎基于世界加载的模组**动态生成**，而非预先编译分
     │
     ├─ 扫描注册表:
     │   ├─ Core IDL:   内置指令 (Move/Harvest/Build/...)
-    │   ├─ custom_actions: world.toml [[custom_actions]] 条目
+    │   ├─ ActionRegistry: vanilla action + world manifest mod action
     │   ├─ mod config:  各模组暴露的可配置参数
     │   └─ Body parts:  [[body_part_types]] 中的自定义 parts
     │

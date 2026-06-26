@@ -22,7 +22,7 @@ Gateway 是无状态服务，可水平扩展。所有 Gateway 实例共享同一
 |-----------|------|------|------|---------|
 | **Browser** | WebSocket | 8082 | 人类玩家 Web UI | Web session token 或 `Swarm-Certificate-Chain` + signed request |
 | **REST** | HTTP/1.1 | 8082 | CLI / 外部工具 | Application certificate + signed request；Web session token 仅兼容路径 |
-| **Agent** | MCP (HTTP/SSE) | 8082 | AI agent MCP 连接 | Application certificate + signed request |
+| **Agent** | MCP (HTTP) | 8082 | AI agent MCP 连接；无 Agent-facing subscription | Application certificate + signed request |
 | **Replay Viewer** | HTTP/1.1 | 8082 | 回放查看器（公开） | Application certificate 或匿名（public replay） |
 
 **判定规则**（specs/security/09 §7.0）：
@@ -111,7 +111,7 @@ Client → Gateway:  pong
 
 ## 5. MCP 协议
 
-MCP transport 遵循标准 MCP 协议（JSON-RPC over HTTP/SSE）。Gateway 作为 MCP 反向代理：
+MCP transport 遵循标准 MCP 协议（JSON-RPC over HTTP）。Gateway 作为 MCP 反向代理；SSE 仅为 Gateway ↔ Engine 的内部事件通道，非 Agent-facing MCP subscription：
 
 ```
 Agent → Gateway (MCP) → Engine (MCP tools)
@@ -120,7 +120,7 @@ Gateway 职责:
   - 应用层证书 + canonical request 签名验证（MCP/Agent 主认证路径）
   - 限流（50 MCP 请求/tick per player）
   - 请求路由到 Engine 的 MCP 端点
-  - SSE 事件推送（deploy_accepted, first_tick_executed）
+  - 内部 SSE 事件通道（deploy_accepted, first_tick_executed），供 `swarm_get_events`/deploy status polling 消费
 ```
 
 MCP 工具清单见 `specs/reference/mcp-tools.md`。
