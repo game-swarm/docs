@@ -67,13 +67,16 @@ type_registry:
         - { name: event,           value: 7, description: "Time-limited special world event objective" }
 
 # =============================================================================
-# 1. CommandAction — all 21 variants
+# 1. CommandAction — 11 variants (+ Action system)
 # =============================================================================
+# Per R35 D3: All 11 combat actions (Attack, RangedAttack, Heal, Hack, Drain,
+# Overload, Debilitate, Disrupt, Fortify, Leech, Fabricate) moved to
+# ActionRegistry. CommandAction retains only non-combat fundamental operations.
 command_action:
-  description: "Core CommandAction enum. WASM tick() output CommandIntent action types."
-  total_variants: 21
+  description: "Core CommandAction enum. WASM tick() output CommandIntent action types. Combat/effect actions dispatched via ActionRegistry."
+  total_variants: 11
   variants:
-    # --- 1.1 Core (11) ---
+    # --- 1.1 Core (8) ---
     - name: Move
       index: 1
       category: core
@@ -137,33 +140,6 @@ command_action:
           required: true
       description: "Build a structure at (x,y)"
 
-    - name: Attack
-      index: 6
-      category: core
-      parameters:
-        - name: target_id
-          type: EntityId
-          required: true
-      description: "Melee attack target"
-
-    - name: RangedAttack
-      index: 7
-      category: core
-      parameters:
-        - name: target_id
-          type: EntityId
-          required: true
-      description: "Ranged attack target"
-
-    - name: Heal
-      index: 8
-      category: core
-      parameters:
-        - name: target_id
-          type: EntityId
-          required: true
-      description: "Repair or heal target"
-
     - name: Spawn
       index: 9
       category: core
@@ -219,85 +195,134 @@ command_action:
           required: true
       description: "Withdraw resources from global storage"
 
-    # --- 1.3 Special Attack (8) ---
-    # Canonical parameters: see specs/reference/special-attack-table.md
-    - name: Hack
-      index: 14
-      category: special_attack
+    # --- 1.3 Action (1) — unified combat/effect dispatch ---
+    - name: Action
+      index: 22
+      category: action
       parameters:
-        - name: target_id
-          type: EntityId
+        - name: type
+          type: string
           required: true
-      description: "5-stage intrusion attack"
-
-    - name: Drain
-      index: 15
-      category: special_attack
-      parameters:
-        - name: target_id
-          type: EntityId
+          description: "Action type key registered in ActionRegistry"
+        - name: payload
+          type: ActionPayload
           required: true
-      description: "Continuously drain resources from target"
+          description: "Type-specific action parameters"
+      description: "Execute a registered action via ActionRegistry dispatch. Replaces all combat/special-attack CommandAction variants (R35 D3)."
 
-    - name: Overload
-      index: 16
-      category: special_attack
-      parameters:
-        - name: target_id
-          type: PlayerId
-          required: true
-      description: "Reduce target player fuel budget"
+  # =============================================================================
+  # ActionRegistry — 11 vanilla + mod-extensible combat/effect actions
+  # =============================================================================
+  action_registry:
+    description: "All combat and effect actions. 11 vanilla actions built-in (immutable). World mods register additional actions without touching CommandAction enum."
+    total_vanilla: 11
+    registration:
+      description: "World mods register new actions via world.toml [[action_registry]] or Rhai mod ActionManifest."
+      authority: "World Action Manifest (world.toml [[action_registry]]) + Rhai action_def()"
+      conflict_resolution: "Vanilla names are reserved and cannot be overridden by mods."
 
-    - name: Debilitate
-      index: 17
-      category: special_attack
-      parameters:
-        - name: target_id
-          type: EntityId
-          required: true
-      description: "Reduce target efficiency"
+    vanilla_actions:
+      description: "11 built-in combat/effect actions. Canonical parameters and effects in specs/reference/special-attack-table.md."
+      actions:
+        - type: Attack
+          index: 14
+          category: basic_combat
+          parameters:
+            - name: target_id
+              type: EntityId
+              required: true
+          description: "Melee attack target"
 
-    - name: Disrupt
-      index: 18
-      category: special_attack
-      parameters:
-        - name: target_id
-          type: EntityId
-          required: true
-      description: "Interrupt target operation"
+        - type: RangedAttack
+          index: 15
+          category: basic_combat
+          parameters:
+            - name: target_id
+              type: EntityId
+              required: true
+          description: "Ranged attack target"
 
-    - name: Fortify
-      index: 19
-      category: special_attack
-      parameters:
-        - name: target_id
-          type: EntityId
-          required: true
-      description: "Strengthen own defenses"
+        - type: Heal
+          index: 16
+          category: basic_combat
+          parameters:
+            - name: target_id
+              type: EntityId
+              required: true
+          description: "Repair or heal target"
 
-    - name: Leech
-      index: 20
-      category: special_attack
-      parameters:
-        - name: target_id
-          type: EntityId
-          required: true
-      description: "Life-drain attack — deal Kinetic damage and heal self for 50% of damage dealt"
+        - type: Hack
+          index: 17
+          category: special_attack
+          parameters:
+            - name: target_id
+              type: EntityId
+              required: true
+          description: "5-stage intrusion attack"
 
-    - name: Fabricate
-      index: 21
-      category: special_attack
-      parameters:
-        - name: target_id
-          type: EntityId
-          required: true
-      description: "Convert enemy drone into friendly structure (Tower/Storage/Wall) — requires 5-tick channel"
+        - type: Drain
+          index: 18
+          category: special_attack
+          parameters:
+            - name: target_id
+              type: EntityId
+              required: true
+          description: "Continuously drain resources from target"
 
-  custom_actions:
-    description: "Custom actions defined in World Action Manifest, not in Core enum."
-    known: []
+        - type: Overload
+          index: 19
+          category: special_attack
+          parameters:
+            - name: target_id
+              type: PlayerId
+              required: true
+          description: "Reduce target player fuel budget"
 
-# =============================================================================
+        - type: Debilitate
+          index: 20
+          category: special_attack
+          parameters:
+            - name: target_id
+              type: EntityId
+              required: true
+          description: "Reduce target efficiency"
+
+        - type: Disrupt
+          index: 21
+          category: special_attack
+          parameters:
+            - name: target_id
+              type: EntityId
+              required: true
+          description: "Interrupt target operation"
+
+        - type: Fortify
+          index: 22
+          category: special_attack
+          parameters:
+            - name: target_id
+              type: EntityId
+              required: true
+          description: "Strengthen own defenses"
+
+        - type: Leech
+          index: 23
+          category: special_attack
+          parameters:
+            - name: target_id
+              type: EntityId
+              required: true
+          description: "Life-drain attack — deal Kinetic damage and heal self for 50% of damage dealt"
+
+        - type: Fabricate
+          index: 24
+          category: special_attack
+          parameters:
+            - name: target_id
+              type: EntityId
+              required: true
+          description: "Convert enemy drone into friendly structure (Tower/Storage/Wall) — requires 5-tick channel"
+
 # 2. RejectionReason — 35 canonical codes + debug_detail (D2/B)
 # =============================================================================
 rejection_reason:
