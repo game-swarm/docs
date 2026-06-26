@@ -57,7 +57,7 @@ WASM 模块通过 `tick(snapshot) → CommandIntent[]` JSON 返回指令。
 ### Spawn
 创建新 drone。
 ```json
-{ "sequence": 8, "action": { "type": "Spawn", "spawn_id": "s1", "body_parts": ["MOVE", "WORK", "CARRY"] } }
+{ "sequence": 8, "action": { "type": "Spawn", "object_id": "d1", "spawn_id": "s1", "body_parts": ["MOVE", "WORK", "CARRY"] } }
 ```
 - 校验：spawn 是玩家的 Spawn，cooldown = 0，body 长度 ≤ 50，能量足够，房间有空槽位
 - 消耗：BODY_PART_COST 累加 → 从 Spawn 扣除
@@ -66,7 +66,7 @@ WASM 模块通过 `tick(snapshot) → CommandIntent[]` JSON 返回指令。
 ### Build
 建造建筑。
 ```json
-{ "sequence": 9, "action": { "type": "Build", "object_id": "d1", "x": 5, "y": 3, "structure": "Extension" } }
+{ "sequence": 9, "action": { "type": "Build", "object_id": "d1", "x": 5, "y": 3, "structure_type": "Extension" } }
 ```
 - 校验：drone 有 WORK + CARRY part，坐标在己方房间，格为空 + Plain 地形，在建 < 100，3 格内
 - 消耗：结构造价
@@ -74,7 +74,7 @@ WASM 模块通过 `tick(snapshot) → CommandIntent[]` JSON 返回指令。
 ### TransferToGlobal
 存入全局存储。
 ```json
-{ "sequence": 10, "action": { "type": "TransferToGlobal", "resource": "Energy", "amount": 500 } }
+{ "sequence": 10, "action": { "type": "TransferToGlobal", "object_id": "d1", "resource": "Energy", "amount": 500 } }
 ```
 - 校验：全局存储 enabled，未达容量上限，transfer_time_remaining = 0
 - 延迟：N tick 到账（默认 10），1% 手续费，可被运输拦截
@@ -82,7 +82,7 @@ WASM 模块通过 `tick(snapshot) → CommandIntent[]` JSON 返回指令。
 ### TransferFromGlobal
 从全局存储提取。
 ```json
-{ "sequence": 11, "action": { "type": "TransferFromGlobal", "resource": "Energy", "amount": 200 } }
+{ "sequence": 11, "action": { "type": "TransferFromGlobal", "object_id": "d1", "resource": "Energy", "amount": 200 } }
 ```
 - 校验：全局存储有足够余额，transfer_time_remaining = 0
 - 延迟：N tick 到账（默认 5），5% 手续费

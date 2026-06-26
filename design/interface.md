@@ -16,7 +16,7 @@ AI：  MCP 看世界 → 生成 WASM → 部署 ───┘
 
 ### 4.1 MCP 工具分类
 
-> **权威工具清单见 [API Registry](specs/reference/api-registry.md) §3** — 57 game tools + 11 auth tools.
+> **权威工具清单见 [API Registry](specs/reference/api-registry.md) §3** — Game API `all_declared=57` / `active_only=53` / `rfc_gated=4`，Auth API `all_declared=12` / `active_only=12` / `rfc_gated=0`。
 >
 > 以下为**概念分类概述**，不列完整表。所有工具的 canonical schema、replay_class、rate_limit、security columns 以 Registry 为准。本表仅作方向性说明，不得用于实现引用。
 
@@ -29,7 +29,7 @@ AI：  MCP 看世界 → 生成 WASM → 部署 ───┘
 | **认证** | 见 [auth_api.idl.yaml](specs/reference/auth_api.idl.yaml) | 设备注册、证书管理、passkey 恢复等 |
 | **锦标赛** | `swarm_tournament_create`, `swarm_tournament_status`, `swarm_match_result` | 竞技赛事管理 |
 
-> ⚠️ **已从 registry 移除的工具**：`swarm_attack`/`swarm_build`/`swarm_move`/`swarm_spawn` → MCP 不做游戏动作；`swarm_oauth2_login`/`swarm_oauth2_callback` → 统一证书认证；`swarm_rollback` → `swarm_admin_rollback`；`swarm_inspect_entity` → `swarm_get_drone`；`swarm_inspect_room` → `swarm_get_room`；`swarm_get_objects_in_range` → host function（非 MCP 工具）；`swarm_dry_run_commands` → `swarm_dry_run`；`swarm_token_refresh` → `swarm_auth_refresh`
+> ⚠️ **已从 registry 移除的工具**：`swarm_attack`/`swarm_build`/`swarm_move`/`swarm_spawn` → MCP 不做游戏动作；`swarm_rollback` → `swarm_admin_rollback`；`swarm_inspect_entity` → `swarm_get_drone`；`swarm_inspect_room` → `swarm_get_room`；`swarm_get_objects_in_range` → host function（非 MCP 工具）；`swarm_dry_run_commands` → `swarm_dry_run`。旧 OAuth / bearer / refresh-token 工具不在 Registry 中，认证入口为 CSR/certificate lifecycle（见 Registry §3.3）。
 
 ### 4.1a MCP Capability Profiles
 
@@ -106,7 +106,7 @@ fn host_get_random(sequence: u64, out_ptr: i32, out_len: i32) -> i32;
 
 - Input: `{ language: "typescript" | "rust", include_examples: bool }`
 - Output: `{ sdk_code: string, type_definitions: string, examples: string[], abi_version: string, min_engine_version: string }`
-- Error: `SDKNotFound`, `UnsupportedLanguage`, `RateLimited`
+- Error: wire 仅返回 canonical `RejectionReason`（如 `RateLimited`、`SchemaViolation`、`InternalError`）；SDK 可在本地映射为 `sdk_not_found` / `unsupported_language` 等非 wire 分类，并必须标注不得写入 `error.data.rejection_reason`
 - Rate Limit: 5/min
 - Replay Class: read_replay_safe
 
@@ -144,9 +144,9 @@ Pathfinding 确定性要求：固定 neighbor order（NESW 顺时针）、cost t
 
 所有业务拒绝原因通过 `error.data.rejection_reason` 传递；所有错误上下文通过 `error.data.debug_detail` 传递，不在 wire enum 中增加新变体。condition → canonical RejectionReason → debug_detail template 的完整映射见 Registry §2.6。
 
-**SwarmError 分类 (非规范性指引)**:
-- retry_allowed=true: TimeoutExceeded, RateLimited, ConflictRetry
-- retry_allowed=false: InsufficientResource, NotOwner, InvalidCommand
+**SwarmError SDK 本地分类 (非 wire 指引)**:
+- retryable: wire `TimeoutExceeded` / `RateLimited`；SDK 可本地归类为 retryable，但不得把本地分类写入 `error.data.rejection_reason`
+- fatal_validation: wire `InsufficientResource` / `NotOwner` / `SchemaViolation`；SDK 可本地归类为 fatal_validation，但 wire 仍只使用 canonical enum
 - idempotent: deploy/validate 等可用 idempotency_key 安全重试
 
 ### 5.7 swarm_simulate 与 swarm_deploy

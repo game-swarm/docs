@@ -12,9 +12,9 @@
 
 | 输入 (IDL) | 生成产物 | 不可手写区域 |
 |------------|---------|-------------|
-| `game_api.idl.yaml` | `api-registry.md` §1-5, §11 | CommandAction 表、RejectionReason 表、MCP Tools 表、Host Functions 表、容量限制表、常量表 |
-| `auth_api.idl.yaml` | `api-registry.md` §6-9 | Auth 工具表、Auth Error Codes 表、Token Envelope |
-| `economy.idl.yaml` | `api-registry.md` §10 | Economy Operations 表、Canonical Formulas 表 |
+| `game_api.idl.yaml` | `api-registry.md` §1-8, §11-13 | CommandAction 表、RejectionReason 表、MCP Tools 表（三口径统计）、Host Functions 表、容量限制表、TickTrace、Direction4、SwarmError、Deploy/Persistence/Security columns |
+| `auth_api.idl.yaml` | `api-registry.md` §2-3, §5-6, §8-9, §13 | Auth RejectionReason、Auth 工具表、Auth 限制、Auth TickTrace events、SwarmError canonical enum、Certificate Envelope、Security columns |
+| `economy.idl.yaml` | `api-registry.md` §5, §10 | Economy 限制、Economy Operations 表、Canonical Formulas 表 |
 | 所有 IDL | SDK 类型定义 (`sdk-templates/`) | 类型定义、ABI 版本 |
 
 ## 禁止手写的数值
@@ -24,11 +24,11 @@
 > ⚠️ **本文档自身为手工维护**。CommandAction、MCP tool、RejectionReason、Host function 等计数以 [API Registry](api-registry.md) 为准。`hermes codegen generate --check` 可检测生成产物漂移。
 
 - CommandAction 数量（见 Registry §1）
-- MCP tool 数量（见 Registry §3）
-- RejectionReason 数量（见 Registry §2，当前 48）
-- Host function 数量（见 Registry §4，当前 6）
+- MCP tool 数量（见 Registry §3 三口径：`all_declared` / `active_only` / `rfc_gated`）
+- RejectionReason 数量（见 Registry §2）
+- Host function 数量（见 Registry §4）
 - `MAX_DRONES_PER_PLAYER`（见 Registry §5）
-- Body part costs（见 Registry §11）
+- Body part costs（见 Registry §10）
 - Storage tax tiers（见 Registry §10）
 - Refund rates（见 Registry §10）
 - Rate limits（见 Registry §3.1）
