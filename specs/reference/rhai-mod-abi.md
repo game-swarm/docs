@@ -26,7 +26,7 @@ Rhai 脚本执行 → RhaiActionBuffer (内存缓存)
 ### 1.2 隔离保证
 
 - Rhai **不能绕过** Command Validation Pipeline
-- Rhai **不能直接写入** ECS 组件——只能通过 `actions.*` API
+- Rhai **默认不能直接写入** ECS 组件——只能通过 `actions.*` API；唯一例外是显式授权的 `direct_ecs_writer` capability，且必须通过 CI unique writer gate
 - Rhai **不能访问** 其他玩家的私有数据
 - Buffer apply 由引擎核心在 FDB 事务中执行，保证确定性
 - RuleMod 不得降级为**玩家级作弊通道**
@@ -152,7 +152,7 @@ capabilities = ["tax_resource", "set_entity_flag"]
 
 ### 4.3 Direct ECS Writer Capability（D8 B+）
 
-`direct_ecs_writer` 是高风险 capability，允许模组绕过 `RhaiActionBuffer` 直接写入 ECS 组件。每个 `direct_ecs_writer` 必须在 `mod.toml` 中声明受影响的组件和资源范围。
+`direct_ecs_writer` 是高风险 capability，是默认禁止直接写 ECS 规则的显式例外：只有服主授权、manifest 声明通过、且 CI unique writer gate 确认不与核心系统写入冲突时，模组才可绕过 `RhaiActionBuffer` 直接写入声明范围内的 ECS 组件。每个 `direct_ecs_writer` 必须在 `mod.toml` 中声明受影响的组件和资源范围。
 
 #### 声明格式（mod.toml）
 
