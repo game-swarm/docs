@@ -21,7 +21,7 @@
 │  │  OS 隔离:                           │  │
 │  │  seccomp(bpf) — 白名单系统调用       │  │
 │  │  cgroup v2 — 内存/CPU/pid 上限       │  │
-│  │  无网络命名空间                      │  │
+│  │  独立网络命名空间（无接口/无路由）    │  │
 │  │  只读根文件系统                      │  │
 │  │  独立 /tmp (tmpfs, 16MB)            │  │
 │  └────────────────────────────────────┘  │
@@ -38,7 +38,7 @@
 └──────────────────────────────────────────┘
 ```
 
-**生命周期**: Sandbox 采用 **long-lived worker pool** 模型。WASM 模块在部署时预编译并缓存——`Blake3(module_hash || wasmtime_build_commit || wasmparser_version || validation_policy_version || target_arch || security_epoch)` 作为缓存键。每 tick：worker 从池中取出 → 执行 **Store reset checklist**（以下所有步骤按序执行，任一失败 → worker 替换并审计）:
+**生命周期**: Sandbox 采用 **long-lived worker pool** 模型。WASM 模块在部署时预编译并缓存——`Blake3(compiled_artifact_hash || wasmtime_build_commit || wasmparser_version || validation_policy_version || target_arch || security_epoch)` 作为缓存键。每 tick：worker 从池中取出 → 执行 **Store reset checklist**（以下所有步骤按序执行，任一失败 → worker 替换并审计）:
 
 1. **清空 WASM 线性内存**：全部页归零
 2. **重置 fuel counter**：`store.set_fuel(MAX_FUEL)`
@@ -377,7 +377,7 @@ TickTrace 中存储的审计日志受以下大小限制，防止磁盘 DoS：
 1. 新 WASM 部署成功（`swarm_deploy` 完成 FDB commit + object store upload）
 2. 后台编译 worker 收到通知 → 独立 Wasmtime Engine 实例编译模块
 3. 编译期间 active 版本不受影响（独立 Engine，独立 cgroup limits）
-4. 编译完成 → 模块 hash 写入 `prewarm_registry`（FDB `sandbox/prewarm/<player_id>/<module_hash>`）
+4. 编译完成 → artifact hash 写入 `prewarm_registry`（FDB `sandbox/prewarm/<player_id>/<compiled_artifact_hash>`）
 
 **原子切换**：
 - 下一 tick COLLECT 开始前：检查 `prewarm_registry` 是否有匹配当前部署 hash 的预编译模块
@@ -409,7 +409,7 @@ TickTrace 中存储的审计日志受以下大小限制，防止磁盘 DoS：
 | 编译超时 | 30s | 独立超时进程 |
 | 编译内存 | 512 MB | cgroup |
 | 编译进程 | 每次部署独立 fork | 不缓存编译中间产物 |
-| 模块缓存 | 按 `Blake3(module_hash || wasmtime_build_commit || wasmparser_version || validation_policy_version || target_arch || security_epoch)` 缓存 | 部署提交时验证 `CodeSigningCertificate` 未过期未吊销；部署成功后证书自然过期不终止 WASM 执行。证书吊销按 revocation reason 冻结/回滚/继续允许既有模块。security_epoch 或 validation policy 变更 → 全量失效。编译仅跳过，验证不跳过。 |
+| 模块缓存 | 按 `Blake3(compiled_artifact_hash || wasmtime_build_commit || wasmparser_version || validation_policy_version || target_arch || security_epoch)` 缓存 | 部署提交时验证 `CodeSigningCertificate` 未过期未吊销；部署成功后证书自然过期不终止 WASM 执行。证书吊销按 revocation reason 冻结/回滚/继续允许既有模块。security_epoch 或 validation policy 变更 → 全量失效。编译仅跳过，验证不跳过。 |
 | 并发编译 | 最多 5 个 | 防止编译阶段 DoS |
 | module validation | 10ms | wasmparser 解析超时 |
 

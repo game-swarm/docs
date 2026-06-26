@@ -38,14 +38,14 @@
 **三层分离声明：**
 - **deterministic_replay**：仅需 FDB 中 TickCommitRecord 的 10 个字段 + keyframe/delta chain。对象存储中的任何数据均非 replay 必需。
 - **rich_debug_replay**：RichTraceBlob（可选，存储于对象存储）。缺失 → `terminal_state = audit_gap`（审计记录缺失，可从相邻 tick/keyframe 重建）。
-- **WASM module blob**：对象存储中的 WASM 二进制。**非 replay-critical**。缺失 → 安全审计 gap（无法验证玩家提交的 WASM bytecode 与部署时一致），**绝非** `unreplayable`——FDB manifest 中的 `module_hash` + `fdb_version_counter` 足够完成确定性 replay。
+- **WASM module blob**：对象存储中的 WASM 二进制。**非 replay-critical**。缺失 → 安全审计 gap（无法重新读取玩家提交的 WASM bytecode），**绝非** `unreplayable`——FDB manifest 中的 `wasm_module_hash`、`compiled_artifact_hash` 与 `fdb_version_counter` 足够完成确定性 replay。
 
 | # | 字段 | 存储位置 | 用途 |
 |---|------|---------|------|
 | 1 | `commands` | FDB tick_commands | 所有 validated command 记录 |
 | 2 | `rejections` | FDB tick_commands | 所有 command rejection 记录 |
 | 3 | `fuel` | FDB tick_fuel | 每玩家 fuel 扣费明细 |
-| 4 | `deploy_activation_decision` | FDB tick_deploy | 本 tick 激活的部署列表（drone_id, module_hash, fdb_version_counter） |
+| 4 | `deploy_activation_decision` | FDB tick_deploy | 本 tick 激活的部署列表（drone_id, wasm_module_hash, compiled_artifact_hash, fdb_version_counter） |
 | 5 | `canonical_codec_version` | FDB tick_head | 序列化格式版本 |
 
 > **canonical_codec_version CI 校验**：`canonical_codec_version` 为 `u32` 单调递增整数。CI 管线维护 Rust (`serde_swarm`) 和 Go (`swarm-codec-go`) 双实现的确定性 hash fixture——对固定 world state dump，两实现产出的 `Blake3(canonical_serialize(state))` 必须完全一致。fixture 随 codec version 更新纳入 `specs/reference/codec_fixtures/`。
@@ -59,7 +59,7 @@
 
 **Object Store 仅承载 RichTraceBlob**。对象存储中不存放 replay-critical 数据。对象存储写入失败仅导致 `terminal_state = audit_gap`（审计记录缺失，游戏状态可从相邻 tick 重建），**绝不会**导致 `unreplayable`——FDB 中 TickCommitRecord 的 10 个字段足够完成确定性 replay。
 
-> **WASM 模块 blob 非 replay-critical（D6）**：WASM 模块二进制文件存储在对象存储中，其可用性不影响确定性 replay。Replay verifier 仅使用 FDB 中的 TickCommitRecord（含 `commands`、`canonical_codec_version`、`manifest_hash` 等 10 字段）重放，不重新执行 WASM 模块。WASM 模块 blob 缺失只影响 rich audit/debug 路径——deploy 的 `deploy_activation_decision` 已在 FDB 清单中通过 `module_hash` + `fdb_version_counter` 完整记录激活决策，replay 不需要原始 WASM 字节。
+> **WASM 模块 blob 非 replay-critical（D6）**：WASM 模块二进制文件存储在对象存储中，其可用性不影响确定性 replay。Replay verifier 仅使用 FDB 中的 TickCommitRecord（含 `commands`、`canonical_codec_version`、`manifest_hash` 等 10 字段）重放，不重新执行 WASM 模块。WASM 模块 blob 缺失只影响 rich audit/debug 路径——deploy 的 `deploy_activation_decision` 已在 FDB 清单中通过 `wasm_module_hash`、`compiled_artifact_hash` + `fdb_version_counter` 完整记录激活决策，replay 不需要原始 WASM 字节。
 
 以下字段写入对象存储 blob，缺失不影响 deterministic replay：
 
@@ -71,28 +71,29 @@
 
 ### 2.3 Deploy 完整状态机
 
-> **R22 B1**: 消除 `swarm_deploy` 的 TOCTOU 与激活前可用性缺口。FDB manifest 原子提交 deploy intent，object store 异步上传 WASM binary。
+> **R22 B1 / R35 D4+B6**: 消除 `swarm_deploy` 的 TOCTOU 与激活前可用性缺口。`swarm_deploy` RPC 同步携带 `wasm_bytes`、`metadata` 与签名 `DeployPayload`；服务端在请求内完成 hash 计算、验证、编译准备与 FDB manifest 原子提交。Object store 仅在 commit 后异步保存 WASM binary，用于审计/调试，不参与接受判定。
 
 ```
-状态: VALIDATE → UPLOAD_PREPARE → MANIFEST_COMMIT → ACTIVATION_PENDING → ACTIVE
+状态: VALIDATE → COMPILE_PREPARE → MANIFEST_COMMIT → ACTIVATION_PENDING → ACTIVE
                                                                       ↘ FAILED (rollback)
 
 VALIDATE:
   ├─ 输入: wasm_bytes + metadata + player cert
   ├─ 验证: WASM 合法性、模块大小 ≤ cap、fuel 预算充足、玩家未达 drone cap
   ├─ 失败 → 拒绝部署 (ERR_DEPLOY_VALIDATION)
-  └─ 成功 → 进入 UPLOAD_PREPARE
+  └─ 成功 → 进入 COMPILE_PREPARE
 
-UPLOAD_PREPARE:
+COMPILE_PREPARE:
+  ├─ 计算 wasm_module_hash = Blake3(wasm_bytes)
   ├─ 编译 WASM → 原生码（预编译，不在 tick 内 JIT）
-  ├─ 计算 module_hash = Blake3(compiled_module)
-  ├─ 入队异步上传任务: upload_blob(wasm_binary, object_store_key)
+  ├─ 计算 compiled_artifact_hash = Blake3(compiled_artifact_bytes)
+  ├─ 准备 object_store_key（commit 后异步保存原始 wasm_bytes）
   └─ 进入 MANIFEST_COMMIT（不等 blob 上传完成）
 
 MANIFEST_COMMIT:
   ├─ FDB 事务原子提交 deploy manifest:
-  │   ├─ deploy_id, player_id, drone_id, module_hash, fdb_version_counter
-  │   ├─ object_store_key (blob 预期位置)
+  │   ├─ deploy_id, player_id, drone_id, wasm_module_hash, compiled_artifact_hash, fdb_version_counter
+  │   ├─ object_store_key (原始 wasm_bytes blob 预期位置)
   │   ├─ upload_status = "pending"
   │   └─ activation_tick = current_tick + 1 (下一完整 tick 激活)
   ├─ COMMIT 成功 → 进入 ACTIVATION_PENDING
@@ -100,15 +101,15 @@ MANIFEST_COMMIT:
 
 ACTIVATION_PENDING:
   ├─ 等待 activation_tick 到达
-  ├─ 期间 blob upload 可能在后台完成 (upload_status → "complete") 或失败
+  ├─ 期间原始 wasm_bytes blob upload 可能在后台完成 (upload_status → "complete") 或失败
   └─ activation_tick 到达时:
-      ├─ upload_status == "complete" AND module_hash 验证通过 → ACTIVE
+      ├─ compiled_artifact_hash 与预编译 artifact 匹配 → ACTIVE
       │   └─ drone 获得新 WASM 模块，下一 tick 生效
-      ├─ upload_status == "failed" OR module_hash 不匹配
+      ├─ compiled_artifact_hash 不匹配或预编译 artifact 不可用
       │   └─ → FAILED: drone 保持旧模块(如有)或空模块
       │        FDB 记录 deploy_failure_reason
-      └─ upload_status == "pending" (blob 仍在传输)
-          └─ 等待最多 30s → 仍 pending → 视为 FAILED
+      └─ upload_status == "pending" (原始 wasm blob 仍在传输)
+          └─ 不阻塞激活；记录 `wasm_blob_audit_gap_pending`
 
 ACTIVE:
   └─ 模块已激活。drone 在 COLLECT 阶段使用此模块执行。
@@ -120,9 +121,9 @@ FAILED:
 ```
 
 **关键不变量（Deploy）**：
-- **FDB manifest 是 deploy 的唯一权威记录**：`fdb_version_counter` 为 replay 提供严格全序。blob upload 异步执行，不阻塞 tick 循环。
+- **FDB manifest 是 deploy 的唯一权威记录**：`fdb_version_counter` 为 replay 提供严格全序。`wasm_module_hash` 与 `compiled_artifact_hash` 分离保存；blob upload 异步执行，不阻塞 tick 循环或激活判定。
 - **同一 tick 内的 deploy 不影响当前 tick**：WASM 模块快照在 COLLECT 开始时确定。deploy 在 `activation_tick`（≥ current_tick + 1）生效。
-- **Blob 缺失不影响 FDB 状态完整性**：`upload_status = "failed"` 时 drone 保持旧模块或空模块，FDB 状态不受对象存储影响。
+- **Blob 缺失不影响 FDB 状态完整性或模块激活**：`upload_status = "failed"` 只表示原始 WASM 审计 blob 缺失；只要 FDB manifest 与预编译 artifact 完整，drone 仍可激活新模块。缺失 blob 产生 audit gap，不产生 deploy rollback。
 - **Deploy mutation 的 replay class**：`deploy_mutation` — 状态变更通过 FDB 事务原子化，replay verifier 以 `fdb_version_counter` 全序重放，不依赖对象存储 blob 可用性。
 
 ---

@@ -79,7 +79,7 @@ Browser (Web UI)
          ▼
 ┌──────────────────┐
 │  Gateway/MCP      │  ← SSE 推送（text/event-stream）
-│  (仅 HTTP/SSE)    │     Token audience: swarm-aud-v1:browser-ws:<server_id>:<world_id>:<player_id>
+│  (仅 HTTP/SSE)    │     Token audience: swarm-aud-v1:browser-http:<server_id>:<world_id>:<player_id>
 └──────────────────┘
 ```
 
@@ -105,13 +105,13 @@ AI Agent / CLI
          ▼
 ┌──────────────────┐
 │  Gateway/MCP      │  ← Agent endpoint（独立端口或路径）
-│  (app-cert signed)│     Certificate audience: swarm-aud-v1:cli-rest:<server_id>:<world_id>:<player_id>
+│  (app-cert signed)│     Certificate audience: swarm-aud-v1:agent-mcp:<server_id>:<world_id>:<player_id>
 └──────────────────┘
 ```
 
 **Agent/CLI 特有安全要求**：
 - Agent 端点必须验证 `Swarm-Certificate-Chain` 与 canonical request signature，不依赖 Origin header
-- Certificate `audience` 绑定 `swarm-aud-v1:cli-rest:<server_id>:<world_id>:<player_id>`
+- Certificate `audience` 绑定实际入口 transport：MCP JSON-RPC 为 `swarm-aud-v1:agent-mcp:<server_id>:<world_id>:<player_id>`，CLI REST 为 `swarm-aud-v1:cli-rest:<server_id>:<world_id>:<player_id>`，Authenticated WS 为 `swarm-aud-v1:agent-ws:<server_id>:<world_id>:<player_id>`
 - Swarm CA 只用于应用层证书，不得安装到系统/浏览器 trust store
 - HTTP 不安全传输可用于身份认证和完整性校验；首次访问需人工确认并 pin Server Root CA fingerprint，pin 后服务器身份不依赖外部 TLS
 - 拒绝任何携带 browser-style Origin/CSRF header 的 agent 端点请求（防跨协议混淆）
@@ -157,17 +157,17 @@ AI Agent / CLI
 WebSocket 连接按客户端类型分为两条安全路径：
 
 **A. 已认证 Agent 会话（Authenticated WS）**：
-连接建立时通过 §10.5a WebSocket 证书握手完成身份绑定。会话建立后，**每条消息必须携带递增序列号 + MAC/Ed25519 签名**，防止会话内消息重放、注入或重排。具体要求：
+连接建立时通过 `SWARM-WS-HANDSHAKE-V1` WebSocket 证书握手完成身份绑定。握手签名 payload 固定为 `SWARM-WS-HANDSHAKE-V1\n<transport>\n<server_id>\n<world_id>\n<cert_id>\n<timestamp>\n<nonce>\n<audience>`，其中 `transport = agent-ws`，`audience = swarm-aud-v1:agent-ws:<server_id>:<world_id>:<player_id>`。会话建立后，**每条消息必须携带递增序列号 + MAC/Ed25519 签名**，防止会话内消息重放、注入或重排。具体要求：
 
 - `seq`: 单调递增序号（从 1 开始），接收方严格检查 `seq == last_seq + 1`
-- `mac`: 对 `SWARM-WS-MSG-V1\n<direction>\n<session_id>\n<seq>\n<tick>\n<body_hash>` 的 Ed25519 签名，使用握手绑定的用户私钥
+- `mac`: 对 `SWARM-WS-MSG-V1\n<transport>\n<direction>\n<session_id>\n<seq>\n<tick>\n<body_hash>\n<audience>` 的 Ed25519 签名，使用握手绑定的用户私钥
 - 签名验证通过后消息才能被处理；seq 跳跃视为安全事件 → 断开连接 + 审计日志
 - 服务端回复也必须附 seq（独立计数器）+ 服务端签名
 
 **B. 浏览器/公开观众（Read-Only Spectator）**：
 浏览器 WebSocket 连接**仅允许只读订阅**——接收 SSE 风格的推送事件流，不得发送任何写操作或认证消息。具体约束：
 
-- 公开 spectator WS 端点不接受 `Swarm-Certificate-Chain` 头部，不执行证书握手
+- 公开 spectator WS 端点不接受 `Swarm-Certificate-Chain` 头部，不执行证书握手；仅允许 `X-Swarm-Transport: spectator-ws`，audience 固定为 `swarm-aud-v1:spectator-ws:<server_id>:<world_id>:public`
 - 只读事件流仅包含公开世界状态（房间列表、在线玩家数、公开排行榜），不泄露玩家私有数据
 - 无 per-message 签名要求（只读、无状态变更）
 - 速率限制：每个 spectator 连接最多 10 events/s
