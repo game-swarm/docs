@@ -102,12 +102,14 @@
 ### 2.2 存储税 tiered 公式
 
 ```
-storage_tax(tick) = Σ over each tier i where storage_pct > tier_threshold[i]:
-    taxable_in_tier = min(storage_pct - tier_threshold[i], tier_width[i])
-    tax = taxable_in_tier × tier_rate[i] / 10000
+storage_pct = floor(stored_units × 100 / storage_capacity_units)
+storage_tax(tick) = Σ over each tier i where storage_pct > tier_start_pct[i]:
+    tier_capacity_units = storage_capacity_units × tier_width_pct[i] / 100
+    taxable_units_in_tier = min(stored_units - tier_start_units[i], tier_capacity_units)
+    tax = taxable_units_in_tier × tier_rate_bp[i] / 10000
 ```
 
-其中 `tier_width[i] = tier_threshold[i+1] - tier_threshold[i]`（最后一个 tier 宽度 = 100 - tier_threshold[last]）。
+其中 `tier_start_units[i] = storage_capacity_units × tier_start_pct[i] / 100`，`tier_width_pct[i] = tier_end_pct[i] - tier_start_pct[i]`。`taxable_units_in_tier` 的单位永远是资源单位，不是百分比；`tier_rate_bp` 是每 tick 对该 tier 内存储资源单位征收的 basis points 税率。
 
 **示例**（容量 1,000,000，存储量 750,000 = 75%）：
 - Tier 0 (0-30%): 300,000 × 0 bp = 0
@@ -147,17 +149,21 @@ storage_tax(tick) = Σ over each tier i where storage_pct > tier_threshold[i]:
 
 **说明**：免维护到期（tick 2000）时，玩家应有 ≥2 rooms + 5 drones + 完整 faucer 管道。实际 break-even tick 取决于玩家 build 效率。
 
-### 2.4 Controller Repair 权威公式
+### 2.4 Controller / Depot Age Repair
 
-> **R23 D4/A 裁决**：Controller repair 免费比例降至 30–35%，加入距离衰减。
+Age repair 不作为 Resource Ledger 收支公式结算：Controller repair 免费，只受物理约束限制；Depot repair 消耗 Depot 本地存储资源，作为本地结构维护/功能消耗记录。
 
-```
-repair_cost = body_cost × (1 - repair_cap / 10000) × (1 + distance_from_nearest_controller × distance_decay_bp / 10000)
-repair_cap = 3500 bp (35%)
-distance_decay_bp = 500 bp (5% per tile)
-```
+Controller repair 约束：
+- `repair_range` 由 RCL 决定（RCL1=1 格，RCL8=5 格）
+- `repair_capacity` 为每 Controller 每 tick 可服务的 drone 数上限
+- drone 必须位于 repair range 内；超出容量的 drone 按确定性队列顺序等待
 
-即最近 controller 距离 0 tile → repair 仅 65% cost；距离 10 tile → repair 为 65% × 1.5 = 97.5% cost。
+Depot repair 约束：
+- Forward Depot 固定 `repair_range=1`
+- `repair_capacity` 与 `repair_aging` 由结构类型定义
+- 每 tick repair 前从 Depot 本地存储扣除 `maintenance`；资源不足则本 tick 停止 repair
+
+全局 `repair_cap`、`repair_cost`、`distance_decay_bp` 不属于基础经济账本权威公式；若世界或模组需要比例收费 repair，可作为自定义规则在 `WorldRule`/mod 层定义，并不得覆盖本文的 Vanilla 默认语义。
 
 ### 2.5 Recycle 权威公式
 

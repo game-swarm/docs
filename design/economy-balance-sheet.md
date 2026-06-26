@@ -91,11 +91,11 @@ upkeep = base_upkeep × rooms × (1 + rooms / room_soft_cap)
 | **总收入（优化）** | **390** | |
 | **总收入（基础）** | **280** | 效率 ×1.0 |
 
-| 支出项 | 量/tick |
-|--------|:------:|
-| 维护费 | 375 |
-| 存储税 | 15 (tier 1: 30-60% @ 1 bp) |
-| **总支出** | **390** |
+| 支出项 | 量/tick | 可重算输入 |
+|--------|:------:|------|
+| 维护费 | 375 | `50 × 5 × (1 + 5 / 10)` |
+| 存储税 | 15 | `storage_capacity=1,000,000`, `stored_total=450,000`; tier 1 taxable=`450,000-300,000=150,000`; `150,000 × 1bp / 10000` |
+| **总支出** | **390** | |
 
 | 净流量 | 量/tick |
 |--------|:------:|
@@ -114,11 +114,11 @@ upkeep = base_upkeep × rooms × (1 + rooms / room_soft_cap)
 | **总收入（优化）** | **1,130** | |
 | **总收入（基础）** | **610** | 效率 ×1.0 |
 
-| 支出项 | 量/tick |
-|--------|:------:|
-| 维护费 | 1,000 |
-| 存储税 | 45 (tier 1: 40-55% @ 1 bp) |
-| **总支出** | **1,045** |
+| 支出项 | 量/tick | 可重算输入 |
+|--------|:------:|------|
+| 维护费 | 1,000 | `50 × 10 × (1 + 10 / 10)` |
+| 存储税 | 45 | `storage_capacity=3,000,000`, `stored_total=1,650,000`; tier 1 taxable=`1,650,000-900,000=750,000`; `750,000 × 1bp / 10000` |
+| **总支出** | **1,045** | |
 
 | 净流量 | 量/tick |
 |--------|:------:|
@@ -137,12 +137,12 @@ upkeep = base_upkeep × rooms × (1 + rooms / room_soft_cap)
 | **总收入（优化）** | **2,340** | |
 | **总收入（基础）** | **1,320** | 效率 ×1.0 |
 
-| 支出项 | 量/tick |
-|--------|:------:|
-| 维护费 | 3,000 |
-| 存储税 | 120 (tier 2: 60-85% @ 5 bp) |
-| Drone spawn cost (avg 0.2/tick) | 40 |
-| **总支出** | **3,160** |
+| 支出项 | 量/tick | 可重算输入 |
+|--------|:------:|------|
+| 维护费 | 3,000 | `50 × 20 × (1 + 20 / 10)` |
+| 存储税 | 120 | `storage_capacity=2,000,000`, `stored_total=1,440,000`; tier 1 taxable=`600,000`; tier 2 taxable=`240,000`; `(600,000 × 1bp + 240,000 × 5bp) / 10000` |
+| Drone spawn cost (avg 0.2/tick) | 40 | |
+| **总支出** | **3,160** | |
 
 | 净流量 | 量/tick |
 |--------|:------:|
@@ -161,12 +161,12 @@ upkeep = base_upkeep × rooms × (1 + rooms / room_soft_cap)
 | **总收入（优化）** | **5,900** | |
 | **总收入（基础）** | **4,075** | 效率 ×1.0 |
 
-| 支出项 | 量/tick |
-|--------|:------:|
-| 维护费 | 15,000 |
-| 存储税 | 600 (tier 3: 85-100% @ 20 bp) |
-| Drone upkeep | 1,000 |
-| **总支出** | **16,600** |
+| 支出项 | 量/tick | 可重算输入 |
+|--------|:------:|------|
+| 维护费 | 15,000 | `50 × 50 × (1 + 50 / 10)` |
+| 存储税 | 600 | `storage_capacity=3,000,000`, `stored_total=2,700,000`; tier 1 taxable=`900,000`; tier 2 taxable=`750,000`; tier 3 taxable=`150,000`; `(900,000 × 1bp + 750,000 × 5bp + 150,000 × 20bp) / 10000` |
+| Drone upkeep | 1,000 | |
+| **总支出** | **16,600** | |
 
 | 净流量 | 量/tick |
 |--------|:------:|
@@ -177,23 +177,23 @@ upkeep = base_upkeep × rooms × (1 + rooms / room_soft_cap)
 
 ### 2.7 收支平衡汇总表 (Standard 模式)
 
-以下汇总表提供 1/2/3/5/10/20/50 房间的收支对比。**所有数值为 canonical target curve 的初始参数化（illustrative estimates）；后续 playtest 仅用于校准 Resource Ledger 参数。** 利用率假设：1-3 房间 <30% 存储（免税），5 房间 ~40%，10 房间 ~55%，20 房间 ~70%，50 房间 ~90%。
+以下汇总表提供 1/2/3/5/10/20/50 房间的收支对比。**所有数值为 canonical target curve 的初始参数化（illustrative estimates）；后续 playtest 仅用于校准 Resource Ledger 参数。** 存储税由 `storage_capacity`、`stored_total` 与 Resource Ledger tier 公式逐行重算。
 
-|| 房间数 | 收入/tick (基础) | 收入/tick (优化) | 维护费/tick | 存储税/tick | 净流量趋势 | 说明 |
-||:------:|:--------:|:--------:|:---------:|:---------:|:---------:|------|
-|| 1 | 22 | 22 | 0¹ | 0 | **大幅盈余**¹ | free_upkeep 纯盈余 |
-|| 2 | 92 | 138 | 120 | 0 | **基础小亏 / 优化小盈** | 「中期自维持」起点——2 房即可转正 |
-|| 3 | 175 | 250 | 195 | 0 | **优化小幅盈余** | Harvester 优化 + RCL 升级驱动正流量 |
-|| 5 | 280 | 390 | 375 | 15 | **优化收支平衡** | 良好代码 + RCL 3-4 → 自维持可达 |
-|| 10 | 610 | 1,130 | 1,000 | 45 | **优化小幅盈余** | 高效代码维持正流量，边际收益递减开始 |
-|| 20 | 1,320 | 2,340 | 3,000 | 120 | **大额亏损** | 边际收益显著递减——自维持区间上限 |
-|| 50 | 4,075 | 5,900 | 15,000 | 600 | **严重亏损** | 软上限逼近，顶尖玩家维持 |
+|| 房间数 | 收入/tick (基础) | 收入/tick (优化) | 维护费/tick | storage_capacity | stored_total | 存储税/tick | tier formula | 净流量趋势 | 说明 |
+||:------:|:--------:|:--------:|:---------:|:---------:|:---------:|:---------:|------|:---------:|------|
+|| 1 | 22 | 22 | 0¹ | 1,000,000 | 200,000 | 0 | below 30%; no taxable tier | **大幅盈余**¹ | free_upkeep 纯盈余 |
+|| 2 | 92 | 138 | 120 | 1,000,000 | 250,000 | 0 | below 30%; no taxable tier | **基础小亏 / 优化小盈** | 「中期自维持」起点——2 房即可转正 |
+|| 3 | 175 | 250 | 195 | 1,000,000 | 290,000 | 0 | below 30%; no taxable tier | **优化小幅盈余** | Harvester 优化 + RCL 升级驱动正流量 |
+|| 5 | 280 | 390 | 375 | 1,000,000 | 450,000 | 15 | `(450,000 - 300,000) × 1bp / 10000` | **优化收支平衡** | 良好代码 + RCL 3-4 → 自维持可达 |
+|| 10 | 610 | 1,130 | 1,000 | 3,000,000 | 1,650,000 | 45 | `(1,650,000 - 900,000) × 1bp / 10000` | **优化小幅盈余** | 高效代码维持正流量，边际收益递减开始 |
+|| 20 | 1,320 | 2,340 | 3,000 | 2,000,000 | 1,440,000 | 120 | `(600,000 × 1bp + 240,000 × 5bp) / 10000` | **大额亏损** | 边际收益显著递减——自维持区间上限 |
+|| 50 | 4,075 | 5,900 | 15,000 | 3,000,000 | 2,700,000 | 600 | `(900,000 × 1bp + 750,000 × 5bp + 150,000 × 20bp) / 10000` | **严重亏损** | 软上限逼近，顶尖玩家维持 |
 
 > **自维持区间：2-10 房间**。良好代码（×1.5-2.0 效率）+ 适度 RCL 升级 + PvE 补充下，Standard 经济可实现小幅正流量。20 房间边际收益显著递减，50 房间接近不可持续——形成自然天花板。此区间是 canonical target curve；实际玩家数据仅用于校准参数，详见 `specs/PLAYTEST-GATED.md` PG-1。
 
 > `¹` 1 房间 free_upkeep 期内；free_upkeep 结束后维护费恢复 → 净流量 -33（基础）。free_upkeep 默认 2000 tick，初始资源包 `{Energy: 5000}` 足够度过此阶段。
 >
-> **可重算公式**：`upkeep = base_upkeep × rooms × (1 + rooms / room_soft_cap)`，`tax = storage_amount × tax_rate_bp / 10000`（tax_rate_bp 由 `global_storage_tax_tiers` 按存储利用率查表）。所有参数 world.toml 可配置——修改 `base_upkeep`、`room_soft_cap`、`storage_tax_tiers` 后本表数值相应变化。
+> **可重算公式**：`upkeep = base_upkeep × rooms × (1 + rooms / room_soft_cap)`；`tax = Σ taxable_units_in_tier × tier_rate_bp / 10000`，其中 `taxable_units_in_tier` 由 `storage_capacity`、`stored_total` 与 `storage_tax_tiers` 的容量百分比边界换算为资源单位。所有参数 world.toml 可配置——修改 `base_upkeep`、`room_soft_cap`、`storage_tax_tiers`、`storage_capacity` 或 `stored_total` 后本表数值相应变化。
 >
 > **代码效率乘数含义**：1.5×-2.0× 表示减少 idle 时间、优化路径、减少拥堵——随着房间扩张，效率从 1.5× 逐渐提升到 2.0× 需要持续优化投入。200% (2×) 仅在完美路径 + 无拥堵 + 最优 body 组合下可达。
 >
@@ -217,8 +217,9 @@ upkeep = base_upkeep × rooms × (1 + rooms / room_soft_cap)
 | `free_upkeep_controllers` | 3 | 1 | 1 |
 | `free_upkeep_drones` | 5 | 3 | 3 |
 | `free_upkeep_ticks` | 3000 | 2000 | 2000 |
-| `repair_cap` | 5000 bp (50%) | 3500 bp (35%) | 3500 bp (35%) |
-| `repair_distance_decay` | 0 bp | 500 bp (5%/tile) | 500 bp (5%/tile) |
+| `controller_repair_cost` | 0 | 0 | 0 |
+| `controller_repair_limit` | range/capacity/queue | range/capacity/queue | range/capacity/queue |
+| `depot_repair_cost` | local depot resources | local depot resources | local depot resources |
 
 > **存储税权威源**：tier 定义见 `design/gameplay.md` §8「累进存储税」和 `specs/core/08-resource-ledger.md` §StorageTax。Tutorial 全免，Vanilla/Standard 使用相同 tier 结构（税率由 `global_storage_tax_tiers` 配置）。
 >
