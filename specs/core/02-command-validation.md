@@ -664,13 +664,13 @@ refund_pct = max(0.1, 0.5 × (remaining_lifespan / total_lifespan))
 
 ---
 
-## 8. CommandAction 变体
+## 8. CommandAction 与 Action 边界
 
-以下 CommandAction 变体。
+> **R35 D3**: `CommandAction` enum 仅含 11 种非战斗基础操作（Move/Harvest/Transfer/Withdraw/Build/Spawn/Recycle/ClaimController/TransferToGlobal/TransferFromGlobal/Action）。全部 11 种 combat/effect action（Attack/RangedAttack/Heal + 8 special attacks）通过 `ActionRegistry` dispatch。详见 [API Registry §1.1 ActionRegistry](../reference/api-registry.md#11-actionregistry) 和 [Vanilla Action Canonical Table](../reference/special-attack-table.md)。以下 §10 各 action 的详细校验参数以 ActionRegistry 和 special-attack-table 为权威源。
 
 ### 10.1 RangedAttack
 
-远程攻击。drone 需 RangedAttack body part。
+> **R35 D3**: RangedAttack 已移入 ActionRegistry，不再作为独立 CommandAction variant。以下校验规则适用于 Action `{ type: \"RangedAttack\", ... }` dispatch。
 
 ```json
 { "action": "RangedAttack", "object_id": "d1", "target_id": "e5", "range": 3, "sequence": N }
@@ -711,9 +711,9 @@ refund_pct = max(0.1, 0.5 × (remaining_lifespan / total_lifespan))
  | Tutorial override | `tutorial_recycle_refund_full_ticks` 内退还 100%（world-mode override，由 world.toml 控制） |
  | 效果 | drone 走 death_mark → death_cleanup 标准死亡路径（与其他死亡一致） |
 
-### 10.4 特殊攻击
+### 10.4 Action 校验（general / special attack）
 
-每种特殊攻击有独立冷却（tick）、资源消耗和抗性。与 HP 伤害互斥——同一 body part 同一 tick 只能执行一种。持续型攻击在 drone 移动或被 Disrupt 时中断。
+> **R35 D3**: 全部 combat/effect action 通过 ActionRegistry dispatch。以下各 action 的详细参数以 [Vanilla Action Canonical Table](../reference/special-attack-table.md) 和 [API Registry §1.1 ActionRegistry](../reference/api-registry.md#11-actionregistry) 为权威源。Leech/Fabricate 的注册方式已从 `[[custom_actions]]` 改为 ActionRegistry vanilla action——非 mod extension。
 
 #### Disrupt
 
