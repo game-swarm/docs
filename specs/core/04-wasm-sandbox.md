@@ -38,7 +38,7 @@
 └──────────────────────────────────────────┘
 ```
 
-**生命周期**: Sandbox 采用 **long-lived worker pool** 模型。WASM 模块在部署时预编译并缓存——`Blake3(compiled_artifact_hash || wasmtime_build_commit || wasmparser_version || validation_policy_version || target_arch || security_epoch)` 作为缓存键。每 tick：worker 从池中取出 → 执行 **Store reset checklist**（以下所有步骤按序执行，任一失败 → worker 替换并审计）:
+**生命周期**: Sandbox 采用 **long-lived worker pool** 模型。WASM 模块在部署时预编译并缓存——`compiled_artifact_hash` 是服务端编译后派生字段，不属于客户端 `SWARM-DEPLOY-V1` 签名 payload；缓存键使用 `Blake3(compiled_artifact_hash || wasmtime_build_commit || wasmparser_version || validation_policy_version || target_arch || security_epoch)`。Deploy 接受判定始终验证客户端签名的 `wasm_module_hash + metadata_hash`，缓存仅跳过重复编译，不跳过签名、证书、scope、version_counter 或 manifest 校验。每 tick：worker 从池中取出 → 执行 **Store reset checklist**（以下所有步骤按序执行，任一失败 → worker 替换并审计）:
 
 1. **清空 WASM 线性内存**：全部页归零
 2. **重置 fuel counter**：`store.set_fuel(MAX_FUEL)`
@@ -261,15 +261,27 @@ read, write, mmap, mprotect, munmap,
 brk, madvise, membarrier,
 futex, nanosleep,
 sigaltstack, rt_sigaction, rt_sigreturn,
-clone (仅 CLONE_VM | CLONE_VFORK), exit, exit_group
+clone (仅精确线程 flags，见 clone flags matrix), exit, exit_group
 
 // 全禁
 // ❌ open, openat, stat, unlink, mkdir, chmod
 // ❌ socket, connect, bind, listen, accept
-// ❌ fork, execve
+// ❌ fork, vfork, clone(CLONE_VFORK), execve
 // ❌ clock_gettime
 // ❌ getrandom
 ```
+
+#### clone flags matrix
+
+seccomp BPF 必须按 flags mask 精确校验 `clone`，默认禁止 `CLONE_VFORK`。仅允许运行时内部线程创建所需的线程 clone 组合；任何进程创建、vfork-like 行为或缺少 `CLONE_THREAD` 的 `clone` 都返回 `EPERM`。
+
+| clone flags | 默认 | 说明 |
+|-------------|------|------|
+| `CLONE_VM | CLONE_FS | CLONE_FILES | CLONE_SIGHAND | CLONE_THREAD | CLONE_SYSVSEM | CLONE_SETTLS | CLONE_PARENT_SETTID | CLONE_CHILD_CLEARTID`（加必要 signal flags） | ✅ 允许 | 仅限 Wasmtime/runtime 内部线程创建；BPF 校验 flags 必须是该集合的子集/精确允许组合 |
+| `CLONE_VFORK` 任意组合 | ❌ 禁止 | vfork-like 语义扩大进程创建面，不作为线程创建需求 |
+| 无 `CLONE_THREAD` 的 `clone` | ❌ 禁止 | 视为进程创建或隔离边界扩大 |
+| `fork()` / `vfork()` syscall | ❌ 禁止 | 不允许 sandbox 内创建新进程 |
+| `clone3()` | ❌ 禁止 | 除非另有等价 BPF 参数解析；默认避免绕过 `clone` flags mask |
 
 ### 4.2 cgroup v2
 
@@ -409,7 +421,7 @@ TickTrace 中存储的审计日志受以下大小限制，防止磁盘 DoS：
 | 编译超时 | 30s | 独立超时进程 |
 | 编译内存 | 512 MB | cgroup |
 | 编译进程 | 每次部署独立 fork | 不缓存编译中间产物 |
-| 模块缓存 | 按 `Blake3(compiled_artifact_hash || wasmtime_build_commit || wasmparser_version || validation_policy_version || target_arch || security_epoch)` 缓存 | 部署提交时验证 `CodeSigningCertificate` 未过期未吊销；部署成功后证书自然过期不终止 WASM 执行。证书吊销按 revocation reason 冻结/回滚/继续允许既有模块。security_epoch 或 validation policy 变更 → 全量失效。编译仅跳过，验证不跳过。 |
+| 模块缓存 | 按 `Blake3(compiled_artifact_hash || wasmtime_build_commit || wasmparser_version || validation_policy_version || target_arch || security_epoch)` 缓存 | `compiled_artifact_hash` 是服务端派生字段；部署提交时验证 `CodeSigningCertificate` 未过期未吊销，并验证客户端签名覆盖的 `wasm_module_hash + metadata_hash + identity + slot/version/audience`。部署成功后证书自然过期不终止 WASM 执行。证书吊销按 revocation reason 冻结/回滚/继续允许既有模块。security_epoch 或 validation policy 变更 → 全量失效。编译仅跳过，验证不跳过。 |
 | 并发编译 | 最多 5 个 | 防止编译阶段 DoS |
 | module validation | 10ms | wasmparser 解析超时 |
 
@@ -447,7 +459,7 @@ TickTrace 中存储的审计日志受以下大小限制，防止磁盘 DoS：
 | | `getrandom` | ❌ 禁止 | seccomp BPF 检查 | 随机数由 host function 提供 |
 | | `open/openat` | ❌ 禁止 | seccomp BPF 检查 | 无文件系统访问 |
 | | `socket/connect/sendmsg/recvmsg` | ❌ 禁止 | seccomp BPF 检查 | 无网络访问 |
-| | `clone (仅 CLONE_VM \| CLONE_VFORK)` | ✅ 允许 | seccomp BPF 检查 | Wasmtime 内部线程创建所需；`fork/vfork` ❌ 禁止 |
+| | `clone` 精确线程 flags | ✅ 允许 | seccomp BPF flags matrix 测试 | 仅允许 `CLONE_THREAD` 线程创建；`CLONE_VFORK`、无 `CLONE_THREAD` 的 clone、`fork/vfork/clone3` ❌ 禁止 |
 | | `execve` | ❌ 禁止 | seccomp BPF 检查 | 无程序执行 |
 | | `ptrace` | ❌ 禁止 | seccomp BPF 检查 | 无调试 |
 | | `kill/tkill` | ❌ 禁止 | seccomp BPF 检查 | 无信号发送 |
@@ -471,7 +483,7 @@ cargo test --test sandbox_boundary -- --test-threads=1
 # 1. 禁止的系统调用返回 EPERM（非 ENOSYS——避免 fallback）
 # 2. 内存超限 → OOM killed（非 hang）
 # 3. CPU 超限 → 进程被 throttled（非 infinite loop）
-# 4. PID 命名空间内 fork → 失败（EPERM）
+# 4. PID 命名空间内 fork/vfork/clone(CLONE_VFORK) → 失败（EPERM）；仅精确线程 clone flags 可通过
 # 5. 网络命名空间内 socket → 失败（EAFNOSUPPORT）
 ```
 
