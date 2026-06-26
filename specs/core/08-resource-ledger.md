@@ -81,7 +81,7 @@
 | `allied_transfer_delay` | 200 | tick | 联盟转移延迟 |
 | `allied_transfer_cooldown` | 500 | tick | 同目标联盟转移冷却 |
 | `allied_daily_cap` | `max(10_000, receiver_gcl × 20_000)` | units | 每日联盟转移上限（按接收方 GCL 缩放，最低 10,000） |
-| `allied_daily_cap_world_multiplier` | 1.0 | float | 世界模式乘数（Standard=1.0, Arena=0.5, Tutorial=5.0） |
+| `allied_daily_cap_world_multiplier` | 100 | u32 (scale×100) | 世界模式乘数（Standard=100=1.0×, Arena=50=0.5×, Tutorial=500=5.0×） |
 | **Storage Tax (累进)** | | | |
 | `storage_tax_tiers` | `[(30,0),(60,1),(85,5),(100,20)]` | (容量%, bp) | 累进存储税 tier 定义 |
 | `storage_tax_tier_0_threshold` | 30% | capacity% | 0–30% 免税 |
@@ -104,7 +104,7 @@
 ```
 storage_tax(tick) = Σ over each tier i where storage_pct > tier_threshold[i]:
     taxable_in_tier = min(storage_pct - tier_threshold[i], tier_width[i])
-    tax = taxable_in_tier × tier_rate[i] × global_storage_capacity / 10000
+    tax = taxable_in_tier × tier_rate[i] / 10000
 ```
 
 其中 `tier_width[i] = tier_threshold[i+1] - tier_threshold[i]`（最后一个 tier 宽度 = 100 - tier_threshold[last]）。
@@ -125,7 +125,7 @@ storage_tax(tick) = Σ over each tier i where storage_pct > tier_threshold[i]:
 
 | 参数 | 默认值 | 说明 |
 |------|--------|------|
-| `starting_resources` | `{Energy: 5000, Minerals: 2000}` | 新玩家进入世界时获得的初始资源包 |
+| `starting_resources` | `{Energy: 5000}` | 新玩家初始资源包 — R35 D6: Vanilla 默认单一 Energy |
 | `free_upkeep_controllers` | 1 | 免维护费的 controller 数量 |
 | `free_upkeep_drones` | 3 | 免维护费的 drone 数量 |
 | `free_upkeep_ticks` | 2000 | 免维护费持续 tick 数（自首次 spawn 起） |

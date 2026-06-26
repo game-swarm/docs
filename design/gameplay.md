@@ -1987,7 +1987,7 @@ if (rules.get("empire-upkeep").config.onshortfall.value === "damage") {
 巨帝国（50 房）: 维护费 ≈ 15,000/tick — 硬上限
 ```
 
-> **免维护费（R23 D1/A）**：前 1 controller + 3 drone 在 `free_upkeep_ticks`（默认 2000）内免维护费。新玩家初始资源 `{Energy: 5000, Minerals: 2000}`。详见 Resource Ledger §2.3。
+> **免维护费（R35 D6）**：前 1 controller + 3 drone 在 `free_upkeep_ticks`（默认 2000）内免维护费。新玩家初始资源 `{Energy: 5000}`（Vanilla 默认单一 Energy；多资源留给 mod/advanced worlds）。详见 Resource Ledger §2.3。
 
 ### 2.8 Determinism Contract — 确定性合同
 
@@ -2135,7 +2135,7 @@ function tick(snapshot: WorldSnapshot): TickResult {
 - **间谍保护**：allied 状态不暴露对方 WASM 代码——仅暴露 drone 位置和资源状态
 - **叛变冷却**：break alliance 后 24h cooldown，防止"结盟→偷袭→立刻重结盟"循环
 - **外交 audit**：所有 propose/accept/reject/break 事件写入 `diplomacy/{world_id}/{tick}` 日志
-- **多联盟上限**：每玩家最多同时 5 个 active alliance
+- **多联盟上限**：每玩家最多同时 10 个 active alliance（R35 D7）。同一 tick 内同一 alliance 的 Allied Transfer 总流量受 `alliance_transfer_cap_per_tick` 约束，防止 10 人联盟绕过 anti-snowball。
 
 #### 跨世界 Federation
 
