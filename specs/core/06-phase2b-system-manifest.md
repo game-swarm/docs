@@ -219,9 +219,9 @@ Serial Spine:
 - **Must run before**: S22
 - **Note**: 此 reducer **不直接修改实体状态**——仅负责 intent 归并、排序、路由。实际状态变更由 S22 `status_advance_system` 串行执行。
 
-### S15: damage_application (UNIQUE HitPoints writer)
+### S15: damage_application (Combat HitPoints writer)
 
-**S15 是 HitPoints 的 UNIQUE 写入者**。所有伤害/治疗/自然回复/状态效果 HP 变化都先写入 `PendingDamage`/`PendingHeal` typed buffer，再由 S15 统一 reduce + canonical key sort → 原子写入 `Entity.hits`。不存在任何其他 system 直接修改 HitPoints。
+**S15 是 combat (damage + heal) HitPoints writer**。所有攻击/治疗的 HP 变化先写入 `PendingDamage`/`PendingHeal` typed buffer，再由 S15 统一 reduce + canonical key sort → 原子写入 `Entity.hits`。S10 regen → `PendingHeal`，S22 Leech 等 status effect → `PendingDamage`——均不直接写 HitPoints。S24 decay 是独立 world maintenance writer，串行执行于 S22/S23 之后。
 
 Canonical key 归约：S15 对 `PendingDamage[target_id]` 和 `PendingHeal[target_id]` 按 `target_id` 升序归并——同 target 的 damage 先合并（`net_damage = Σ attack - Σ heal`），再一次性写入 `Entity.hits`。这保证同一 entity 的 HitPoints 只在 S15 中被写入一次。
 
