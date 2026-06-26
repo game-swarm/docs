@@ -168,7 +168,7 @@ AI agent (Claude/GPT/自主 agent) → MCP session
      username  = "ai-bot-<random>" (自行生成)
      key_label = "hermes-agent-default"
   → 获得 ClientAuthCertificate + CodeSigningCertificate
-  → 用 CodeSigningCertificate 对 wasm_module_hash + metadata 签名，再调用 swarm_deploy
+  → 用 CodeSigningCertificate 对 `SWARM-DEPLOY-V1`（`wasm_module_hash + metadata_hash + identity + slot/version/audience`）签名，再调用 swarm_deploy
 
 凭据管理：
   - AI agent 必须持久化 (username, private_key reference, certificate chain, recovery material)
