@@ -83,7 +83,7 @@ AI agent 通过 MCP 部署 WASM，与人类玩家走相同的证书路径：
 3. swarm_register_challenge  → 获取 PoW challenge
 4. swarm_submit_csr          → 提交 CSR + PoW proof → 获得 CertificateBundle
 5. 编写/编译 WASM + mod.toml → TypeScript SDK 或 Rust SDK
-6. 构建 DeployPayload         → version_counter + module_hash + metadata_hash + signed_at
+6. 构建 DeployPayload         → version_counter + wasm_module_hash + metadata_hash + audience + signed_at
 7. 用 CodeSigningCertificate 私钥签名 DeployPayload
 8. swarm_deploy              → 提交 WASM bytes + mod.toml + DeployPayload + 证书链
 9. swarm_explain_last_tick   → 验证第一个 tick 执行结果
