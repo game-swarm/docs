@@ -76,15 +76,22 @@ neutral ──Claim──→ reserved ──RCL 1──→ owned ←──→ co
                  │  (World ≤400ms、Arena ≤50ms        │
                  │   仅为性能目标，非硬超时)            │
                  │  ┌─────────────────────────┐     │
-                 │  │ Phase 2a: 命令循环        │     │
-                 │  │ 逐条校验 + 逐条应用       │     │
-                 │  │ (基于当前 Bevy World)    │     │
-                 │  │ Attack/Heal 生成         │     │
-                 │  │ PendingDamage/Heal       │     │
-                 │  │ intent 不直接改 HP       │     │
-                 │  │ (R33 B7: pre-combat      │     │
-                 │  │  状态读取)               │     │
-                 │  │ Spawn 只校验不入队        │     │
+                 │  │ Phase 2a: 排序命令循环      │     │
+                 │  │ for cmd in sorted(         │     │
+                 │  │   global_queue,            │     │
+                 │  │   key=command.sort_key):   │     │
+                 │  │   match cmd.kind:          │     │
+                 │  │   Move/Harvest/...→[S01]    │     │
+                 │  │   Action→action_dispatch    │     │
+                 │  │   (per-command handler,     │     │
+                 │  │   非 manifest system)       │     │
+                 │  │   Claim→[S02] ...          │     │
+                 │  │ 逐条校验+逐条应用            │     │
+                 │  │ (基于当前 Bevy World)      │     │
+                 │  │ Action→PendingDamage/Heal  │     │
+                 │  │ intent 不直接改 HP         │     │
+                 │  │ Spawn → 校验+扣费+入队     │     │
+                 │  │ PendingSpawn (S08 消费)    │     │
                  │  └─────────────────────────┘     │
                  │  ┌─────────────────────────┐     │
                  │  │ Phase 2b: ECS Systems     │     │
@@ -379,7 +386,7 @@ Source E1: energy = 5
 
 以下规则防止 inline 执行中的时间窗口攻击——所有规则在 `validate_and_apply()` 单一路径中强制执行：
 
-1. **Spawn pending 不可见**：Phase 2a 中 Spawn 命令只校验不入队。新 drone 在 Phase 2b spawn_system 中统一创建。同 tick 后续命令无法看到、操作、或依赖尚未创建的 drone。
+1. **Spawn pending 不可见**：Phase 2a 中 Spawn 命令校验 + 扣费 + 入队 `PendingSpawn`。新 drone 在 Phase 2b spawn_system (S08) 中统一创建。同 tick 后续命令无法看到、操作、或依赖尚未创建的 drone。
 2. **Hack 状态下的所有权**：Hack 施加控制锁后，原 owner 的后续 friendly/attack/recycle 命令仍以**原始 owner** 身份校验（Hack 不立即转移所有权）。5 tick 后实际夺取时 handler 切换 owner。
 3. **Per-drone per-tick action quota**：每 drone 每 tick 最多执行 1 个 main action（Move/Attack/Harvest/Build/Heal 及其特殊攻击变体）。Transfer/Withdraw 不计入此配额但受 carry 容量约束。此限制防止 Transfer chain resource amplification。
 4. **fuel/wall-clock 耗尽**：WASM 执行中 fuel 耗尽或 wall-clock timeout → 完整输出丢弃（不读取部分输出），不计 refund。

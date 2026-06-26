@@ -21,17 +21,26 @@
 
 ```
 Serial Spine:
-  ┌─────────────────────────────────────────────────────┐
-  │ Phase 2a: Inline Command Handlers (serial)           │
-  │ [S01] command_executor     (Move/Harvest/Transfer/  │
-  │                             Withdraw/Build/Spawn/   │
-  │                             Recycle/Claim/Global)   │
-  │ [A01] action_dispatch      (ActionRegistry dispatch)│
-  │ [S02] controller_system    (phase 2a inline)        │
-  │ [S03] build_system         (Build)                  │
-  │ [S04] recycle_system       (Recycle → DeathMark)    │
-  │ [S05] transfer_system      (Transfer/Withdraw)      │
-  │ [S06] spawn_validator      (validate, no creation)  │
+  Phase 2a: Sorted Command Loop (inline, per-command handler dispatch)
+    ┌─────────────────────────────────────────────────────┐
+    │ for cmd in sorted(global_queue, key=command.sort_key):│
+    │   match cmd.kind:                                    │
+    │     Move/Harvest/Transfer/Build/Spawn/Recycle/... →  │
+    │       [S01] command_executor (inline handler)        │
+    │     Action { type, payload } →                       │
+    │       action_dispatch handler (per-command,          │
+    │       not a manifest system)                         │
+    │     Claim/UpgradeController →                        │
+    │       [S02] controller_system (inline)               │
+    │     Build (structure) →                              │
+    │       [S03] build_system (inline)                    │
+    │     Recycle →                                        │
+    │       [S04] recycle_system (inline)                  │
+    │     Transfer/Withdraw →                              │
+    │       [S05] transfer_system (inline)                 │
+    │     Spawn (validate only) →                          │
+    │       [S06] spawn_validator (inline)                 │
+    └─────────────────────────────────────────────────────┘
   ├─────────────────────────────────────────────────────┤
   │ Phase 2b: Deferred Systems                           │
   │ [S07] death_marker         (serial, frees RoomCap)  │
@@ -74,13 +83,13 @@ Serial Spine:
   └─────────────────────────────────────────────────────┘
 ```
 
-**共计 31 个 system**（R30 B1: 新增 S22a leech_buffer + S22b fabricate_buffer，共 31）。所有特殊攻击状态推进由 `status_advance_system` (S22) **唯一**串行处理——S16-S22b 只写 typed buffer，不直接修改 StatusState。
+**共计 31 个 system**（R30 B1: 新增 S22a leech_buffer + S22b fabricate_buffer，共 31）。**A01 action_dispatch 是 Phase 2a per-command handler，不计入 manifest system 表**。所有特殊攻击状态推进由 `status_advance_system` (S22) **唯一**串行处理——S16-S22b 只写 typed buffer，不直接修改 StatusState。
 
 **R35 D3 关键修复**：
 - **S22 移出 Parallel Set B**：作为串行唯一 StatusState writer，不再与其他 system 并行。
 - **S16-S22b 只写 typed buffer**：`HackBuffer`/`DrainBuffer`/`OverloadBuffer`/`DebilitateBuffer`/`DisruptBuffer`/`FortifyBuffer`/`LeechBuffer`/`FabricateBuffer`——由 S22 统一消费并写 StatusState。
 - **S01 不处理 combat**：`Attack`/`RangedAttack`/`Heal` 不再是 `CommandAction` variant，也不由 S01 写 `HitPoints` 或 `Entity(hits)`；combat action 由 A01 action_dispatch 校验后写入 `PendingDamage`/`PendingHeal` intent buffer。
-- **A01 Action dispatch**：Phase 2a 中独立于 S01 运行，读取 `CommandAction::Action { type, payload }` → `ActionRegistry` 查找 handler → validate/apply。vanilla action（3 basic combat + 8 special）统一走 registry 元数据校验。
+- **A01 Action dispatch**：Phase 2a sorted command loop 中 `CommandAction::Action { type, payload }` 的 per-command handler——不是 manifest system。读取 `ActionRegistry` 查找 handler → validate/apply。vanilla action（3 basic combat + 8 special）统一走 registry 元数据校验。
 - **S14 从 ActionRegistry intent buffer 读取**：Reducer 从 action handler 产生的 status intent buffer 读取 intent → merge sort → reducer resolve → 交付 S22。
 
 ---
@@ -101,7 +110,7 @@ Serial Spine:
 - **Iteration key**: `command.sort_key` (priority_class, shuffle_index, source_rank, sequence, command_hash)
 - **Note**: Per-drone per-tick action quota enforced inline: max 1 main action per drone. Transfer/Withdraw 不计入但受 carry 容量约束。S01 不再处理 `Attack`/`RangedAttack`/`Heal` 或任何 special action，不写 `HitPoints`/`Entity(hits)`；combat 类 action 只能通过 A01 handler 写 `PendingDamage`/`PendingHeal` intent 到 combat buffer，实际 HP 修改由 S15 统一执行。
 
-### A01: action_dispatch (Phase 2a registry dispatch)
+### A01: action_dispatch (Phase 2a per-command handler — not a manifest system)
 - **ID**: `action_dispatch`
 - **Phase**: 2a inline, independent of S01
 - **Handled Commands**: `CommandAction::Action { type, payload }`
@@ -221,12 +230,12 @@ Serial Spine:
 
 ### S15: damage_application (Combat HitPoints writer)
 
-**S15 是 combat (damage + heal) HitPoints writer**。所有攻击/治疗的 HP 变化先写入 `PendingDamage`/`PendingHeal` typed buffer，再由 S15 统一 reduce + canonical key sort → 原子写入 `Entity.hits`。S10 regen → `PendingHeal`，S22 Leech 等 status effect → `PendingDamage`——均不直接写 HitPoints。S24 decay 是独立 world maintenance writer，串行执行于 S22/S23 之后。
+**S15 是 combat (damage + heal) HitPoints writer**。所有攻击/治疗的 HP 变化先写入 `PendingDamage`/`PendingHeal` typed buffer，再由 S15 统一 reduce + canonical key sort → 原子写入 `Entity.hits`。S10 regen → `PendingHeal`。S24 decay 是独立 world maintenance writer，串行执行于 S22/S23 之后。
 
 Canonical key 归约：S15 对 `PendingDamage[target_id]` 和 `PendingHeal[target_id]` 按 `target_id` 升序归并——同 target 的 damage 先合并（`net_damage = Σ attack - Σ heal`），再一次性写入 `Entity.hits`。这保证同一 entity 的 HitPoints 只在 S15 中被写入一次。
 
 - **ID**: `dmg_apply`
-- **HitPoints 写入契约**: **Combat (damage + heal) HitPoints writer** — S15 是战斗伤害/治疗的统一 HitPoints 写入者。S10 regen → `PendingHeal`；S22 Leech 等 status effect → `PendingDamage`。S24 decay 是独立 world maintenance writer（`Without<DeathMark>` filter），在 S22→S23→S24 串行中执行。CI 验证：S10/S22 不得直接写 HitPoints（必须走 buffer）；S24 的 HitPoints 写仅在 decay 域（验证 decay 写而不引起 combat buffer 冲突）。
+- **HitPoints 写入契约**: **Combat (damage + heal) HitPoints writer** — S15 是战斗伤害/治疗的统一 HitPoints 写入者。S10 regen → `PendingHeal`。S24 decay 是独立 world maintenance writer（`Without<DeathMark>` filter），在 S22→S23→S24 串行中执行。CI 验证：S10 不得直接写 HitPoints（必须走 buffer）；S24 的 HitPoints 写仅在 decay 域（验证 decay 写而不引起 combat buffer 冲突）。
 - **Reads**: PendingDamage buffer, PendingHeal buffer, Entity (armor, resistances)
 - **Writes**: Entity (hits), DeathMark (if hits ≤ 0)
 - **Must run after**: S11, S12, S13, S14
@@ -255,7 +264,7 @@ Canonical key 归约：S15 对 `PendingDamage[target_id]` 和 `PendingHeal[targe
 
 - **ID**: `status_adv`
 - **Reads**: `pending_intents` (from S14), all typed buffers (`HackBuffer`/`DrainBuffer`/`OverloadBuffer`/`DebilitateBuffer`/`DisruptBuffer`/`FortifyBuffer`/`LeechBuffer`/`FabricateBuffer` from S16-S22b), existing StatusState
-- **Writes**: **All StatusState components** (`HackState`, `DrainState`, `OverloadState`, `DebilitateState`, `DisruptState`, `FortifyState`, `LeechState`, `FabricateState`), PendingDamage buffer, Entity (armor/efficiency/interrupted via effect application), ResourceAmount (drain), FuelBudget (overload)
+- **Writes**: **All StatusState components** (`HackState`, `DrainState`, `OverloadState`, `DebilitateState`, `DisruptState`, `FortifyState`, `LeechState`, `FabricateState`), Entity (armor/efficiency/interrupted via effect application), ResourceAmount (drain), FuelBudget (overload)
 - **Must run after**: S14, S16-S22b
 - **Must run before**: S23
 - **Note**: 统一消费 S14 的 canonical sorted intents 和 S16-S22b 的 typed buffers → 唯一推进所有 StatusState（duration--, expire, apply new intents, apply buffer effects）。
@@ -272,7 +281,8 @@ for each intent in pending_intents (canonically sorted):
         Debilitate → Entity.efficiency *= debilitate_factor; duration = debilitate_duration
         Disrupt    → Entity.interrupted = true; duration = disrupt_duration
         Fortify    → Entity.armor += fortify_amount; duration = fortify_duration
-        Leech      → PendingDamage += leech_damage; Entity.age += age_transfer; duration = leech_duration
+        Leech      → ResourceAmount -= leech_drain; Entity.age += age_transfer; duration = leech_duration
+                                              // (不写 PendingDamage — Leech HP 影响由 age acceleration + aging/decay 自然覆盖)
         Fabricate  → Entity.body_parts.modify(fabricate_mod); duration = fabricate_duration
 
 // Phase 2: Apply buffer effects from S16-S22b (ongoing status tick effects)
@@ -283,7 +293,7 @@ for each entity with active StatusState:
     if DebilitateBuffer[entity] → apply efficiency modifier
     if DisruptBuffer[entity] → apply interrupt flag
     if FortifyBuffer[entity] → apply armor modifier
-    if LeechBuffer[entity] → enqueue PendingDamage + apply age transfer
+    if LeechBuffer[entity] → apply resource drain + age transfer (不写 PendingDamage)
     if FabricateBuffer[entity] → apply body part modification
 
 // Phase 3: Decrement durations + expire
@@ -429,13 +439,12 @@ S22 `status_advance_system` 迭代实体顺序：`sorted(entities_with_active_st
 | S15 dmg_apply | - | W | - | - | - | - | W | - | R | - | - | - | - | - |
 |   |   | **combat/heal domain** |   |   |   |   |   |   |   |   |   |   |   |
 
-> **Multi-writer HitPoints contract**: HitPoints 由三个独立 writer 按严格串行顺序写入，无竞争：
+> **Multi-writer HitPoints contract**: HitPoints 由两个独立 writer 按严格串行顺序写入，无竞争：
 > - **S10 regen** → `PendingHeal` buffer → S15 结算（不直接写 HitPoints）
 > - **S15 dmg_apply** → combat damage + heal + regen 统一结算写入 HitPoints
 > - **S24 decay** → world maintenance decay (Structure hits--)，在 S15/S22/S23 之后执行，S24 的 HP 写与 combat 域分离
-> - **S22 status_advance** → Leech 等 status effect HP 影响 → `PendingDamage` buffer → S15 结算（不直接写 HitPoints）
 > 
-> CI 验证规则：S10/S22 对 HitPoints 的 matrix entry 为 R（只读，写操作必须走 buffer）；S15 为 W（combat domain）；S24 为 W（decay domain，`Without<DeathMark>` filter）。S15→S22→S23→S24 串行执行保证无数据竞争。
+> CI 验证规则：S10 对 HitPoints 的 matrix entry 为 R（只读，写操作必须走 buffer）；S15 为 W（combat domain）；S24 为 W（decay domain，`Without<DeathMark>` filter）。S15→S22→S23→S24 串行执行保证无数据竞争。
 | **S16 hack_buf** | - | - | - | - | - | - | - | R | - | - | - | **W** | **R** | - |
 | **S17 drain_buf** | - | - | - | W | - | - | - | - | - | - | - | **W** | **R** | - |
 | **S18 overload_buf** | - | - | - | W | - | - | - | - | - | - | - | **W** | **R** | - |
