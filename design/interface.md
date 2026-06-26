@@ -55,7 +55,7 @@ MCP 不做游戏动作。不存在 `swarm_move`、`swarm_attack`、`swarm_build`
 WASM 模块通过 **deferred command model** 与引擎交互：
 
 ```
-部署:  上传 WASM → 验证 → 预编译为原生码 → 存储（按 module_hash 索引）
+部署:  上传 WASM → 验证 `wasm_module_hash` → 预编译为原生码 → 存储（按服务端派生 `compiled_artifact_hash` 索引）
 tick:  tick(snapshot) → Command[]
 ```
 
