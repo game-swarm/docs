@@ -475,18 +475,15 @@ Staging GC 策略:
 
 ```
 处理流程:
-  1. 在 staging 写入完成后，收集 cross_room_intent_set（按确定性顺序：room_id source 升序）
-  2. 对每个 intent:
-     ├─ source room staging 写入成功 + target room staging 写入成功 → intent 执行
-     ├─ 任一 room staging 写入失败 → 该 intent 及其下游依赖 → REJECTED
-     └─ 记录 rejection 到 cross_room_rejection_log
+  1. 先在 Bevy World 内裁决所有跨房间操作：对 cross_room_intent_set 按确定性顺序（room_id source 升序）逐一 resolve，应用跨房间状态变更到 Bevy World
+  2. 裁决完成后，对每个 affected room 以最终 Bevy World 状态写入 staging payload
   3. 所有跨房间 intent 的最终结果体现在 GlobalTickCommit 的 manifest 中——成功或 rejecting，无 partial
   4. 超时处理 (timeout_ms = 3000):
      └─ 超时 → tick abandon + global snapshot restore（全局原子模型——任何未完成 cross-room intent 均触发 tick 放弃）
 
-**关键变更（Shadow Write 模型下）**：
-- 跨房间操作不再依赖「per-room 已 commit」语义——source/target room 的 staging 写入在 GlobalTickCommit 中被统一 publish 或统一放弃。
-- 不存在「source room 已提交、target room 未提交」产生的 partial-cross-room 残留状态——因为 staging 行不是已提交状态。
+**关键变更（D6 裁决）**：
+- 跨房间操作在 staging 写入**前**于 Bevy World 内裁决——不再依赖 staging 写入完成后的 post-hoc 合并。
+- 裁决后的世界状态直接写入 room staging payload——无需 overlay 合并路径。
 ```
 
 #### 3.5.5 GlobalTickCommit 结构
