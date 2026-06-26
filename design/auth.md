@@ -110,7 +110,7 @@ issue_certificate_bundle(
     public_key: Ed25519PublicKey,
     usages: ["client_auth", "code_signing", ...],
     scopes: ["swarm:deploy", "swarm:read", ...],
-    audience: "swarm-aud-v1:cli-rest:<server_id>:<world_id>:<player_id>",
+    audience: "swarm-aud-v1:<transport>:<server_id>:<world_id>:<player_id>",
     ttl_policy: CertificateTtlPolicy,
 ) → CertificateBundle
 ```
@@ -281,7 +281,7 @@ expires_at: <challenge_expires_at>
 | Certificate | 用途 | TTL | 约束 |
 |-------------|------|-----|------|
 | `ClientAuthCertificate` | MCP 查询、session renew、普通认证请求 | 24h | 只能用于 `SWARM-REQUEST-V1` |
-| `CodeSigningCertificate` | WASM/module deploy 签名 | 30–180 days（默认 30d，world.toml 可配） | 只能签 `wasm_module_hash + metadata` |
+| `CodeSigningCertificate` | WASM/module deploy 签名 | 30–180 days（默认 30d，world.toml 可配） | 只能签 `SWARM-DEPLOY-V1` 载荷：`wasm_module_hash + metadata_hash + identity + slot/version/audience`；不得签 `compiled_artifact_hash` |
 | `AdminCertificate` | 管理操作、证书治理、吊销、CA/trust policy 管理 | 1h | admin scope，敏感操作可要求双签；只能签给 `admin_device` profile |
 | `FederationCertificate` | 跨服务器身份映射 | 24h | 受 federation trust policy 限制 |
 
@@ -292,8 +292,9 @@ expires_at: <challenge_expires_at>
 Swarm 不提供服务器 timestamp authority，也不新增 timestamp 审计。`CodeSigningCertificate` 只要求在部署请求提交时有效：
 
 - 新部署或更新模块时，`CodeSigningCertificate` 必须未过期、未吊销，且 `usage=code_signing`
-- 部署成功后，`wasm_module_hash + metadata` 进入世界状态；`compiled_artifact_hash` 作为运行时 artifact 完整性记录；证书自然过期不影响已部署模块继续运行
-- 证书过期后，用户若要重新部署同一模块，只需用新证书重新签署同一个 `wasm_module_hash + metadata`
+- 客户端签名只覆盖提交前可知字段：`wasm_module_hash`、`metadata_hash`、`player_id`、`world_id`、`module_slot`、`version_counter`、`signed_at`、`audience`；`compiled_artifact_hash` 是服务端编译后派生字段，不进入客户端签名 payload，不接受客户端自报
+- 部署成功后，deploy manifest 同时记录 `signed_payload_hash = Blake3(canonical SWARM-DEPLOY-V1 payload)` 与服务端派生的 `compiled_artifact_hash`；`wasm_module_hash + metadata_hash` 用于代码签名/审计，`compiled_artifact_hash` 只用于运行时 artifact/cache 完整性
+- 证书过期后，用户若要重新部署同一模块，只需用新证书重新签署同一个 `wasm_module_hash + metadata_hash`
 - 证书吊销是安全事件；服务器可按 revocation reason 冻结、回滚或继续允许既有模块运行
 - `accepted_at_tick` / `accepted_at_server_time` 可作为已有部署记录的一部分，但不作为“过期证书仍可授权新部署”的依据
 
@@ -345,15 +346,23 @@ Dragonfly nonce 仅用于 `read_replay_safe` 和 `idempotent_mutation`。所有 
 
 #### MCP/REST 方法授权矩阵
 
-每个 MCP 方法必须标注以下维度。**Admin category 的权威 per-tool rate limit 以 [API Registry §3.2](../specs/reference/api-registry.md#32-game-api-工具清单-57) 和 §3.1 通用 Rate Limit 表为准**——本表仅作权限模型示例，不得声明可冲突的 admin rate limit 数值。
+每个 MCP 方法必须标注以下维度。**Admin category 的权威 per-tool rate limit 以 [API Registry §3.2](../specs/reference/api-registry.md#32-game-api-工具清单-57) 和 §3.1 通用 Rate Limit 表为准**——本表仅作权限模型示例，不得声明可冲突的 admin rate limit 数值。`Auth Mode` 是工具级强制认证模式，浏览器入口也必须按该列升级到应用层证书签名，不得仅凭 Web session/JWT 放行敏感工具。
 
-| 方法 | Replay Class | Required Scope | Rate Limit | Visibility Filter | Admin Override |
-|------|-------------|----------------|------------|-------------------|----------------|
-| `swarm_get_snapshot` | read_replay_safe | swarm:read | 10/s | fog_of_war | no |
-| `swarm_deploy` | deploy_mutation | swarm:deploy | 1/5s | owner | no |
-| `swarm_submit_csr` | non_idempotent_mutation | swarm:register | 1/30s | none | no |
-| `swarm_revoke_certificate` | admin_critical | swarm:admin | admin（见 API Registry） | admin scope | required |
-| `swarm_admin_create_password_reset` | admin_critical | swarm:admin:recovery | admin（见 API Registry） | admin scope | dual-audit |
+| Auth Mode | 语义 |
+|-----------|------|
+| `web_session_ok` | 浏览器只读/低风险工具可使用 Web session 兼容层；Agent/CLI 仍使用应用层证书 |
+| `app_cert_required` | 必须使用 `ClientAuthCertificate` 或 `CodeSigningCertificate` + canonical request/deploy 签名；浏览器入口也必须提供应用层证书签名 |
+| `admin_cert_required` | 必须使用 `AdminCertificate`，并按工具 schema 执行双签/冷却/审计 |
+
+| 方法 | Replay Class | Auth Mode | Required Scope | Rate Limit | Visibility Filter | Admin Override |
+|------|-------------|-----------|----------------|------------|-------------------|----------------|
+| `swarm_get_snapshot` | read_replay_safe | `web_session_ok` | swarm:read | 10/s | fog_of_war | no |
+| `swarm_deploy` | deploy_mutation | `app_cert_required` | swarm:deploy | 1/5s | owner | no |
+| `swarm_submit_csr` | non_idempotent_mutation | `web_session_ok` + CSR signature + §5.2 admission | swarm:register | 见 §5.2 | none | no |
+| `swarm_revoke_certificate` | admin_critical | `admin_cert_required` | swarm:admin | admin（见 API Registry） | admin scope | required |
+| `swarm_admin_create_password_reset` | admin_critical | `admin_cert_required` | swarm:admin:recovery | admin（见 API Registry） | admin scope | dual-audit |
+
+敏感 profile/security settings、证书吊销、恢复确认、部署、管理员操作不得使用纯 Web session；它们在 `browser-http` 入口也必须携带 `Swarm-Certificate-Chain`、`Swarm-Signature` 和匹配的 certificate audience。
 
 完整矩阵见 `interface.md` MCP 工具表。
 
@@ -417,6 +426,8 @@ Ed25519 签名由此字节串产生。验签时按相同规则重建输入。
 
 应用层证书允许 HTTP、不可信反向代理或本地离线网络中的身份认证和请求完整性校验。首次访问 HTTP 服务器时，客户端必须展示 `server_id + Server Root CA fingerprint`，由用户人工确认并写入客户端证书存储（TOFU / explicit pinning）。完成 pinning 后，客户端不再依赖外部 TLS/WebPKI 判断该 Swarm 服务器身份，而是验证应用层证书链是否能追溯到已保存的 Server Root CA。
 
+Browser 与 Agent/CLI HTTP 入口必须分离：Browser endpoint 只接受配置白名单内的 `Origin`、`Host`、CSRF 与 Fetch Metadata，并使用 `browser-http` audience；Agent/CLI endpoint 不依赖 `Origin`，必须验证应用层证书签名并拒绝 browser-style Origin/CSRF header，防止跨协议混淆。
+
 HTTP 场景下：
 
 - 攻击者无法伪造服务器应用层证书链、用户签名或篡改已签名 body
@@ -424,6 +435,8 @@ HTTP 场景下：
 - nonce/timestamp 必须强制启用，重放窗口默认不超过 60 秒
 - 涉及恢复 token、私密邮箱、管理员恢复链接时，payload 应加密给服务器应用层证书 public key
 - 服务端域名真实性由 `server_id / root fingerprint pinning` 保证，不由外部 TLS 证书保证
+
+Sandbox seccomp 默认禁止 `fork`、`vfork` 与 `clone(CLONE_VFORK)`。若 Wasmtime 运行时确需创建内部线程，只允许精确线程 clone flags（`CLONE_VM | CLONE_FS | CLONE_FILES | CLONE_SIGHAND | CLONE_THREAD | CLONE_SYSVSEM | CLONE_SETTLS | CLONE_PARENT_SETTID | CLONE_CHILD_CLEARTID` 加必要信号位），并由 BPF mask 校验；不允许通过 `CLONE_VFORK` 或缺少 `CLONE_THREAD` 的 clone 创建新进程。
 
 **安全评审结论 (S-H1/S-H2)**：
 - 浏览器端 token/certificate material 禁止存 localStorage。使用 HttpOnly Secure cookie + WebCrypto non-extractable key 或 OS keychain（见 §14.3）。
@@ -804,7 +817,7 @@ WebSocket 连接按客户端类型分为两条安全路径：
 
 服务端:
   1. 验证证书链 → 提取 public_key + usage(mcp_query)
-  2. 验证 canonical payload: "SWARM-WS-V1\n<cert_id>\n<timestamp>\n<nonce>"
+  2. 验证 canonical payload: "SWARM-WS-HANDSHAKE-V1\n<transport>\n<server_id>\n<world_id>\n<cert_id>\n<timestamp>\n<nonce>\n<audience>"
   3. 验证 nonce 未使用（FDB 去重）
   4. 验证 timestamp 在 ±30s 窗口内
   5. 建立认证 WebSocket → 会话绑定 (cert_id, player_id, current_tick)
@@ -870,9 +883,9 @@ Admin MCP tools 的 input schema 必须显式包含 `admin_certificate_id`、`ad
 
 | 维度 | CSR 提交 | 恢复凭据校验 | challenge 申请 |
 |------|----------|--------------|---------------|
-| Per IP | — | 10/min | 10/min |
-| Per username | — | 10/min, 5 次失败锁 5min | — |
-| 全局 | 受 PoW 保护 | 1000/min | 100/min |
+| Per IP | 见 §5.2 多层准入链 | 10/min | 10/min |
+| Per username | 见 §5.2 audit throttle | 10/min, 5 次失败锁 5min | — |
+| 全局 | 见 §5.2 semaphore + bounded queue | 1000/min | 100/min |
 
 ##### CSR Admission Control（多维防护）
 
@@ -942,7 +955,7 @@ swarm_deploy:
 - `world_id`：世界标识
 - `subject_id`：主体标识——对于玩家操作为 `player_id`，对于服务间调用为 `server_id`
 
-禁止宽松匹配——audience 必须精确匹配 Canonical Request 中的对应字段。Gateway 在入口处验证 `audience` 字段与请求上下文（目标 server/world/player/transport）完全一致。`browser-ws` 不作为证书 audience：浏览器公开订阅统一使用 `spectator-ws`，已认证 Agent WebSocket 统一使用 `agent-ws`。
+禁止宽松匹配——audience 必须精确匹配 Canonical Request 中的对应字段。Gateway 在入口处验证 `audience` 字段与请求上下文（目标 server/world/player/transport）完全一致。浏览器 HTTP 请求使用 `browser-http`；Agent MCP 使用 `agent-mcp`；CLI REST 使用 `cli-rest`。`browser-ws` 不作为证书 audience：浏览器公开订阅统一使用 `spectator-ws` endpoint label（无应用层证书），已认证 Agent WebSocket 统一使用 `agent-ws`。
 
 #### 证书链验证缓存
 
@@ -974,9 +987,9 @@ swarm_deploy:
 |------|------|------|
 | `swarm_register_challenge` | 10/min per IP | Dragonfly 计数器 |
 | `swarm_get_server_trust` | 60/min per IP | Dragonfly 计数器 |
-| CSR 提交 | PoW 自身限速 | 无额外 IP 限制 |
+| CSR 提交 | 强制 §5.2 多层 admission control | PoW + per-IP + per-ASN + global semaphore + bounded queue + audit throttle |
 | 恢复凭据校验 | 10/min per IP + 5 次失败锁 5min per username | Dragonfly + FDB |
-| Admin 恢复链接 | 需 AdminCertificate + signed request | 认证后无额外限制 |
+| Admin 恢复链接 | 需 AdminCertificate + signed request | admin tool rate limit + 双人审计 |
 
 #### 安全 Epoch Bump 运维行为
 
