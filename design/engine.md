@@ -198,9 +198,9 @@ Swarm 支持三个扩展层级：
   └── 收集全部指令到指令队列
 
 阶段二：执行 (EXECUTE) — 约束并行
-  ├── 玩家顺序种子洗牌（seed = hash(tick_number, world_seed)）
-  ├── Phase 2a: 命令循环（逐条 inline 应用）
-  │   ├── 对每条指令（按洗牌后顺序 + 玩家内 sequence 排序）:
+  ├── 将全部玩家命令按 canonical command order 排序（player order seed + player_id + sequence + command_id）
+  ├── Phase 2a: sorted command loop（逐条 inline 应用）
+  │   ├── 对每条指令（严格按 canonical command order）:
   │   │   ├── 对照**当前** Bevy World 状态校验（非快照）
   │   │   ├── 合法 → 立即通过对应 ECS system 应用变更
   │   │   ├── 资源竞争 → 先到先得（先执行者优先）
@@ -222,7 +222,7 @@ Swarm 支持三个扩展层级：
 
 | 阶段 | 执行模型 | 包含的命令/系统 | 分类原则 |
 |------|---------|---------------|---------|
-| **Phase 2a (Inline)** | 串行 inline 应用 | Move, Harvest, ClaimController, Build, Recycle, Transfer, Withdraw, TransferToGlobal, TransferFromGlobal, Spawn (validate only), Action dispatch (via ActionRegistry) | **玩家提交的命令**——效果依赖执行顺序，且「先到先得」竞争有意义。对 Bevy World 做立即修改或产生命令 intent，后续命令基于最新状态校验 |
+| **Phase 2a (Inline)** | sorted command loop 串行 inline 应用 | Move, Harvest, ClaimController, Build, Recycle, Transfer, Withdraw, TransferToGlobal, TransferFromGlobal, Spawn (validate only), Action dispatch (via ActionRegistry) | **玩家提交的命令**——先将全部命令合并为一个 canonical sorted command list，再逐条执行。效果依赖执行顺序，且「先到先得」竞争有意义。对 Bevy World 做立即修改或产生命令 intent，后续命令基于最新状态校验 |
 
 **Move 作为 Main Action 的设计理由**：Move 与 Harvest/Attack/Build 竞争同一个 per-drone per-tick action slot。此设计偏离了大多数 RTS 的「移动 + 行动」双动作模型，是 Swarm 有意的简化和 philosophic commitment：
 
@@ -463,6 +463,7 @@ total_reduction = Σ age_reduction per drone serviced (up to repair_capacity)
 
 #### 3.4.7 FDB 写入策略
 
+- Cross-room 操作先在 tick 内权威 Bevy World 中完成裁决并应用状态变更；只有裁决后的 affected rooms 才写入最终 content-addressed staging payload。staging payload 不承载待裁决 overlay，GlobalTickCommit 只发布已经反映跨房间裁决结果的 manifest/head/hash-chain。
 - FDB 存 head/manifest/hash/pointer——小事务推进 world head
 - 大型 RichTraceBlob/keyframe 进入对象存储或 append-only log
 - 每 K=100 tick 写入一次 keyframe，其余 tick 写入 delta

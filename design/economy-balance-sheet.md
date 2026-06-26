@@ -221,7 +221,7 @@ upkeep = base_upkeep × rooms × (1 + rooms / room_soft_cap)
 | `controller_repair_limit` | range/capacity/queue | range/capacity/queue | range/capacity/queue |
 | `depot_repair_cost` | local depot resources | local depot resources | local depot resources |
 
-> **存储税权威源**：tier 定义见 `design/gameplay.md` §8「累进存储税」和 `specs/core/08-resource-ledger.md` §StorageTax。Tutorial 全免，Vanilla/Standard 使用相同 tier 结构（税率由 `global_storage_tax_tiers` 配置）。
+> **存储税权威源**：tier 定义见 `design/gameplay.md` §8「累进存储税」和 `specs/core/08-resource-ledger.md` §StorageTax。Tutorial 全免，Vanilla/Standard 使用相同 tier 结构（税率由 `storage_tax_tiers` 配置）。
 >
 > **Allied Transfer 模式差异**：Standard 默认启用 Restricted Allied Transfer（fee=200bp, delay=200 tick, cooldown=500 tick, daily_cap=10000, intercept enabled）。Novice/Tutorial 可通过 world.toml 禁用 (`allied_transfer_enabled = false`)。Arena 模式禁用 Allied Transfer（竞技公平）。
 

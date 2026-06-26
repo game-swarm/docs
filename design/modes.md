@@ -82,6 +82,8 @@ NPC 掉落金额引用 Resource Ledger `PvEAward` tier 表：Creep 映射为 T1 
 玩家通过扩张自然遭遇更强 PvE——不需要「副本入口」或「排队系统」。PvE 难度是**地理属性**。
 
 > **扩展方向**：深度 PvE（Boss 战多阶段 AI、副本区域链、阵营声望、讨伐进度）不作为原生引擎内容——属于 overhaul 模组范畴。模组可通过 Rhai `actions.*` API（见 specs/core/07-world-rules.md §5.1 能力命名空间）注册自定义 NPC 行为、Boss 阶段触发器和声望系统。引擎仅提供 NPC 实体基础设施（HP、伤害、巡逻/驻守 AI、掉落表、事件钩子）——不硬编码 Boss 机制。
+>
+> **RFC-MERCHANT**：游商、交易事件、动态 NPC 商店和 `MerchantTrade` 账本操作不属于当前 World PvE 内容。若后续引入，必须先在 Resource Ledger 中定义预算、费率、TickTrace、transfer lock 与反滥用规则。
 
 ### 9.1 Arena 房间模型
 
