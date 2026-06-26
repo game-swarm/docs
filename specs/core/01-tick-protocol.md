@@ -817,6 +817,16 @@ assert_eq!(replayed.entity_count, recorded.entity_count);
 
 **Worker pool 语义**：PlayerExecutor worker pool 水平可扩展——运营商根据 active_players 调整 worker_pool_max 即可消除排队。Per-player sandbox deadline（2500ms World / 200ms Arena）独立——每个 worker 上的玩家独立计时，互不影响。详见 `design/engine.md` §3.4.2。
 
+**三层资源口径（R35 B3）**：容量推导依赖统一的资源模型——
+
+| 层 | 单位 | 用途 | 确定性 |
+|----|------|------|:--:|
+| `wasmtime_fuel_units` | fuel units | 确定性计费——玩家代码执行消耗，跨引擎版本一致 | ✅ |
+| `sandbox_wall_deadline_ms` | ms | 防 hang——单次 COLLECT 超时保护，不保证跨运行一致性 | ❌ |
+| `cpu_cgroup_quota` | μs/period | OS 防 DoS——cgroup 隔离，per-worker 级 | ❌ |
+
+容量公式必须使用经 benchmark 校准的 `fuel_schedule_version → calibrated_fuel_per_core_ms`。默认 `worker_pool_max = 256`——1000 player 推导需运维调至 1000 或使用分片，不是默认容量。cgroup `cpu.max` 与 sandbox deadline 的解耦保证单个坏玩家不能耗尽其他玩家的 COLLECT 时间窗。
+
 ### 8.2 统一预算表
 
 | 阶段 | 资源 | 预算 | 超限行为 | 退还 |
