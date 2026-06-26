@@ -19,9 +19,9 @@ WASM 模块通过 `tick(snapshot) → CommandIntent[]` JSON 返回指令。
 
 `player_id`、`source`、`tick` 由服务端 Source Gate 注入后形成 RawCommand（见 `specs/core/02-command-validation` §2）。
 
-## 指令列表 — 21 指令（11核心+2Global+8特殊）— 见 [API Registry](api-registry.md) §1
+## 指令列表 — 11 Core + Action dispatch（11 vanilla + mod）— 见 [API Registry](api-registry.md) §1
 
-以下 13 种指令对应 `CommandAction` enum 的 13 个核心/Global 变体；8 种特殊攻击通过 `CommandAction::Custom(type)` 路由到 `CustomActionRegistry`（见下方「特殊攻击」节）。**权威指令清单见 [API Registry](api-registry.md) §1**（21 指令：11核心+2Global+8特殊攻击）。
+以下 11 种指令对应 `CommandAction` enum 的非战斗基础变体；战斗/效果动作通过 `CommandAction::Action { type, payload }` 派发到 `ActionRegistry`（见下方「Action Dispatch」节）。**权威指令清单见 [API Registry](api-registry.md) §1**。
 
 ### Move
 移动 drone 到目标方向。
@@ -53,30 +53,6 @@ WASM 模块通过 `tick(snapshot) → CommandIntent[]` JSON 返回指令。
 { "sequence": 4, "action": { "type": "Withdraw", "object_id": "d1", "target_id": "s1", "resource": "Energy", "amount": 50 } }
 ```
 - 校验：drone 有 CARRY part，target 有足够资源，相邻
-
-### Attack
-近战攻击。
-```json
-{ "sequence": 5, "action": { "type": "Attack", "object_id": "d1", "target_id": "e5" } }
-```
-- 校验：drone 有 ATTACK body part，target 为敌方，1 格内，fatigue = 0
-- 伤害：`ATTACK parts × 30`（受 damage_multiplier 影响）
-
-### RangedAttack
-远程攻击。
-```json
-{ "sequence": 6, "action": { "type": "RangedAttack", "object_id": "d1", "target_id": "e5" } }
-```
-- 校验：drone 有 RANGED_ATTACK body part，target 在 3 格内，敌方，fatigue = 0
-- 伤害：`RANGED_ATTACK parts × 25`
-
-### Heal
-治疗友方。
-```json
-{ "sequence": 7, "action": { "type": "Heal", "object_id": "d1", "target_id": "f2" } }
-```
-- 校验：drone 有 HEAL body part，target 为友方，3 格内，未满血
-- 治疗量：`HEAL parts × 12`
 
 ### Spawn
 创建新 drone。
@@ -129,83 +105,34 @@ WASM 模块通过 `tick(snapshot) → CommandIntent[]` JSON 返回指令。
 
 ---
 
-## 特殊攻击（via `CommandAction::Custom`）
+## Action Dispatch
 
-以下 8 种特殊攻击通过 `CommandAction::Custom(type)` 路由至 `CustomActionRegistry`，配置于 `world.toml` 的 `[[custom_actions]]` 段。每个关联一个同名的 `[[special_effects]]` handler。
+`CommandAction::Action` 将所有战斗/效果动作统一派发到 `ActionRegistry`。Vanilla 注册表包含 11 个内置动作；mod 可通过 world action manifest 注册额外动作，但不能覆盖 vanilla 名称。参数、消耗、冷却、范围、反制方式以 [Vanilla Action Canonical Table](special-attack-table.md) 为权威源。
 
-### Disrupt
-打断目标持续动作，不造成 HP 伤害。
-```json
-{ "sequence": 14, "action": { "type": "Disrupt", "object_id": "d1", "target_id": "e5" } }
+```text
+CommandAction::Action {
+  type: "Attack",
+  payload: { object_id: "d1", target_id: "e5" }
+}
 ```
-- 校验：drone 有 ATTACK body part，敌方 drone，1 格内，fatigue = 0
-- 冷却：50 tick | 消耗：100 Energy | 抗性：Sonic | special_effect: `disrupt`
 
-### Fortify
-自身/友方护盾 + 净化负面状态。
-```json
-{ "sequence": 15, "action": { "type": "Fortify", "object_id": "d1", "target_id": "f2" } }
-```
-- 校验：drone 有 TOUGH body part，自身或友方，1 格内，fatigue = 0
-- 效果：所有抗性×0.5，清除负面状态，持续 100 tick
-- 冷却：300 tick | 消耗：400 Energy | special_effect: `fortify`
+| Action | Category | 简述 |
+|--------|----------|------|
+| `Attack` | `basic_combat` | 近战攻击目标 |
+| `RangedAttack` | `basic_combat` | 远程攻击目标 |
+| `Heal` | `basic_combat` | 治疗或修复目标 |
+| `Hack` | `special_attack` | 5-stage 控制夺取 |
+| `Drain` | `special_attack` | 持续窃取目标资源 |
+| `Overload` | `special_attack` | 压制目标玩家 fuel budget |
+| `Debilitate` | `special_attack` | 降低目标效率/附加易伤 |
+| `Disrupt` | `special_attack` | 打断目标当前操作 |
+| `Fortify` | `special_attack` | 增强自身或友方防御 |
+| `Leech` | `special_attack` | 造成伤害并按比例自愈 |
+| `Fabricate` | `special_attack` | 将敌方 drone 转化为己方结构 |
 
-### Hack
-夺取敌方 drone——5 tick 渐进控制后转为 Neutral。
-```json
-{ "sequence": 16, "action": { "type": "Hack", "object_id": "d1", "target_id": "e5" } }
-```
-- 校验：drone 有 CLAIM body part，敌方 drone，1 格内，未被 hack，fatigue = 0
-- 进度：tick 1-2 减速 50%，tick 3-4 无法移动，tick 5 夺取成功
-- 冷却：200 tick | 消耗：1000 Energy | 抗性：Psionic | special_effect: `hack`
+### 附加效果（无默认 vanilla action，通过 `world.toml` 配置绑定）
 
-### Drain
-从目标建筑/存储窃取资源。
-```json
-{ "sequence": 17, "action": { "type": "Drain", "object_id": "d1", "target_id": "b1" } }
-```
-- 校验：drone 有 WORK + CARRY body part，敌方建筑，1 格内，fatigue = 0
-- 效果：每 tick 转移 `carry_capacity` 单位资源，持续至移动或被打断
-- 冷却：50 tick | 消耗：200 Energy/tick | 抗性：EMP | special_effect: `drain`
-
-### Overload
-消耗目标 fuel budget。必须满足可见性约束——仅可攻击可见玩家。
-```json
-{ "sequence": 18, "action": { "type": "Overload", "object_id": "d1", "target_id": 42 } }
-```
-- 校验：drone 有 RANGED_ATTACK body part，目标玩家可见（`is_visible_to`），fatigue = 0
-- 效果：target fuel -500k，下限 MAX_FUEL×0.2。全局冷却：同一目标每 50 tick 最多被 Overload 一次（不限攻击者数量）。反馈通过 `OverloadPressure` 组件暴露（见 `design/gameplay.md` §Overload 反馈透明度）
-- 冷却：200 tick（per drone） | 消耗：300 Energy | 抗性：EMP | special_effect: `overload`
-
-### Debilitate
-给目标附加易伤状态。
-```json
-{ "sequence": 19, "action": { "type": "Debilitate", "object_id": "d1", "target_id": "e5", "damage_type": "Thermal" } }
-```
-- 校验：drone 有 WORK body part，敌方，3 格内，fatigue = 0，无同类型叠加
-- 效果：指定伤害类型抗性×2，持续 50 tick
-- 冷却：150 tick | 消耗：200 Energy | 抗性：Corrosive | special_effect: `debilitate`
-
-### Leech
-吸血攻击——伤害的 50% 治疗自身。
-```json
-{ "sequence": 20, "action": { "type": "Leech", "object_id": "d1", "target_id": "e5" } }
-```
-- 校验：drone 有对应 body part，敌方，1 格内
-- 伤害：Corrosive 15 dmg，治疗自身 50%
-- 消耗：300 Energy | 抗性：Corrosive | special_effect: `leech`
-
-### Fabricate
-将敌方 drone 转化为己方建筑。
-```json
-{ "sequence": 21, "action": { "type": "Fabricate", "object_id": "d1", "target_id": "e5" } }
-```
-- 校验：drone 有对应 body part，敌方 drone，1 格内
-- 冷却：500 tick | 消耗：2000 Energy + 500 Matter | special_effect: `fabricate`
-
-### 附加效果（无默认 CustomAction，通过 `world.toml` 配置绑定）
-
-以下 3 个 special_effect handler 已在引擎中注册，可通过 `[[custom_actions]]` + `[[special_effects]]` 配置绑定到自定义动作：
+以下 3 个 special_effect handler 已在引擎中注册，可通过 world action manifest 绑定到 mod action：
 
 | 效果 | 说明 | 目标 | 抗性 |
 |------|------|------|------|
@@ -213,7 +140,7 @@ WASM 模块通过 `tick(snapshot) → CommandIntent[]` JSON 返回指令。
 | `scramble_commands` | 随机化目标下一条指令顺序 | enemy_drone | — |
 | `convert_to_structure` | 将目标 drone 转化为己方建筑 | enemy_drone | Psionic |
 
-（共 11 个 special_effect handler：8 个绑定默认 CustomAction + 3 个附加）
+（共 11 个 vanilla action + 3 个附加 special_effect handler 可供 mod action 复用）
 
 > **Out-of-Scope RFC**: `SendMessage` 指令（drone 间消息传递）为 Out-of-Scope RFC，不在当前核心定义中。详见 [API Registry](api-registry.md) §1。
 

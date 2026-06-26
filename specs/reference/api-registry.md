@@ -4,7 +4,7 @@
 
 > **本文档是 Swarm 所有 API 合约的单一权威来源**。CommandAction、RejectionReason、MCP Tools、Host Functions、Economy Operations、容量限制均以此文档为准。其他文档只能引用，不得重新声明可冲突的表格或列表。
 
-**生成日期**: 2026-06-18 | **API 版本**: `0.4.0` (game_api) / `0.1.0` (auth_api) / `0.1.1` (economy)
+**生成日期**: 2026-06-18 | **API 版本**: `0.5.0` (game_api) / `0.1.0` (auth_api) / `0.1.1` (economy)
 **权威源**: [game_api.idl.yaml](game_api.idl.yaml), [auth_api.idl.yaml](auth_api.idl.yaml), [economy.idl.yaml](economy.idl.yaml)
 **Codegen**: [codegen.md](codegen.md) — IDL → Registry/SDK 生成链，禁止手写分叉。
 
@@ -38,16 +38,16 @@ All `f64` fields have been replaced with fixed-point integer representations to 
 
 > ⚠️ **机器权威**: 本表完全由 `game_api.idl.yaml` 的 `command_actions` 段自动生成。**禁止手工编辑** CommandAction 表格（包括变体名称、参数、分类、编号）。任何新增/修改 CommandAction 必须先在 IDL YAML 中定义，再通过 `generate_api_registry.py` 重新生成本文档。CI 检查模式会拒绝手工编辑导致的不一致。
 
-Core CommandAction 是 WASM tick() 输出的 CommandIntent 中的 action type。所有 Vanilla action 定义于此。World Action Manifest 通过 `custom_actions` 扩展，但核心集合不变。
+Core CommandAction 是 WASM tick() 输出的 CommandIntent 中的 action type，包含 11 种非战斗基础操作 + Action dispatch。Combat/effect action 不再作为独立 CommandAction 变体注册，而是通过 `Action` dispatch 进入 ActionRegistry。
 
-> **共享字段 `object_id: EntityId` (即 `actor_id`)**: 所有 21 个 CommandAction 变体均包含 `object_id`（执行该动作的 entity，亦称为 `actor_id`）。此字段为所有 action 的公共参数，不在下方表格中各 action 的"参数"列重复列出。IDL 中每个 action 的 schema 均包含 `object_id`。
+> **共享字段 `object_id: EntityId` (即 `actor_id`)**: 所有 11 个 CommandAction 变体 + Action dispatch 均包含 `object_id`（执行该动作的 entity，亦称为 `actor_id`）。此字段为所有 action 的公共参数，不在下方表格中各 action 的"参数"列重复列出。IDL 中每个 action 的 schema 均包含 `object_id`。
 >
-> **Spawn 语义**: `object_id`/`actor_id` = 发起 Spawn 的 drone（执行者），`spawn_id` = 目标 Spawn 结构（非 actor）。其他 action 同理：`actor_id` 始终为执行实体，`target_id` 为目标实体。
+> **Spawn 语义**: `object_id`/`actor_id` = 发起 Spawn 的 drone（执行者），`spawn_id` = 目标 Spawn 结构（非 actor）。其他 action 同理：`actor_id` 始终为执行实体，`target_id` 为目标实体。Action dispatch 中的目标与扩展参数由 `payload: ActionPayload` 承载。
 
 **来源 IDL**: game_api.idl.yaml
-**变体总数**: 21
+**变体总数**: 11 个 CommandAction + ActionRegistry
 
-### 1.1 核心指令 (11)
+### 1.1 核心指令 (8)
 
 | # | Action | 参数 | 分类 | 说明 |
 |---|--------|------|------|------|
@@ -56,9 +56,6 @@ Core CommandAction 是 WASM tick() 输出的 CommandIntent 中的 action type。
 | 3 | `Transfer` | `target_id: EntityId, resource: ResourceType, amount: u32` | core | Transfer resources locally to target |
 | 4 | `Withdraw` | `target_id: EntityId, resource: ResourceType, amount: u32` | core | Withdraw resources from structure |
 | 5 | `Build` | `structure_type: StructureType, x: i32, y: i32` | core | Build a structure at (x,y) |
-| 6 | `Attack` | `target_id: EntityId` | core | Melee attack target |
-| 7 | `RangedAttack` | `target_id: EntityId` | core | Ranged attack target |
-| 8 | `Heal` | `target_id: EntityId` | core | Repair or heal target |
 | 9 | `Spawn` | `body_parts: [BodyPart], spawn_id: SpawnId` | core | Spawn a drone with given body parts |
 | 10 | `Recycle` | `object_id: EntityId` (self-action) | core | Recycle self (drone or structure) |
 | 11 | `ClaimController` | `target_id: EntityId` | core | Claim a room controller |
@@ -72,24 +69,19 @@ Core CommandAction 是 WASM tick() 输出的 CommandIntent 中的 action type。
 | 12 | `TransferToGlobal` | `resource: ResourceType, amount: u32` | economy_operation | Deposit resources to global storage |
 | 13 | `TransferFromGlobal` | `resource: ResourceType, amount: u32` | economy_operation | Withdraw resources from global storage |
 
-### 1.3 特殊攻击 (8)
-
-> **Canonical 参数表见 [special-attack-table.md](special-attack-table.md)**。所有 body_part、damage_type、resistance、cost、cooldown、range、channel_time、counterplay、validation_schema 以该表为准。此 Registry 表仅列出 CommandAction 路由信息。
-
-所有 8 个特殊攻击通过 `CommandAction::Custom(type)` 路由至 `CustomActionRegistry`，在引擎中以 `custom_action_def` 注册。每个关联一个同名的 `[[special_effects]]` handler。
+### 1.3 Action dispatch (1)
 
 | # | Action | 参数 | 分类 | 说明 |
 |---|--------|------|------|------|
-| 14 | `Hack` | `target_id: EntityId` | special_attack | 5-stage intrusion attack |
-| 15 | `Drain` | `target_id: EntityId` | special_attack | Continuously drain resources from target |
-| 16 | `Overload` | `target_id: PlayerId` | special_attack | Reduce target player fuel budget |
-| 17 | `Debilitate` | `target_id: EntityId` | special_attack | Reduce target efficiency |
-| 18 | `Disrupt` | `target_id: EntityId` | special_attack | Interrupt target operation |
-| 19 | `Fortify` | `target_id: EntityId` | special_attack | Strengthen own defenses |
-| 20 | `Leech` | `target_id: EntityId` | special_attack | Damage target, heal self 50% |
-| 21 | `Fabricate` | `target_id: EntityId` | special_attack | Convert enemy drone to friendly structure |
+| 22 | `Action` | `type: string, payload: ActionPayload` | action | 执行 ActionRegistry 注册的 combat/effect action |
 
-> Leech 和 Fabricate 为全部 8 种特殊攻击的核心组成部分——Standard/Arena 模式全量启用。Tutorial/Novice 模式默认禁用，服主可通过 `world.toml` 的 `vanilla.special_attacks_enabled` 列表覆盖。TickTrace 记录 `world_action_manifest_hash` 以确保 replay 确定性。
+### 1.4 ActionRegistry — 11 Vanilla + Mod-Extensible Combat Actions
+
+11 个 vanilla combat/effect action（`Attack`, `RangedAttack`, `Heal`, `Hack`, `Drain`, `Overload`, `Debilitate`, `Disrupt`, `Fortify`, `Leech`, `Fabricate`）已从 CommandAction enum 移入 ActionRegistry。WASM tick() 通过 `CommandAction::Action { type, payload }` 统一 dispatch；引擎按 `type` 查找 ActionRegistry 定义并按该 action 的 payload schema 校验与执行。
+
+**Canonical 参数表见 [special-attack-table.md](special-attack-table.md)**。Vanilla combat/effect action 的 body_part、damage_type、resistance、cost、cooldown、range、channel_time、counterplay、validation_schema 以该表为准；本 Registry 只声明 dispatch 入口和注册边界。
+
+Mod 扩展通过 `world.toml` 的 `[[action_registry]]` 注册自定义 combat/effect action。TickTrace 记录 `world_action_manifest_hash`，确保 ActionRegistry 变更进入 replay 确定性边界。
 
 ---
 
@@ -829,11 +821,11 @@ Algorithm: Ed25519. Validation: cert chain → public key → signature → time
 
 Economy resource operations are engine-side computations, not player CommandActions. All amounts use integer types (u64/u32), all rates use BasisPoints. No f64.
 
-### 10.1 ResourceOperation (CommandAction Subset)
+### 10.1 ResourceOperation (CommandAction Subset, excludes Action dispatch combat operations)
 
 **来源 IDL**: game_api
 
-所有涉及资源操作的 action 类型（CommandAction 子集）：
+所有涉及资源操作的 action 类型（CommandAction 子集，不含 Action dispatch 中的 combat 操作）：
 
 | Operation | Action # | 分类 | 说明 | Resource Flow |
 |-----------|:-------:|------|------|---------------|
@@ -842,7 +834,6 @@ Economy resource operations are engine-side computations, not player CommandActi
 | `Withdraw` | 4 | core | Withdraw resources from structure | structure → drone |
 | `TransferToGlobal` | 12 | economy_operation | Deposit resources to global storage | drone → global |
 | `TransferFromGlobal` | 13 | economy_operation | Withdraw resources from global storage | global → drone |
-| `Drain` | 15 | special_attack | Continuously drain resources from target | target → drone |
 
 ### 10.2 Economy Resource Operations
 
@@ -968,6 +959,7 @@ Every MCP/auth tool declaration includes these five security columns:
 
 | 版本 | 日期 | 来源 | 变更 |
 |------|------|------|------|
+| 0.5.0 | 2026-06-18 | game_api | R35 D3: CommandAction 泛化为 11 个非战斗基础操作 + `Action` dispatch。`Attack`/`RangedAttack`/`Heal` 与 8 个 special attacks 移入 ActionRegistry；mod 通过 `world.toml` `[[action_registry]]` 扩展 combat/effect action。 |
 | 0.4.0 | 2026-06-18 | game_api | MCP 工具注册: 新增 10 引擎工具入 IDL (Onboarding +2: swarm_get_docs/swarm_get_schema; Play +2: swarm_profile/swarm_get_available_actions; Deploy +1: swarm_list_modules; Debug +1: swarm_explain_last_tick; Arena +4: swarm_tournament_create/precommit/status + swarm_match_result)。MCP tools 总数为 56 active。新增 Arena capability profile。移除 v0.3.0 内联标记，保留 changelog。 |
 | 0.3.0 | 2026-06-18 | game_api | B1: api_version → 0.3.0。B2/D2: RejectionReason 新增 debug_detail 字段 (512 bytes) + detail_level enum (competitive/practice/training)。B3: swarm_list_market_orders 移至 RFC；新增 Auth category (swarm_auth_login, swarm_auth_refresh)；MCP tools 为 46 active。B4: TickTrace envelope `wasm_status` → `terminal_state` 显式 enum (7 variants)。B5: Deploy 新增 deploy_mutation 机制 + fdb_version_counter 输出。D5/B: 新增 Persistence (async_object_store_upload)。Host functions ABI 错误优先级表增加显式优先级编号。 |
 | 0.1.0 | 2026-06-18 | auth_api | Initial auth API IDL: 5 lifecycle tools, 6 cert/device MCP tools, 12 canonical auth RejectionReason codes (namespace offset 1000+), 8 auth tick trace events, rate limits, token envelope specification, 5 security columns. |

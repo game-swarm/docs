@@ -4,7 +4,7 @@
 >
 > **R16 B2 修复**。本文档是 Swarm 引擎**全部 tick 系统执行顺序的唯一权威定义**——覆盖 Phase 2a inline 命令处理器与 Phase 2b 被动系统。所有其他文档（engine.md、01-tick-protocol.md、02-command-validation.md）引用此处，不得重新声明可冲突的系统列表或顺序。
 >
-> **R30 B1 修复**：Status Effects 拆分为「并行 buffer 生产」(S16-S21) + 「串行唯一 committer」(S22)。S22 移出 Parallel Set B。S01 写入 PendingSpecialAttackIntent；S14 从 S01 读取并归并。8 种特殊攻击（含 Leech/Fabricate）全部作为核心目标设计。
+> **R35 D3 修复**：Status Effects 拆分为「并行 buffer 生产」(S16-S21) + 「串行唯一 committer」(S22)。S22 移出 Parallel Set B。combat 与特殊攻击不再由 S01 直接处理：Attack/RangedAttack/Heal 经 Action dispatch 进入 combat intent buffer，special actions 经 ActionRegistry handler 进入 status intent buffer。
 
 ## 原则
 
@@ -23,9 +23,10 @@
 Serial Spine:
   ┌─────────────────────────────────────────────────────┐
   │ Phase 2a: Inline Command Handlers (serial)           │
-  │ [S01] command_executor     (Move/Harvest/Attack/    │
-  │                             RangedAttack/Heal/Claim  │
-  │                             +PendingSpecialAttack)   │
+  │ [S01] command_executor     (Move/Harvest/Transfer/  │
+  │                             Withdraw/Build/Spawn/   │
+  │                             Recycle/Claim/Global)   │
+  │ [A01] action_dispatch      (ActionRegistry dispatch)│
   │ [S02] controller_system    (phase 2a inline)        │
   │ [S03] build_system         (Build)                  │
   │ [S04] recycle_system       (Recycle → DeathMark)    │
@@ -75,11 +76,12 @@ Serial Spine:
 
 **共计 31 个 system**（R30 B1: 新增 S22a leech_buffer + S22b fabricate_buffer，共 31）。所有特殊攻击状态推进由 `status_advance_system` (S22) **唯一**串行处理——S16-S22b 只写 typed buffer，不直接修改 StatusState。
 
-**R30 B1 关键修复**：
+**R35 D3 关键修复**：
 - **S22 移出 Parallel Set B**：作为串行唯一 StatusState writer，不再与其他 system 并行。
 - **S16-S22b 只写 typed buffer**：`HackBuffer`/`DrainBuffer`/`OverloadBuffer`/`DebilitateBuffer`/`DisruptBuffer`/`FortifyBuffer`/`LeechBuffer`/`FabricateBuffer`——由 S22 统一消费并写 StatusState。
-- **S01 写入 PendingSpecialAttackIntent**：Phase 2a 特殊攻击命令（Hack/Drain/Overload/Debilitate/Disrupt/Fortify/Leech/Fabricate）在命令执行时直接入队此 buffer。S11-S13 不再产生特殊攻击 intent。
-- **S14 从 S01 读取**：Reducer 从 `PendingSpecialAttackIntent`（S01）读取 intent → merge sort → reducer resolve → 交付 S22。
+- **S01 不处理 combat**：`Attack`/`RangedAttack`/`Heal` 不再是 `CommandAction` variant，也不由 S01 写 `HitPoints` 或 `Entity(hits)`；combat action 由 A01 action_dispatch 校验后写入 `PendingDamage`/`PendingHeal` intent buffer。
+- **A01 Action dispatch**：Phase 2a 中独立于 S01 运行，读取 `CommandAction::Action { type, payload }` → `ActionRegistry` 查找 handler → validate/apply。vanilla action（3 basic combat + 8 special）统一走 registry 元数据校验。
+- **S14 从 ActionRegistry intent buffer 读取**：Reducer 从 action handler 产生的 status intent buffer 读取 intent → merge sort → reducer resolve → 交付 S22。
 
 ---
 
@@ -92,12 +94,22 @@ Serial Spine:
 ### S01: command_executor
 - **ID**: `cmd_exec`
 - **Phase**: 2a inline
-- **Handled Commands**: `Move`, `Harvest`, `Attack`, `RangedAttack`, `Heal`, `Claim`, `Hack`, `Drain`, `Overload`, `Debilitate`, `Disrupt`, `Fortify`, `Leech`, `Fabricate`
-- **Reads**: CommandQueue, WorldConfig, PlayerState, Drone, Room, Entity (owner, position, hits)
-- **Writes**: Drone (position, fatigue), Entity (hits), ResourceAmount, EventLog, **PendingSpecialAttackIntent buffer** (R30 B1)
+- **Handled Commands**: `Move`, `Harvest`, `Transfer`, `Withdraw`, `Build`, `Spawn`, `Recycle`, `ClaimController`, `TransferToGlobal`, `TransferFromGlobal`
+- **Reads**: CommandQueue, WorldConfig, PlayerState, Drone, Room, Entity (owner, position)
+- **Writes**: Drone (position, fatigue), ResourceAmount, EventLog, PendingSpawn buffer, DeathMark component, ResourceLedger
 - **Must run before**: S02
 - **Iteration key**: `command.sort_key` (priority_class, shuffle_index, source_rank, sequence, command_hash)
-- **Note**: Per-drone per-tick action quota enforced inline: max 1 main action per drone. Transfer/Withdraw 不计入但受 carry 容量约束。**R30 B1**: 特殊攻击命令（Hack/Drain/Overload/Debilitate/Disrupt/Fortify/Leech/Fabricate）在 Phase 2a 执行时写入 `PendingSpecialAttackIntent` buffer——Phase 2a 只校验基本合法性（body part 要求、cooldown、target validity），不修改目标 state。实际 effect 由 Phase 2b S14→S22 pipeline 处理。
+- **Note**: Per-drone per-tick action quota enforced inline: max 1 main action per drone. Transfer/Withdraw 不计入但受 carry 容量约束。S01 不再处理 `Attack`/`RangedAttack`/`Heal` 或任何 special action，不写 `HitPoints`/`Entity(hits)`；combat 类 action 只能通过 A01 handler 写 `PendingDamage`/`PendingHeal` intent 到 combat buffer，实际 HP 修改由 S15 统一执行。
+
+### A01: action_dispatch (Phase 2a registry dispatch)
+- **ID**: `action_dispatch`
+- **Phase**: 2a inline, independent of S01
+- **Handled Commands**: `CommandAction::Action { type, payload }`
+- **Reads**: CommandQueue, ActionRegistry, WorldConfig, PlayerState, Drone, Room, Entity (owner, position, status), ResourceAmount
+- **Writes**: PendingDamage buffer, PendingHeal buffer, status intent buffer, ResourceAmount, EventLog
+- **Must run after**: S01 command sorting / quota gate for the same command slot
+- **Must run before**: S11-S15, S22
+- **Dispatch contract**: resolve `type` in `ActionRegistry`; reject unknown/disabled action; decode `payload` against handler schema; run handler validation against current Bevy World; apply only through typed intent buffers or non-HP resource/event writes. Handlers must not write `HitPoints` directly.
 
 ### S02: controller_system (phase 2a)
 - **ID**: `ctrl_2a`
@@ -187,19 +199,19 @@ Serial Spine:
 | ranged_attack_system | `rng_atk` | Drone (pos, body), Entity (pos) | **PendingDamage[target_id]** (damage value) |
 | heal_system | `heal` | Drone (pos), Entity (hits, max_hits) | **PendingHeal[target_id]** (heal amount) |
 
-**Buffer 写入约定**：S11-S13 **不直接修改 Entity.hits**。三者各自写入线程局部的 per-system sub-buffer（`PendingDamage` / `PendingHeal`），由 S14 serial collector 归并后，**S15 damage_application 为 HitPoints 的 UNIQUE 写入者**。Combat intent（特殊攻击触发）写入 `CombatIntent` sub-buffer，由 S14 收集。
+**Buffer 写入约定**：S11-S13 **不直接修改 Entity.hits**。三者消费 A01 action_dispatch 产生的 `PendingDamage` / `PendingHeal` intent，并可追加 Tower/DoT 等被动 combat intent；所有 combat/heal intent 由 S15 damage_application 统一归并写入 HitPoints。特殊 action intent 写入 status intent buffer，由 S14 收集。
 
 **Parallel safety**: 三个 system 按 `target_id` partition，同一 entity 只被一个 system 写入对应的 sub-buffer。`SpawningGrace` filter 在此层生效——新生 drone 被所有 combat system 跳过。
 
-**R30 B1**: S11-S13 不再产生特殊攻击 intent。特殊攻击 intent 由 S01（Phase 2a 命令执行时）写入 `PendingSpecialAttackIntent` buffer。
+**R35 D3**: S11-S13 不产生特殊攻击 intent。特殊 action intent 由 A01 ActionRegistry handler 写入 status intent buffer。
 
 ### S14: special_attack_reducer
 - **ID**: `spec_atk_red`
-- **R30 B1 fix**: 从 S01 的 `PendingSpecialAttackIntent` buffer 读取 intents（非 S11-S13）；不直接写 StatusState。
-- **Reads**: `PendingSpecialAttackIntent` buffer (from S01), Entity (status components — read-only for existing state reference)
+- **R35 D3 fix**: 从 A01 ActionRegistry handler 产生的 status intent buffer 读取 intents（非 S01/S11-S13）；不直接写 StatusState。
+- **Reads**: status intent buffer (from A01), Entity (status components — read-only for existing state reference)
 - **Writes**: `pending_intents` buffer (canonical sorted + resolved)
-- **Processing pipeline (R30 B1)**:
-  1. **Collect**: S01 在 Phase 2a 执行的 8 种特殊攻击命令产生的 intent 已入队 `PendingSpecialAttackIntent` buffer
+- **Processing pipeline (R35 D3)**:
+  1. **Collect**: A01 在 Phase 2a dispatch 的 special action handler 产生的 intent 已入队 status intent buffer
   2. **Merge sort**: 按 `(priority_class, intent_source.entity_id, intent_target.entity_id)` 确定性归并排序
   3. **Reducer resolve**: 同一 target 的多个 intent 按**唯一权威优先级链**裁决：**Hack > Drain > Overload > Debilitate > Disrupt > Fortify > Leech > Fabricate**（此为 Swarm 引擎中该优先级链的唯一定义）；冲突 intent 降级记录
   4. **Deliver to S22**: 排序+裁决后的 intents 交付 `status_advance_system` 统一推进
@@ -302,13 +314,13 @@ for each active StatusState:
 | `FortifyBuffer` | `fort_buf` (S21) | S21 S22 Phase 2 input |
 | `LeechBuffer` | `leech_buf` (S22a) | S22a S22 Phase 2 input |
 | `FabricateBuffer` | `fab_buf` (S22b) | S22b S22 Phase 2 input |
-| `PendingSpecialAttackIntent` | `cmd_exec` (S01) | S01 Phase 2a command execution |
+| `StatusActionIntent` | `action_dispatch` (A01) | A01 Phase 2a ActionRegistry handler execution |
 | `pending_intents` (resolved) | `spec_atk_red` (S14) | S14 merge sort + reducer |
 | Damage from special attack | `dmg_apply` (S15) | damage_application 统一处理 |
 
 **Buffer 生命周期**：所有 typed buffer（HackBuffer 等）和 `pending_intents` 在每个 tick 结束时由 S22 消费后清空。不跨 tick 持久化。跨 tick 的状态仅存在于 StatusState component 中。
 
-### Mode Unlock Strategy (R30 B1/D5 — 8 种全部核心目标)
+### Mode Unlock Strategy (R35 D3 — vanilla action registry)
 
 | Mode | Special Attacks | 理由 |
 |------|:--------------:|------|
@@ -317,7 +329,7 @@ for each active StatusState:
 | Standard | **全量启用** (Hack/Drain/Overload/Debilitate/Disrupt/Fortify/Leech/Fabricate) | 教程/SDK 强引导；学习者通过 code/docs 自学 |
 | Arena | 全量启用 | 与 Standard 相同 |
 
-全部 8 种特殊攻击为核心目标设计——不存在 Tier 2/Phase/Future 语义。API Registry、validation matrix、R/W matrix、SDK examples 全覆盖。
+全部 vanilla action 通过 ActionRegistry 暴露：3 种基础 combat action（Attack/RangedAttack/Heal）+ 8 种特殊 action（Hack/Drain/Overload/Debilitate/Disrupt/Fortify/Leech/Fabricate）。`CommandAction` 不再包含 combat variant；IDL 只承载 `Action { type, payload }`。
 
 ### S23: aging_system
 - **ID**: `aging`
@@ -387,11 +399,11 @@ S22 `status_advance_system` 迭代实体顺序：`sorted(entities_with_active_st
 
 ## 4. Component R/W Matrix（全部 31 systems — R30 B1）
 
-以下矩阵定义每个 system 对核心 Component 的读写关系。`R`=只读，`W`=写入，`-`=不访问。**R30 B1**: 新增 `SpecAtkIntent` 列，`StatusState` 和 `SpecBuffer` 列拆分。
+以下矩阵定义每个 system 对核心 Component 的读写关系。`R`=只读，`W`=写入，`-`=不访问。**R35 D3**: `SpecAtkIntent` 列表示 A01 产生的 status action intent；`StatusState` 和 `SpecBuffer` 列拆分。
 
 | System (S##) | `Position` | `HitPoints` | `Fatigue` | `Energy/Carry` | `Cooldown` | `RoomCap` | `DeathMark` | `Owner` | `SpawningGrace` | `Controller` | `SpecAtkIntent` | `SpecBuffer` | `StatusState` | `ResourceLedger` |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| **S01 cmd_exec** | W | W | W | W | - | - | - | R | - | - | **W** | - | - | - |
+| **S01 cmd_exec** | W | - | W | W | - | - | W | R | - | W | - | - | - | W |
 | **S02 ctrl_2a** | - | - | - | - | - | - | - | R | - | W | - | - | - | - |
 | **S03 build** | W | W | - | W | - | - | - | W | - | - | - | - | - | - |
 | **S04 recycle** | - | - | - | W | - | - | W | R | - | - | - | - | - | - |
@@ -426,8 +438,8 @@ S22 `status_advance_system` 迭代实体顺序：`sorted(entities_with_active_st
 | **S28 ctrl_p2b** | - | - | - | - | - | - | - | R | - | W | - | - | - | - |
 | **S29 res_ledger** | - | - | - | R | - | - | - | - | - | - | - | - | - | W |
 
-**Column legend (R30 B1)**:
-- `SpecAtkIntent` = `PendingSpecialAttackIntent` buffer — S01 writes, S14 reads
+**Column legend (R35 D3)**:
+- `SpecAtkIntent` = status action intent buffer — A01 writes, S14 reads
 - `SpecBuffer` = typed effect buffers (`HackBuffer`/`DrainBuffer`/.../`LeechBuffer`/`FabricateBuffer`) — S16-S22b write, S22 reads
 - `StatusState` = all status components (`HackState`/`DrainState`/.../`LeechState`/`FabricateState`) — S14 reads (reference), S16-S22b read (reference), **S22 is the ONLY writer**
 
@@ -454,7 +466,7 @@ manifest_hash = Blake3(
 )
 ```
 
-`manifest_hash` 进入 TickTrace (§6 TickTrace Envelope, `system_manifest_hash`)。
+`manifest_hash` 进入 TickTrace (§6 TickTrace Envelope, `system_manifest_hash`)。ActionRegistry handler set/hash 单独进入 world manifest；`CommandAction::Action { type, payload }` 的 dispatch 边界不改变本系统清单的固定顺序。
 
 ---
 
