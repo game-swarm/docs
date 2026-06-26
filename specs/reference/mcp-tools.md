@@ -10,6 +10,22 @@
 
 ## 使用模式
 
+## 错误 Envelope
+
+MCP 工具调用失败统一返回标准 JSON-RPC 2.0 error object，权威定义见 [API Registry](api-registry.md) §8 SwarmError JSON-RPC Envelope。
+
+| 字段 | 说明 |
+|------|------|
+| `error.code` | numeric JSON-RPC error code；Swarm application error 固定使用 `-32000`，不得填 RejectionReason 字符串 |
+| `error.message` | 人类可读摘要 |
+| `error.data.rejection_reason` | canonical RejectionReason wire enum string（47 codes，见 Registry §2）；SDK 据此生成 typed exception |
+| `error.data.debug_detail` | 非 canonical 上下文详情（≤ 512 bytes）；详细程度由 `detail_level` 控制 |
+| `error.data.retry_allowed` | 是否可安全重试（machine-readable，可选） |
+| `error.data.idempotency_key` | 幂等重试 key（machine-readable，可选） |
+| `error.data.retry_after_tick` | 建议最早重试 tick（machine-readable，可选） |
+
+所有业务拒绝原因必须放在 `error.data.rejection_reason`，`error.code` 只保留 JSON-RPC numeric 分类。
+
 ## 工具总览（同步自 API Registry 0.4.0）
 
 | 分组 | Game API 工具数 | 说明 |

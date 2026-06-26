@@ -61,9 +61,9 @@ i32 host_get_world_rules(rule_id_ptr: i32, rule_id_len: i32, out_ptr: i32, out_l
 
 ### host_get_random
 ```c
-i32 host_get_random(sequence: u32, out_ptr: i32, out_len: i32) -> i32
+i32 host_get_random(sequence: u64, out_ptr: i32, out_len: i32) -> i32
 ```
-返回确定性随机字节。引擎内部 PRNG 以 `(tick_seed, player_id, drone_id, sequence)` 为种子，保证同一 tick 内不同 drone/sequence 产生独立且可 replay 的随机序列。
+返回确定性随机字节。引擎内部 PRNG 使用 `derive_rng("swarm.host_random.v1", world_seed, tick, actor_or_entity_id, sequence)` 派生随机流；编码采用 length-delimited field encoding（field_tag + uLEB128 length + bytes），所有整数使用 little-endian 固定宽度，domain separator 必须作为第一个字段写入，保证不同 tick、actor/entity/source 与 `u64 sequence` 产生独立且可 replay 的随机序列。
 写入 `out_ptr` 缓冲区。
 - 最大输出：256 bytes
 - fuel 成本：100 base + 1 per output byte

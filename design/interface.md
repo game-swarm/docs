@@ -80,7 +80,7 @@ fn host_get_world_config(key_ptr: i32, key_len: i32, out_ptr: i32, out_len: i32)
 fn host_get_world_rules(rule_id_ptr: i32, rule_id_len: i32, out_ptr: i32, out_len: i32) -> i32;
 
 // 确定性随机
-fn host_get_random(sequence: u32, out_ptr: i32, out_len: i32) -> i32;
+fn host_get_random(sequence: u64, out_ptr: i32, out_len: i32) -> i32;
 ```
 
 > **注意**: 以下为概念签名。权威定义见 [API Registry](specs/reference/api-registry.md) §4.1
@@ -130,17 +130,19 @@ Pathfinding 确定性要求：固定 neighbor order（NESW 顺时针）、cost t
 
 ### 5.6 SwarmError 错误格式
 
-统一错误格式由 [API Registry](specs/reference/api-registry.md) §8 SwarmError JSON-RPC Envelope 定义，包含：
+统一错误格式由 [API Registry](specs/reference/api-registry.md) §8 SwarmError JSON-RPC Envelope 定义，遵循标准 JSON-RPC 2.0 error object：
 
 | 字段 | 说明 |
 |------|------|
-| `rejection_reason` | canonical RejectionReason wire enum (47 codes, 见 Registry §2) |
-| `debug_detail` | 非 canonical 上下文详情 (≤ 512 bytes)；详细程度由 `detail_level` 控制 |
-| `retry_allowed` | 是否可安全重试 (machine-readable) |
-| `idempotency_key` | 幂等重试 key (machine-readable) |
-| `retry_after_tick` | 建议最早重试 tick (machine-readable) |
+| `error.code` | numeric JSON-RPC error code；Swarm application error 固定使用 `-32000`，不得填 RejectionReason 字符串 |
+| `error.message` | 人类可读摘要 |
+| `error.data.rejection_reason` | canonical RejectionReason wire enum string (47 codes, 见 Registry §2) |
+| `error.data.debug_detail` | 非 canonical 上下文详情 (≤ 512 bytes)；详细程度由 `detail_level` 控制 |
+| `error.data.retry_allowed` | 是否可安全重试 (machine-readable) |
+| `error.data.idempotency_key` | 幂等重试 key (machine-readable) |
+| `error.data.retry_after_tick` | 建议最早重试 tick (machine-readable) |
 
-所有错误上下文通过 `debug_detail` 传递，不在 wire enum 中增加新变体。condition → canonical RejectionReason → debug_detail template 的完整映射见 Registry §2.6。
+所有业务拒绝原因通过 `error.data.rejection_reason` 传递；所有错误上下文通过 `error.data.debug_detail` 传递，不在 wire enum 中增加新变体。condition → canonical RejectionReason → debug_detail template 的完整映射见 Registry §2.6。
 
 **SwarmError 分类 (非规范性指引)**:
 - retry_allowed=true: TimeoutExceeded, RateLimited, ConflictRetry

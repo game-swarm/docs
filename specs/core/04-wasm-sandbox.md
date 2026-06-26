@@ -218,7 +218,7 @@ WASM 中**仅可调用查询类 host function**——所有函数只读，不计
 fn host_get_terrain(room_id: u32, out_ptr: i32, out_len: i32) -> i32;  // 权威签名见 api-registry.md §4.1
 fn host_get_objects_in_range(x: i32, y: i32, range: u32, out_ptr: i32, out_len: i32) -> i32;  // ← 仅返回 is_visible_to(caller) 为 true 的实体
 fn host_path_find(from_x: i32, from_y: i32, to_x: i32, to_y: i32, opts_ptr: i32, opts_len: i32, out_ptr: i32, out_len: i32) -> i32;  // ← 仅基于可见地形计算路径
-fn host_get_random(sequence: u32, out_ptr: i32, out_len: i32) -> i32;  // ← 确定性随机字节，种子=(tick_seed, player_id, drone_id, sequence)
+fn host_get_random(sequence: u64, out_ptr: i32, out_len: i32) -> i32;  // ← 确定性随机字节，见下方 derive_rng 规范
 
 // 世界配置查询
 fn host_get_world_config(key_ptr: i32, key_len: i32, out_ptr: i32, out_len: i32) -> i32;
@@ -227,6 +227,14 @@ fn host_get_world_rules(rule_id_ptr: i32, rule_id_len: i32, out_ptr: i32, out_le
 
 全部返回 `i32`：0 = 成功，负数 = 错误码。
 `out_ptr`/`out_len`：WASM 分配缓冲区，host 写入结果后再次校验边界。
+
+`host_get_random` 使用唯一随机派生规范：
+
+```rust
+derive_rng(domain: ascii, world_seed: [u8; 32], tick: u64, actor_or_entity_id: u64, sequence: u64) -> Blake3 XOF
+```
+
+输入编码为 length-delimited field encoding：每个字段按 `field_tag || uLEB128(byte_len) || bytes` 写入；`domain` 必须是第一个字段，`host_get_random` 固定使用 domain separator `"swarm.host_random.v1"`；`world_seed` 写入 32 bytes；`tick`、`actor_or_entity_id`、`sequence` 使用 little-endian 固定宽度整数。该编码避免拼接歧义，确保不同 domain、tick、actor/entity/source 与 `u64 sequence` 的随机流隔离，并保持 replay determinism。
 
 ### 3.3 禁止的 Host Function
 

@@ -93,7 +93,7 @@ Mod 扩展通过 `world.toml` 的 `[[action_registry]]` 注册自定义 combat/e
 
 Per D2/B: canonical code 是 wire enum。详细上下文信息（如 NotMovable、Fatigued、特定 target 状态）放入 `debug_detail` 字段，**而非**增加 RejectionReason enum 变体。这保持 wire enum 稳定，同时提供丰富的调试数据。
 
-**SwarmError envelope（R33 B6）**：所有 API 错误统一使用 `{ "error": { "code": "<canonical_rejection_reason_string>", "message": "...", "data": { "debug_detail": "<optional>" } } }` 格式。`error.code` 为 RejectionReason 的字符串形式（如 `"NotVisibleOrNotFound"`），`error.data.debug_detail` 为可选的非权威调试上下文。SDK 从 `error.code` 生成 typed exception，不得依赖 `error.code` 的细分数值。
+**SwarmError envelope（R35 D1）**：所有 API 错误统一使用标准 JSON-RPC 2.0 error object：`error.code` 必须是 numeric code（Swarm application error 使用 `-32000`；JSON parse/schema/transport 层使用 JSON-RPC 标准数值码），`error.message` 为人类可读摘要，canonical RejectionReason 放入 `error.data.rejection_reason`（如 `"NotVisibleOrNotFound"`）。`error.data.debug_detail` 为可选的非权威调试上下文。SDK 从 `error.data.rejection_reason` 生成 typed exception，不得把 `error.code` 当作 RejectionReason 字符串或细分业务码。
 
 ### debug_detail 字段
 
@@ -732,7 +732,7 @@ Move 指令使用 4 方向：
 
 **来源 IDL**: game_api
 
-MCP/API 错误统一格式。`rejection_reason` 为 canonical wire enum（见 §2 RejectionReason）。所有错误上下文通过 `debug_detail` 传递，**不**在 wire enum 中增加新变体。
+MCP/API 错误统一格式遵循 JSON-RPC 2.0 error object。`error.code` 为 numeric code；Swarm application error 固定使用 `-32000`，具体 canonical wire enum 通过 `error.data.rejection_reason` 承载（见 §2 RejectionReason）。所有错误上下文通过 `error.data.debug_detail` 传递，**不**在 wire enum 中增加新变体。
 
 ```json
 {
@@ -757,12 +757,14 @@ MCP/API 错误统一格式。`rejection_reason` 为 canonical wire enum（见 §
 
 | 字段 | 类型 | 必需 | 说明 |
 |------|------|:---:|------|
-| `rejection_reason` | `RejectionReason` (canonical enum) | ✅ | Wire enum，见 §2。SDK 据此生成 typed exception |
-| `command_index` | `u32` | ❌ | 批量指令中失败指令的索引 |
-| `debug_detail` | `string` (≤ 512 bytes) | ❌ | 人类可读的调试上下文。详细程度由 `detail_level` 控制（§2） |
-| `retry_allowed` | `bool` | ❌ | 客户端可否安全重试。例：`TimeoutExceeded`/`RateLimited` → true；`InsufficientResource`/`NotOwner` → false |
-| `idempotency_key` | `string \| null` | ❌ | 幂等重试 key。若提供，相同 key 的重试只执行一次（如 deploy 用 `module_hash`） |
-| `retry_after_tick` | `u64 \| null` | ❌ | 建议重试的最早 tick。例：cooldown 剩余 12 ticks → `retry_after_tick = current_tick + 12` |
+| `error.code` | `i32` numeric JSON-RPC code | ✅ | JSON-RPC 标准 numeric code；Swarm application error 使用 `-32000`，不得填 RejectionReason 字符串 |
+| `error.message` | `string` (≤ 256 chars) | ✅ | 人类可读摘要 |
+| `error.data.rejection_reason` | `RejectionReason` (canonical enum string) | ✅ | Wire enum，见 §2。SDK 据此生成 typed exception |
+| `error.data.command_index` | `u32` | ❌ | 批量指令中失败指令的索引 |
+| `error.data.debug_detail` | `string` (≤ 512 bytes) | ❌ | 人类可读的调试上下文。详细程度由 `detail_level` 控制（§2） |
+| `error.data.retry_allowed` | `bool` | ❌ | 客户端可否安全重试。例：`TimeoutExceeded`/`RateLimited` → true；`InsufficientResource`/`NotOwner` → false |
+| `error.data.idempotency_key` | `string \| null` | ❌ | 幂等重试 key。若提供，相同 key 的重试只执行一次（如 deploy 用 `module_hash`） |
+| `error.data.retry_after_tick` | `u64 \| null` | ❌ | 建议重试的最早 tick。例：cooldown 剩余 12 ticks → `retry_after_tick = current_tick + 12` |
 
 标准 JSON-RPC numeric `error.code = -32000` 保留给 Swarm 错误。具体错误以 `error.data.rejection_reason` 承载（canonical RejectionReason enum）。SDK 从 `rejection_reason` 生成 typed exception，不得依赖 `error.code` 的细分值。
 
