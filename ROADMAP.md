@@ -52,8 +52,8 @@
 
 ## 遗留项（需人工确认）
 
-- [ ] C9: CommandAction 是否仍有 Attack/RangedAttack/Heal enum variants？
-- [ ] M2: 额外系统 (starting_resources, cargo_in_transit, global_storage 等) 是否列入 manifest？
+- [x] C9: CommandAction 是否仍有 Attack/RangedAttack/Heal enum variants？→ **已消除**（第三轮 Codex 改为 Action { type, payload }）
+- [ ] M2: 额外系统 (starting_resources, cargo_in_transit, global_storage 等 **37 个**) 是否列入 manifest？→ world.rs 注册了 ~68 个 system handler，其中 31 个在 manifest，37 个为 engine infrastructure / NPC / mod 系统，目前未列入 manifest。
 
 ## 验收
 
