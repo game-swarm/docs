@@ -59,7 +59,7 @@
 
 ---
 
-## 4. 持久化: FoundationDB
+## 4. 持久化: redb
 
 > 持久化合同详见 [Persistence Contract](specs/core/05-persistence-contract.md)，快照模型详见 [Snapshot Contract](specs/core/09-snapshot-contract.md)。
 
@@ -67,15 +67,17 @@
 
 | 方案 | 事务模型 | 优势 | 劣势 |
 |------|---------|------|------|
-| FoundationDB | 严格可序列化 | 真正的 ACID；每 tick 原子提交天然适配 | 运维复杂度高（需要 cluster）；Rust 绑定不如 SQL |
-| SQLite | 可序列化 | 零运维；单文件 | 单写入者；不适配多房间/多 shard 扩展 |
+| redb | 嵌入式 ACID WriteTransaction | 纯 Rust；单 `.redb` 文件；零外部 daemon；多 key batch 原子提交天然适配 tick | 单进程嵌入式存储，不提供跨节点分布式事务 |
+| SQLite | 可序列化 | 零运维；单文件 | SQL 层和 schema 迁移成本更高；Rust KV 使用不如 redb 直接 |
 | PostgreSQL | 可重复读 | 生态最强 | 不是严格可序列化（默认）；每 tick 提交在 MVCC 下有写放大 |
 | RocksDB | 快照隔离 | 极快写入 | 不是严格可序列化；无跨 key 事务保证 |
-| TiKV | 分布式 KV | 水平扩展 | 事务模型弱于 FDB；运维复杂度相当 |
+| 分布式 KV | 分布式事务/复制 | 水平扩展 | 对单节点 Engine 过度设计；外部集群运维与故障面不匹配 |
 
-### 选择: FoundationDB
+### 选择: redb
 
-每 tick 需要原子提交一个包含"全部玩家指令执行结果"的事务——如果部分成功部分失败，世界状态就不可回放。FoundationDB 的严格可序列化是唯一在分布式 KV 中提供这个保证的。Simulation testing（FDB 内置的确定性模拟测试框架）和 Swarm 的 replay determinism 是同一种哲学——这不仅仅是技术选择，是理念一致。
+Swarm 当前目标是单实例 Engine：tick 在内存 Bevy World 中执行，持久化层只需要在 tick 末尾把 replay-critical 的多个 key 作为一个 batch 原子写入。如果部分成功部分失败，世界状态就不可回放；如果全部在同一个 `redb::WriteTransaction` 中提交，状态 delta、TickCommitRecord、fuel 记录、deploy manifest 指针就具备同生共死的提交语义。
+
+因此真实需求不是分布式 KV 的严格可序列化或模拟测试框架，而是**单节点原子多 key batch write**。redb 完全贴合这个边界：嵌入式、纯 Rust、无外部 daemon、部署时只有一个 `.redb` 文件，故障面小，CI 与本地开发一致。它把持久化从"需要运维的分布式系统"降级为 Engine 进程内的确定性提交组件，正好匹配 Swarm 的单实例权威世界模型。
 
 ---
 
@@ -110,7 +112,7 @@ tick delta 的特点：(1) 每 3s 推一次，数据量小；(2) 错过可以回
 
 ### 选择: Dragonfly
 
-角色是"非权威缓存"——FDB 是权威源，Dragonfly 只是加速读取。需要的就是快 + Redis 协议兼容（生态工具顺手可用）。Dragonfly 的多线程设计在这个场景下比 Redis 单线程优势明显——当 500 个 WebSocket 连接同时请求当前 tick 状态时。
+角色是"非权威缓存"——redb 是权威源，Dragonfly 只是加速读取。需要的就是快 + Redis 协议兼容（生态工具顺手可用）。Dragonfly 的多线程设计在这个场景下比 Redis 单线程优势明显——当 500 个 WebSocket 连接同时请求当前 tick 状态时。
 
 ---
 
@@ -124,7 +126,7 @@ tick delta 的特点：(1) 每 3s 推一次，数据量小；(2) 错过可以回
 | TimescaleDB | PostgreSQL 扩展 | SQL 兼容；成熟 | 性能不及 ClickHouse |
 | InfluxDB | 时序 | 专为时序设计 | 查询语言非标准 SQL |
 | Prometheus | 指标 | 运维简单 | 不是为 tick 级高基数数据设计的 |
-| 直接用 FDB | KV | 零额外组件 | tick 级聚合查询性能差 |
+| 直接用 redb | KV | 零额外组件 | tick 级聚合查询性能差 |
 
 ### 选择: ClickHouse
 

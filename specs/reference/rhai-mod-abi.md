@@ -19,7 +19,7 @@ Rhai 脚本在每 tick 的规则注入阶段执行。所有 `actions.*` 调用**
 
 ```
 Rhai 脚本执行 → RhaiActionBuffer (内存缓存)
-    所有 hooks 执行完毕 → 全部成功 → Buffer apply (FDB 事务内)
+    所有 hooks 执行完毕 → 全部成功 → Buffer apply (redb WriteTransaction 内)
                        任一失败   → Buffer 丢弃 (世界状态不变)
 ```
 
@@ -28,7 +28,7 @@ Rhai 脚本执行 → RhaiActionBuffer (内存缓存)
 - Rhai **不能绕过** Command Validation Pipeline
 - Rhai **默认不能直接写入** ECS 组件——只能通过 `actions.*` API；唯一例外是显式授权的 `direct_ecs_writer` capability，且必须通过 CI unique writer gate
 - Rhai **不能访问** 其他玩家的私有数据
-- Buffer apply 由引擎核心在 FDB 事务中执行，保证确定性
+- Buffer apply 由引擎核心在 redb WriteTransaction 中执行，保证确定性
 - RuleMod 不得降级为**玩家级作弊通道**
 
 ### 1.3 执行模式

@@ -71,10 +71,10 @@ else:
 | `keyframe_interval` | **100 tick**（约 5 分钟 @ 3s/tick） | 权衡存储成本（全量 keyframe ≈16MB）与重建延迟 |
 | `cow_page_size` | 256 entity/page | modification-set 为主策略，CoW 作为备选 |
 
-Keyframe 写入 `05-persistence-contract.md` 定义的 object store；modification_set 写入 FDB（atomic mutation）。
+Keyframe 写入 `05-persistence-contract.md` 定义的 object store；modification_set 写入 redb（atomic mutation）。
 
-## 5. FDB 增量提交整合
+## 5. redb 增量提交整合
 
-modification_set 通过 FDB atomic mutation 提交。每个 tick 的 modification_set 作为单个 FDB key-value pair 写入 `snapshots/delta/{world_id}/{tick}`。keyframe 写入 `snapshots/keyframe/{world_id}/{tick}`。Hash chain 完整性由 modification_set 内的 `prev_modification_hash` 字段保证，不依赖 FDB versionstamp 排序。
+modification_set 通过 redb WriteTransaction 提交。每个 tick 的 modification_set 作为单个 redb key-value pair 写入 `snapshots/delta/{world_id}/{tick}`。keyframe 写入 `snapshots/keyframe/{world_id}/{tick}`。Hash chain 完整性由 modification_set 内的 `prev_modification_hash` 字段保证，不依赖存储引擎内部提交序号排序。
 
 详见 `specs/core/05-persistence-contract.md`。

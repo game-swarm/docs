@@ -153,6 +153,6 @@ Pathfinding 确定性要求：固定 neighbor order（NESW 顺时针）、cost t
 
 **swarm_simulate**: 给定 snapshot 离线模拟 N tick。不执行其他玩家 WASM——使用 NPC-only world。最大 100 tick，max_entities=1000，资源配额独立于热路径。输出 deterministic replay。参见 [API Registry](specs/reference/api-registry.md) §5。
 
-**swarm_deploy 部署语义**: `replay_class: deploy_mutation` — 依赖 FDB `version_counter` 防重放（非 Dragonfly nonce/window）。同 `module_hash` 重试只扣费一次（idempotency_key = module_hash）。module 保留策略：最近 10 个版本保留，旧版本在无引用后 GC。
+**swarm_deploy 部署语义**: `replay_class: deploy_mutation` — 依赖 redb `version_counter` 防重放（非 Dragonfly nonce/window）。同 `module_hash` 重试只扣费一次（idempotency_key = module_hash）。module 保留策略：最近 10 个版本保留，旧版本在无引用后 GC。
 
 ---

@@ -386,10 +386,10 @@ TickTrace 中存储的审计日志受以下大小限制，防止磁盘 DoS：
 - 预编译版本就绪后原子切换：`active_module ← prewarm_module`
 
 **后台预编译触发**：
-1. 新 WASM 部署成功（`swarm_deploy` 完成 FDB commit + object store upload）
+1. 新 WASM 部署成功（`swarm_deploy` 完成 redb commit + object store upload）
 2. 后台编译 worker 收到通知 → 独立 Wasmtime Engine 实例编译模块
 3. 编译期间 active 版本不受影响（独立 Engine，独立 cgroup limits）
-4. 编译完成 → artifact hash 写入 `prewarm_registry`（FDB `sandbox/prewarm/<player_id>/<compiled_artifact_hash>`）
+4. 编译完成 → artifact hash 写入 `prewarm_registry`（redb `sandbox/prewarm/<player_id>/<compiled_artifact_hash>`）
 
 **原子切换**：
 - 下一 tick COLLECT 开始前：检查 `prewarm_registry` 是否有匹配当前部署 hash 的预编译模块
@@ -404,9 +404,9 @@ TickTrace 中存储的审计日志受以下大小限制，防止磁盘 DoS：
 - Pre-warm 编译失败不影响 active 版本——记录 `prewarm_compile_failed` 审计日志
 
 **Rollback Window**：
-- 预编译模块保留最近 3 个版本（按 `fdb_version_counter` 降序）
+- 预编译模块保留最近 3 个版本（按 `redb_version_counter` 降序）
 - 第 4 个及更早版本由 GC 清理（每 1h 扫描）
-- 紧急回滚时：Admin `swarm_admin_rollback` 可指定 target `fdb_version_counter`，引擎自动切换到对应预编译版本（若缓存中）
+- 紧急回滚时：Admin `swarm_admin_rollback` 可指定 target `redb_version_counter`，引擎自动切换到对应预编译版本（若缓存中）
 
 **Pre-warm 编译预算**：
 | 资源 | 限制 | 说明 |

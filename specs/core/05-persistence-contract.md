@@ -2,7 +2,7 @@
 
 > 详见 design/engine.md
 >
-> **R15 B8 修复**。本文档定义 Swarm 引擎的持久化分层架构，消除 "FDB 事务内写一切" 与 "跨存储双写会炸" 之间的合同空白。
+> **R15 B8 修复**。本文档定义 Swarm 引擎的持久化分层架构，消除 "redb WriteTransaction 内写一切" 与 "跨存储双写会炸" 之间的合同空白。
 >
 > **R22 B1 修复**。加入显式的 replay-critical subset 声明、Deploy 完整状态机、replay-critical 字段清单。
 
@@ -29,37 +29,37 @@
 
 ## 2. Replay-Critical Subset（权威声明）
 
-> **R22 B1**: 明确哪些 Field 必须在 FDB 事务中原子提交（replay-critical），哪些可以异步写入对象存储（debug/rich）。此声明是 `05-persistence-contract.md` 的最权威条款——所有其他文档引用 persistence 合同时以此为准。
+> **R22 B1**: 明确哪些 Field 必须在 redb WriteTransaction 中原子提交（replay-critical），哪些可以异步写入对象存储（debug/rich）。此声明是 `05-persistence-contract.md` 的最权威条款——所有其他文档引用 persistence 合同时以此为准。
 
-### 2.1 TickCommitRecord Fields（FDB 原子提交 — 不可降级）
+### 2.1 TickCommitRecord Fields（redb 原子提交 — 不可降级）
 
-以下 10 个字段组成 TickCommitRecord，随每 tick redb **同一 WriteTransaction**原子提交。缺失任一则 tick 不可 replay。
+以下 10 个字段组成 TickCommitRecord，随每 tick redb **同一 WriteTransaction** 原子提交。缺失任一则 tick 不可 replay。
 
 **三层分离声明：**
-- **deterministic_replay**：仅需 FDB 中 TickCommitRecord 的 10 个字段 + keyframe/delta chain。对象存储中的任何数据均非 replay 必需。
+- **deterministic_replay**：仅需 redb 中 TickCommitRecord 的 10 个字段 + keyframe/delta chain。对象存储中的任何数据均非 replay 必需。
 - **rich_debug_replay**：RichTraceBlob（可选，存储于对象存储）。缺失 → `terminal_state = audit_gap`（审计记录缺失，可从相邻 tick/keyframe 重建）。
-- **WASM module blob**：对象存储中的 WASM 二进制。**非 replay-critical**。缺失 → 安全审计 gap（无法重新读取玩家提交的 WASM bytecode），**绝非** `unreplayable`——FDB manifest 中的 `wasm_module_hash`、`compiled_artifact_hash` 与 `fdb_version_counter` 足够完成确定性 replay。
+- **WASM module blob**：对象存储中的 WASM 二进制。**非 replay-critical**。缺失 → 安全审计 gap（无法重新读取玩家提交的 WASM bytecode），**绝非** `unreplayable`——redb manifest 中的 `wasm_module_hash`、`compiled_artifact_hash` 与 `redb_version_counter` 足够完成确定性 replay。
 
 | # | 字段 | 存储位置 | 用途 |
 |---|------|---------|------|
-| 1 | `commands` | FDB tick_commands | 所有 validated command 记录 |
-| 2 | `rejections` | FDB tick_commands | 所有 command rejection 记录 |
-| 3 | `fuel` | FDB tick_fuel | 每玩家 fuel 扣费明细 |
-| 4 | `deploy_activation_decision` | FDB tick_deploy | 本 tick 激活的部署列表（drone_id, wasm_module_hash, compiled_artifact_hash, fdb_version_counter） |
-| 5 | `canonical_codec_version` | FDB tick_head | 序列化格式版本 |
+| 1 | `commands` | redb tick_commands | 所有 validated command 记录 |
+| 2 | `rejections` | redb tick_commands | 所有 command rejection 记录 |
+| 3 | `fuel` | redb tick_fuel | 每玩家 fuel 扣费明细 |
+| 4 | `deploy_activation_decision` | redb tick_deploy | 本 tick 激活的部署列表（drone_id, wasm_module_hash, compiled_artifact_hash, redb_version_counter） |
+| 5 | `canonical_codec_version` | redb tick_head | 序列化格式版本 |
 
 > **canonical_codec_version CI 校验**：`canonical_codec_version` 为 `u32` 单调递增整数。CI 管线维护 Rust (`serde_swarm`) 和 Go (`swarm-codec-go`) 双实现的确定性 hash fixture——对固定 world state dump，两实现产出的 `Blake3(canonical_serialize(state))` 必须完全一致。fixture 随 codec version 更新纳入 `specs/reference/codec_fixtures/`。
-| 6 | `snapshot_hash` | FDB tick_head | COLLECT 阶段快照 hash |
-| 7 | `commands_hash` | FDB tick_head | commands + rejections 的 Blake3 hash |
-| 8 | `state_checksum` | FDB tick_head | world state 完整性验证 |
-| 9 | `manifest_hash` | FDB tick_manifest | ECS 系统版本/调度配置 hash |
-| 10 | `world_config_hash` | FDB tick_manifest | world.toml 配置 hash |
+| 6 | `snapshot_hash` | redb tick_head | COLLECT 阶段快照 hash |
+| 7 | `commands_hash` | redb tick_head | commands + rejections 的 Blake3 hash |
+| 8 | `state_checksum` | redb tick_head | world state 完整性验证 |
+| 9 | `manifest_hash` | redb tick_manifest | ECS 系统版本/调度配置 hash |
+| 10 | `world_config_hash` | redb tick_manifest | world.toml 配置 hash |
 
 ### 2.2 Debug/Rich（对象存储异步写入 — 可降级）
 
-**Object Store 仅承载 RichTraceBlob**。对象存储中不存放 replay-critical 数据。对象存储写入失败仅导致 `terminal_state = audit_gap`（审计记录缺失，游戏状态可从相邻 tick 重建），**绝不会**导致 `unreplayable`——FDB 中 TickCommitRecord 的 10 个字段足够完成确定性 replay。
+**Object Store 仅承载 RichTraceBlob**。对象存储中不存放 replay-critical 数据。对象存储写入失败仅导致 `terminal_state = audit_gap`（审计记录缺失，游戏状态可从相邻 tick 重建），**绝不会**导致 `unreplayable`——redb 中 TickCommitRecord 的 10 个字段足够完成确定性 replay。
 
-> **WASM 模块 blob 非 replay-critical（D6）**：WASM 模块二进制文件存储在对象存储中，其可用性不影响确定性 replay。Replay verifier 仅使用 FDB 中的 TickCommitRecord（含 `commands`、`canonical_codec_version`、`manifest_hash` 等 10 字段）重放，不重新执行 WASM 模块。WASM 模块 blob 缺失只影响 rich audit/debug 路径——deploy 的 `deploy_activation_decision` 已在 FDB 清单中通过 `wasm_module_hash`、`compiled_artifact_hash` + `fdb_version_counter` 完整记录激活决策，replay 不需要原始 WASM 字节。
+> **WASM 模块 blob 非 replay-critical（D6）**：WASM 模块二进制文件存储在对象存储中，其可用性不影响确定性 replay。Replay verifier 仅使用 redb 中的 TickCommitRecord（含 `commands`、`canonical_codec_version`、`manifest_hash` 等 10 字段）重放，不重新执行 WASM 模块。WASM 模块 blob 缺失只影响 rich audit/debug 路径——deploy 的 `deploy_activation_decision` 已在 redb 清单中通过 `wasm_module_hash`、`compiled_artifact_hash` + `redb_version_counter` 完整记录激活决策，replay 不需要原始 WASM 字节。
 
 以下字段写入对象存储 blob，缺失不影响 deterministic replay：
 
@@ -71,7 +71,7 @@
 
 ### 2.3 Deploy 完整状态机
 
-> **R22 B1 / R35 D4+B6**: 消除 `swarm_deploy` 的 TOCTOU 与激活前可用性缺口。`swarm_deploy` RPC 同步携带 `wasm_bytes`、`metadata` 与签名 `DeployPayload`；服务端在请求内完成 hash 计算、验证、编译准备与 FDB manifest 原子提交。Object store 仅在 commit 后异步保存 WASM binary，用于审计/调试，不参与接受判定。
+> **R22 B1 / R35 D4+B6**: 消除 `swarm_deploy` 的 TOCTOU 与激活前可用性缺口。`swarm_deploy` RPC 同步携带 `wasm_bytes`、`metadata` 与签名 `DeployPayload`；服务端在请求内完成 hash 计算、验证、编译准备与 redb manifest 原子提交。Object store 仅在 commit 后异步保存 WASM binary，用于审计/调试，不参与接受判定。
 
 ```
 状态: VALIDATE → COMPILE_PREPARE → MANIFEST_COMMIT → ACTIVATION_PENDING → ACTIVE
@@ -91,8 +91,8 @@ COMPILE_PREPARE:
   └─ 进入 MANIFEST_COMMIT（不等 blob 上传完成）
 
 MANIFEST_COMMIT:
-  ├─ FDB 事务原子提交 deploy manifest:
-  │   ├─ deploy_id, player_id, drone_id, wasm_module_hash, compiled_artifact_hash, fdb_version_counter
+  ├─ redb WriteTransaction 原子提交 deploy manifest:
+  │   ├─ deploy_id, player_id, drone_id, wasm_module_hash, compiled_artifact_hash, redb_version_counter
   │   ├─ object_store_key (原始 wasm_bytes blob 预期位置)
   │   ├─ upload_status = "pending"
   │   └─ activation_tick = current_tick + 1 (下一完整 tick 激活)
@@ -107,7 +107,7 @@ ACTIVATION_PENDING:
       │   └─ drone 获得新 WASM 模块，下一 tick 生效
       ├─ compiled_artifact_hash 不匹配或预编译 artifact 不可用
       │   └─ → FAILED: drone 保持旧模块(如有)或空模块
-      │        FDB 记录 deploy_failure_reason
+      │        redb 记录 deploy_failure_reason
       └─ upload_status == "pending" (原始 wasm blob 仍在传输)
           └─ 不阻塞激活；记录 `wasm_blob_audit_gap_pending`
 
@@ -115,16 +115,16 @@ ACTIVE:
   └─ 模块已激活。drone 在 COLLECT 阶段使用此模块执行。
 
 FAILED:
-  ├─ FDB 记录 deploy_failure_reason
+  ├─ redb 记录 deploy_failure_reason
   ├─ object store 中 blob (如有) 由 GC 清理 (保留 1h 后删除)
   └─ 玩家可重新部署
 ```
 
 **关键不变量（Deploy）**：
-- **FDB manifest 是 deploy 的唯一权威记录**：`fdb_version_counter` 为 replay 提供严格全序。`wasm_module_hash` 与 `compiled_artifact_hash` 分离保存；blob upload 异步执行，不阻塞 tick 循环或激活判定。
+- **redb manifest 是 deploy 的唯一权威记录**：`redb_version_counter` 为 replay 提供严格全序。`wasm_module_hash` 与 `compiled_artifact_hash` 分离保存；blob upload 异步执行，不阻塞 tick 循环或激活判定。
 - **同一 tick 内的 deploy 不影响当前 tick**：WASM 模块快照在 COLLECT 开始时确定。deploy 在 `activation_tick`（≥ current_tick + 1）生效。
-- **Blob 缺失不影响 FDB 状态完整性或模块激活**：`upload_status = "failed"` 只表示原始 WASM 审计 blob 缺失；只要 FDB manifest 与预编译 artifact 完整，drone 仍可激活新模块。缺失 blob 产生 audit gap，不产生 deploy rollback。
-- **Deploy mutation 的 replay class**：`deploy_mutation` — 状态变更通过 FDB 事务原子化，replay verifier 以 `fdb_version_counter` 全序重放，不依赖对象存储 blob 可用性。
+- **Blob 缺失不影响 redb 状态完整性或模块激活**：`upload_status = "failed"` 只表示原始 WASM 审计 blob 缺失；只要 redb manifest 与预编译 artifact 完整，drone 仍可激活新模块。缺失 blob 产生 audit gap，不产生 deploy rollback。
+- **Deploy mutation 的 replay class**：`deploy_mutation` — 状态变更通过 redb WriteTransaction 原子化，replay verifier 以 `redb_version_counter` 全序重放，不依赖对象存储 blob 可用性。
 
 ---
 
@@ -141,8 +141,8 @@ Phase A: Apply 完成
   └─ RichTraceBlob 完整序列化到内存 buffer
   └─ 计算 content_hash = Blake3(compress(serialize(RichTraceBlob)))
 
-Phase B: FDB 事务提交（原子 — 先于对象存储写入）
-  ├─ BEGIN FDB TRANSACTION
+Phase B: redb WriteTransaction 提交（原子 — 先于对象存储写入）
+  ├─ BEGIN redb TRANSACTION
   ├─ INSERT tick_head (tick, state_checksum, timestamp)
   ├─ INSERT tick_manifest (tick, object_id, content_hash, blob_size, upload_status = "pending")
   │   └─ 注意：object_store_etag 此时为 NULL（blob 尚未写入）
@@ -153,7 +153,7 @@ Phase B: FDB 事务提交（原子 — 先于对象存储写入）
   └─ 若 COMMIT 成功 → tick 持久化完成（world state 已安全）
      若 COMMIT 失败 → 事务回滚，tick 放弃
 
-Phase C: 对象存储异步写入（FDB commit 成功后触发）
+Phase C: 对象存储异步写入（redb commit 成功后触发）
   ├─ 入队异步任务：write_blob(tick, tick_trace_binary, object_id)
   ├─ 任务成功：
   │   ├─ UPDATE tick_manifest SET upload_status = "complete", object_store_etag = <etag>
@@ -161,7 +161,7 @@ Phase C: 对象存储异步写入（FDB commit 成功后触发）
   ├─ 任务失败（网络/超时）：
   │   ├─ 重试最多 3 次（指数退避 1s/2s/4s）
   │   ├─ 3 次均失败 → UPDATE tick_manifest SET upload_status = "failed"
-  │   └─ blob 缺失不影响 world state（FDB 已有完整状态）。Rich/debug replay 不可用；deterministic replay 不受影响（TickCommitRecord 10 字段完整）。
+  │   └─ blob 缺失不影响 world state（redb 已有完整状态）。Rich/debug replay 不可用；deterministic replay 不受影响（TickCommitRecord 10 字段完整）。
   └─ 任务超时（> 5s）：
       └─ 同失败处理
 
@@ -175,38 +175,38 @@ Phase D: WAL 截断
 
 | upload_status | 含义 | tick state 完整性 |
 |:---|------|:---:|
-| `pending` | blob 尚未写入对象存储 | ✅ FDB state 完整，rich debug replay 不可用（deterministic replay OK） |
-| `uploading` | blob 正在写入（worker 已接管） | ✅ FDB state 完整 |
+| `pending` | blob 尚未写入对象存储 | ✅ redb state 完整，rich debug replay 不可用（deterministic replay OK） |
+| `uploading` | blob 正在写入（worker 已接管） | ✅ redb state 完整 |
 | `complete` | blob 已写入，etag 已回填 | ✅✅ 完全持久化，replay 可用 |
-| `failed` | 3 次重试后仍失败 | ✅ FDB state 完整，rich debug replay 不可用（deterministic replay OK） |
+| `failed` | 3 次重试后仍失败 | ✅ redb state 完整，rich debug replay 不可用（deterministic replay OK） |
 
 **Replay 检查**：replay verifier 查询 `tick_manifest.upload_status`：
 - `complete` → 从对象存储拉取 blob，验证 hash → rich debug replay 可用
-- `pending` / `uploading` → 降级为 `audit_gap`。Deterministic replay 不受影响（FDB TickCommitRecord 10 字段完整）
-- `failed` → 标记 `terminal_state = audit_gap`。Deterministic replay 仍可用（FDB 数据完整）
+- `pending` / `uploading` → 降级为 `audit_gap`。Deterministic replay 不受影响（redb TickCommitRecord 10 字段完整）
+- `failed` → 标记 `terminal_state = audit_gap`。Deterministic replay 仍可用（redb 数据完整）
 
-**孤儿清理**：由于 FDB 先于对象存储写入，不再产生孤儿 blob。若 blob 写入成功但 etag 回填失败（FDB 更新超时），GC 通过对比对象存储中 blob 的 created_at 与 tick_manifest 中 upload_status 清理（`upload_status = 'failed'` 但对象存储中存在 blob → 保留 1h 后清理）。
+**孤儿清理**：由于 redb 先于对象存储写入，不再产生孤儿 blob。若 blob 写入成功但 etag 回填失败（redb 更新超时），GC 通过对比对象存储中 blob 的 created_at 与 tick_manifest 中 upload_status 清理（`upload_status = 'failed'` 但对象存储中存在 blob → 保留 1h 后清理）。
 
 ### 关键不变量（更新）
 
-- **FDB commit 成功 = tick 持久化完成**：`tick_manifest` 行证明 tick 已发生，`content_hash` 证明 blob 完整性。**blob 写入不再是 tick commit 的前提条件。**
-- **FDB 只存小对象**：`tick_manifest` 仅含 `object_id + content_hash + blob_size + upload_status`——无 blob 本体。
-- **FDB commit 失败 = tick 未发生**：world state 回滚到 Pre-Apply 快照，玩家 WASM 不重跑，tick 编号不递增。
-- **TickCommitRecord hash chain 仅在 FDB commit 成功后追加**：prev_chain_hash 取自上一个已提交 tick，失败 tick 不产生链条目。
+- **redb commit 成功 = tick 持久化完成**：`tick_manifest` 行证明 tick 已发生，`content_hash` 证明 blob 完整性。**blob 写入不再是 tick commit 的前提条件。**
+- **redb 只存小对象**：`tick_manifest` 仅含 `object_id + content_hash + blob_size + upload_status`——无 blob 本体。
+- **redb commit 失败 = tick 未发生**：world state 回滚到 Pre-Apply 快照，玩家 WASM 不重跑，tick 编号不递增。
+- **TickCommitRecord hash chain 仅在 redb commit 成功后追加**：prev_chain_hash 取自上一个已提交 tick，失败 tick 不产生链条目。
 
 ---
 
 ## 4. 持久化失败语义（D5/B async 模型）
 
-FDB commit 先于对象存储写入——以下为所有失败场景的处理：
+redb commit 先于对象存储写入——以下为所有失败场景的处理：
 
-| 场景 | FDB 状态 | 对象存储状态 | 处理 |
+| 场景 | redb 状态 | 对象存储状态 | 处理 |
 |------|:------:|:----------:|------|
 | 正常 | ✅ 已提交 | ✅ 已写入（异步完成） | 正常。`upload_status = complete` |
-| FDB commit 失败 | ❌ 回滚 | ❌ 未写入 | Tick 放弃，不递增 tick 编号 |
-| FDB commit 成功 + blob 写入成功 | ✅ 已提交 | ✅ 已写入 | 正常 |
-| FDB commit 成功 + blob 写入失败（3 次重试后） | ✅ 已提交 | ❌ 缺失 | `upload_status = failed`。world state 完整，rich debug replay 不可用（deterministic replay 不受影响，TickCommitRecord 10 字段完整） |
-| FDB commit 成功 + blob 写入超时（> 5s） | ✅ 已提交 | ❓ 未知 | 重试 3 次；仍失败 → `upload_status = failed` |
+| redb commit 失败 | ❌ 回滚 | ❌ 未写入 | Tick 放弃，不递增 tick 编号 |
+| redb commit 成功 + blob 写入成功 | ✅ 已提交 | ✅ 已写入 | 正常 |
+| redb commit 成功 + blob 写入失败（3 次重试后） | ✅ 已提交 | ❌ 缺失 | `upload_status = failed`。world state 完整，rich debug replay 不可用（deterministic replay 不受影响，TickCommitRecord 10 字段完整） |
+| redb commit 成功 + blob 写入超时（> 5s） | ✅ 已提交 | ❓ 未知 | 重试 3 次；仍失败 → `upload_status = failed` |
 | Blob 写入成功 + etag 回填失败 | ✅ 已提交 | ✅ 已写入 | 对象存储中存在 blob 但 manifest 中无 etag。GC 扫描：1h 后若 `upload_status != 'complete'` 则清理孤儿 blob |
 
 ---
@@ -216,7 +216,7 @@ FDB commit 先于对象存储写入——以下为所有失败场景的处理：
 ### 5.1 正常 Replay
 
 ```
-1. 从 FDB 读取目标 tick 的 tick_manifest
+1. 从 redb 读取目标 tick 的 tick_manifest
 2. 从对象存储按 object_id 获取 tick_trace_blob
 3. 验证 Blake3(tick_trace_blob) == tick_manifest.content_hash
 4. 验证 tick_hash_chain 完整性：从上一个 keyframe tick 到目标 tick
@@ -230,14 +230,14 @@ FDB commit 先于对象存储写入——以下为所有失败场景的处理：
 若目标 tick 最近的 keyframe 已被 GC：
 
 ```
-1. 从 FDB 全量重建 world state（每个实体的最新状态）
-2. 验证 FDB state_checksum 是否匹配 keyframe 的存在性
-3. 若无可用 keyframe 且无 FDB 全量 → 该 tick 范围不可 replay
+1. 从 redb 全量重建 world state（每个实体的最新状态）
+2. 验证 redb state_checksum 是否匹配 keyframe 的存在性
+3. 若无可用 keyframe 且无 redb 全量 → 该 tick 范围不可 replay
 ```
 
 ### 5.3 Replay Verifier 输入
 
-Replay verifier 以 **FDB commit 的 manifest/hash 为权威**，不重新扫描对象存储：
+Replay verifier 以 **redb commit 的 manifest/hash 为权威**，不重新扫描对象存储：
 
 - 输入: `(start_tick, end_tick, fdb_manifest_list, object_store_blobs)`
 - 验证: 每个 tick 的 `tick_manifest.content_hash` 匹配 blob
@@ -256,7 +256,7 @@ Replay verifier 以 **FDB commit 的 manifest/hash 为权威**，不重新扫描
 | warm | 30d | tick + 30d 后转移至 cold |
 | cold | 180d | tick + 180d 后删除 |
 
-**孤儿清理**: 由于 FDB commit 先于 blob 写入，正常流程不产生孤儿 blob。唯一孤儿场景：blob 写入成功但 etag 回填失败 → GC 扫描 `upload_status != 'complete'` 但对象存储中存在对应 blob → 保留 1h 后删除。**正常 `upload_status = 'complete'` 的 blob 按 TTL 分层清理**（见上表）。
+**孤儿清理**: 由于 redb commit 先于 blob 写入，正常流程不产生孤儿 blob。唯一孤儿场景：blob 写入成功但 etag 回填失败 → GC 扫描 `upload_status != 'complete'` 但对象存储中存在对应 blob → 保留 1h 后删除。**正常 `upload_status = 'complete'` 的 blob 按 TTL 分层清理**（见上表）。
 
 ### 6.2 Keyframe GC
 
@@ -266,7 +266,7 @@ Replay verifier 以 **FDB commit 的 manifest/hash 为权威**，不重新扫描
 
 ### 6.3 WAL GC
 
-- 每次 FDB commit 成功后截断已提交 tick 的 WAL
+- 每次 redb commit 成功后截断已提交 tick 的 WAL
 - WAL 仅保留未提交 tick 的条目
 
 ---
@@ -274,7 +274,7 @@ Replay verifier 以 **FDB commit 的 manifest/hash 为权威**，不重新扫描
 ## 7. Commit Retry 对 Hash Chain 的影响（R16 B3 修复）
 
 ```
-若 tick N 的 FDB commit 因瞬时错误（网络/锁冲突）失败：
+若 tick N 的 redb commit 因瞬时错误（网络/锁冲突）失败：
   1. world state 回滚到 Pre-Apply 快照
   2. 不递增 tick 编号
   3. 复用 canonical COLLECT buffer：
@@ -283,12 +283,12 @@ Replay verifier 以 **FDB commit 的 manifest/hash 为权威**，不重新扫描
      - wasm_status（相同——WASM 不重跑）
      - fuel_ledger（相同——不追加扣费）
   4. ❌ 不重新执行 WASM（避免非确定性输出与双倍扣费）
-  5. 重新执行 EXECUTE phase + FDB commit（使用相同 COLLECT 结果）
+  5. 重新执行 EXECUTE phase + redb commit（使用相同 COLLECT 结果）
   6. 每次 retry attempt 产生新的 attempt_id（递增），但 collect_id 不变
   7. 最终 commit 成功后，commit_id 关联到成功的 attempt_id
 ```
 
-这意味着：**同一 tick 编号的 TickCommitRecord 可能包含多个 attempt（attempt_id 递增），但 collect_id 始终不变**。Replay 只关心最终 committed 的 attempt——hash chain 验证以 FDB 中实际存在的链为准。跨 attempt 的燃料消耗上限 = `1 × MAX_FUEL`（首次 COLLECT 时的扣费即为最终扣费，重试不追加）。
+这意味着：**同一 tick 编号的 TickCommitRecord 可能包含多个 attempt（attempt_id 递增），但 collect_id 始终不变**。Replay 只关心最终 committed 的 attempt——hash chain 验证以 redb 中实际存在的链为准。跨 attempt 的燃料消耗上限 = `1 × MAX_FUEL`（首次 COLLECT 时的扣费即为最终扣费，重试不追加）。
 
 ### 7.1 TickCommitRecord 标识字段
 
@@ -298,7 +298,7 @@ TickCommitRecord 中新增以下标识字段以支持 attempt/collect/commit 追
 |------|------|------|
 | `collect_id` | `Blake3(tick || snapshot_hash || commands_hash)` | COLLECT 阶段的唯一标识。同一 tick 的所有 retry 共享此值。首次 COLLECT 后确定，重试不变。 |
 | `attempt_id` | `u32`（从 0 开始递增） | 本次 commit 尝试的序号。首次尝试 = 0，每次 retry +1。仅当 commit 成功或 tick 放弃时终止。 |
-| `commit_id` | `Blake3(collect_id || attempt_id || state_checksum)` | 成功 commit 的唯一标识。仅在 FDB commit 成功后生成。失败 attempt 无 commit_id。 |
+| `commit_id` | `Blake3(collect_id || attempt_id || state_checksum)` | 成功 commit 的唯一标识。仅在 redb commit 成功后生成。失败 attempt 无 commit_id。 |
 
 **TickCommitRecord 结构**（R16 B3 扩展）：
 
@@ -332,7 +332,7 @@ TickCommitRecord {
 **损坏检测流程**：
 
 ```
-1. 从 FDB 读取 tick_manifest → 获取 object_id + content_hash
+1. 从 redb 读取 tick_manifest → 获取 object_id + content_hash
 2. 从对象存储获取 blob
 3. 验证 Blake3(blob) == content_hash
    ├─ 匹配 → terminal_state = verified
@@ -349,23 +349,23 @@ TickCommitRecord {
 
 ---
 
-## 8. Room-Partition FDB 事务策略
+## 8. Room-Partition redb WriteTransaction 策略
 
-> **R23 D6/B 裁决**：FDB room-partition transaction 纳入核心合同。单事务模式仅支持小规模验证（≤ 50 active players, ≤ 100 rooms）；500/1000-player 场景必须使用 room-level partition（Shadow Write）。
+> **R23 D6/B 裁决**：redb room-partition transaction 纳入核心合同。单事务模式仅支持小规模验证（≤ 50 active players, ≤ 100 rooms）；500/1000-player 场景必须使用 room-level partition（Shadow Write）。
 
-> **R32 B1**：模型从「per-room 独立 FDB commit + 全局回滚」升级为「shadow write + atomic publish」。Per-room 写入目标为 `/staging/{tick}/{room}`——staging 行不是已提交状态。GlobalTickCommit 是唯一的 publish 点，将 staging 行原子提升为 `/committed/` 路径。所有下游读取仅走 `/committed/`。Staging 孤立行由 GC 清理（< 15s）。详见 `specs/core/01-tick-protocol.md` §3.5。
+> **R32 B1**：模型从「per-room 独立 redb commit + 全局回滚」升级为「shadow write + atomic publish」。Per-room 写入目标为 `/staging/{tick}/{room}`——staging 行不是已提交状态。GlobalTickCommit 是唯一的 publish 点，将 staging 行原子提升为 `/committed/` 路径。所有下游读取仅走 `/committed/`。Staging 孤立行由 GC 清理（< 15s）。详见 `specs/core/01-tick-protocol.md` §3.5。
 
 ### 8.1 分区策略
 
 ```
 单事务模式 (默认):
   适用: ≤ 50 active players, ≤ 100 rooms
-  策略: 整个 world 单 FDB 事务
+  策略: 整个 world 单 redb WriteTransaction
   热区: tick_head + state_checksum + manifest (shared)
   
 Room-Partition (500+ players):
   适用: > 50 active players 或 > 100 rooms
-  策略: 每个 room 独立 FDB 事务写入 staging 区
+  策略: 每个 room 独立 redb WriteTransaction 写入 staging 区
   Key layout:
     /staging/{tick}/{room_id}/state   → 房间状态 delta（非 committed——仅 GlobalTickCommit 可见）
     /staging/{tick}/{room_id}/events  → 房间内事件
@@ -380,7 +380,7 @@ Room-Partition (500+ players):
 
 | 约束 | 单事务模式 | Room-Partition (Shadow Write) |
 |------|-----------|---------------|
-| FDB 事务大小 | 单 tick < 10KB | 每 room staging < 2KB |
+| redb WriteTransaction 大小 | 单 tick < 10KB | 每 room staging < 2KB |
 | 对象存储异步写入超时 | 5s；3 次重试 | 5s；3 次重试 |
 | 对象存储读取 | 延迟 < 100ms p99 | 不变 |
 | Keyframe 写入 | 异步，不阻塞 tick 循环 | 不变 |
@@ -400,8 +400,8 @@ Room-Partition (500+ players):
 | Entity snapshot clone | 50k entities | p99 < 20ms |
 | Entity snapshot restore | 50k entities | p99 < 30ms |
 | Snapshot stitching | 1000 × 256KB snapshots | p99 < 100ms |
-| FDB single-tx commit | 500 active players | p99 < 200ms, conflict rate < 1% |
-| FDB room-partition commit | 1000 active players, 200 rooms | p99 < 500ms, per-room conflict rate < 1% |
+| redb single-tx commit | 500 active players | p99 < 200ms, conflict rate < 1% |
+| redb room-partition commit | 1000 active players, 200 rooms | p99 < 500ms, per-room conflict rate < 1% |
 | Pathfinding | 50×50 A* nodes, 100 concurrent ops | p99 < 10ms/node, fair-share guarantee |
 | Rollback Bevy snapshot/restore | 500 entities, all components | p99 < 50ms, entity ID allocator verified |
 

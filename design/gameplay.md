@@ -2080,7 +2080,7 @@ function tick(snapshot: WorldSnapshot): TickResult {
 
 ### 3.2 外交系统
 
-玩家间正式关系由 on-chain 外交协议管理，所有操作记录在 FDB 中，可回放审计。
+玩家间正式关系由 on-chain 外交协议管理，所有操作记录在 redb 中，可回放审计。
 
 #### 外交状态机
 
@@ -2224,7 +2224,7 @@ Swarm 支持跨世界 identity federation——同一身份可在多个世界中
 |---|---|---|
 | 人格是否影响 gameplay | 否，纯表现 | 维护确定性；避免"roll 到好人格=优势"的彩票效应 |
 | 人格种子 | 确定性 Blake3 | 同 replay 保证相同动画 |
-| 外交是否 on-chain | 是，FDB 持久化 | 可审计、可回放、防作弊 |
+| 外交是否 on-chain | 是，redb 持久化 | 可审计、可回放、防作弊 |
 | Allied 可见性增强 | ally 级（非完全透明） | 保留战术深度；不透传 WASM 代码 |
 | 经济仪表板实时性 | 每个 BROADCAST 后更新 | 与 tick 同步，无额外轮询 |
 | 行为可视化是否影响 tick | 否，前端纯渲染 | 引擎不计算动画——前端从 snapshot 推导状态 |

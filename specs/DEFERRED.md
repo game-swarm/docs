@@ -9,9 +9,9 @@
 ### ML4: Seed rotation epoch boundary CI
 
 - **来源**: rev-dsv4-architect D5
-- **问题**: Seed rotation 在 epoch 边界的行为需要 FDB rollback 注入测试验证
+- **问题**: Seed rotation 在 epoch 边界的行为需要 redb rollback 注入测试验证
 - **触发时机**: 引擎 seed_rotation_system 实现完成后
-- **决策**: 设计 FDB rollback 注入测试，验证 seed rotation 在事务失败/重试下的确定性。测试通过后确定 seed rotation 的 epoch boundary 语义
+- **决策**: 设计 redb rollback 注入测试，验证 seed rotation 在事务失败/重试下的确定性。测试通过后确定 seed rotation 的 epoch boundary 语义
 - **当前默认**: 10,000 tick 自动轮换，Blake3(旧种子, 当前tick)
 
 ---
@@ -22,7 +22,7 @@
 - **问题**: Dragonfly 崩溃后 nonce TTL 窗口内可重放。高价值操作（admin）需要更强的防重放
 - **触发时机**: Auth Service 实现完成后，进行 crash-recovery 集成测试
 - **决策**: 
-  - 是否将 admin 操作 nonce 从 Dragonfly 迁移到 FDB（牺牲热路径延迟换取崩溃安全）
+  - 是否将 admin 操作 nonce 从 Dragonfly 迁移到 redb（牺牲热路径延迟换取崩溃安全）
   - 或接受 Dragonfly 崩溃窗口风险（300s TTL），仅对 admin 操作额外加 challenge-response
 - **当前默认**: Admin 使用 challenge-response（不依赖 Dragonfly nonce 持久化），普通 MCP 查询使用 Dragonfly nonce
 

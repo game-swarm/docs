@@ -334,7 +334,7 @@ Rhai 脚本执行
              ▼
 ┌─────────────────────────────────┐
 │  统一 Apply                      │  ← 按顺序将 buffer 内容写入世界状态
-│  1. deduct（扣资源）              │     FDB 事务内 atomic commit
+│  1. deduct（扣资源）              │     redb WriteTransaction 内 atomic commit
 │  2. award（发资源）               │
 │  3. emit_event（发事件）          │
 │  4. effect（世界效果）            │
@@ -356,7 +356,7 @@ Rhai 脚本执行
 - Rhai 脚本**默认不能**直接写入 ECS 组件——仅能通过 `actions.*` API（声明式 action buffer）
 - **可选 capability-gated direct ECS writer**：模组可在 `mod.toml` 中声明 `direct_ecs_writer` capability，经服主在 `world.toml` 中显式授权后，获得对特定 ECS 组件的直接写入能力。每个 direct writer capability 必须声明 `engine_version`、`abi_version`、`affected_components`、`affected_resources`。详见 §5.1g Direct ECS Writer 能力模型。
 - Rhai 脚本**不能**访问其他玩家的私有数据
-- Buffer apply 阶段由引擎核心在 FDB 事务中执行，保证确定性
+- Buffer apply 阶段由引擎核心在 redb WriteTransaction 中执行，保证确定性
 
 **RuleMod 角色声明**：RuleMod 是**世界规则系统**——通过声明式钩子（`on_tick`、`on_command`、`on_event`）修改世界参数和行为，不是玩家命令旁路。RuleMod 不能：(a) 为特定玩家创建或销毁实体；(b) 绕过 Command Validation Pipeline 注入 RawCommand；(c) 直接修改玩家私有数据（如 WASM 内存、部署历史）。RuleMod 的生效范围是**世界级**（全局资源税率、事件触发、环境效果），不得降级为**玩家级作弊通道**。
 
@@ -381,7 +381,7 @@ Rhai 脚本执行
 | **版本锁定** | `mod.toml` 声明 `version = "1.2.3"` + `engine = ">=0.8"` | 引擎检查版本兼容性；不兼容版本拒绝加载 |
 | **吊销 (CRL)** | `.swarm-mod` 签名通过 `author_pubkey` 验证 | 若作者密钥泄露，作者发布新版本模组（新 pubkey）+ 社区公告。无中心化 CRL——去中心化信任模型 |
 | **Operator Override** | `swarm mod disable <mod_id> --world <world>` | 运行时禁用指定模组（不卸载，仅暂停执行）。下次 tick 不再调用该模组钩子 |
-| **回滚策略** | 模组禁用后，其历史 effects 不回滚（已持久化到 FDB） | 世界状态不可逆——effects 一旦 apply 即永久生效。服主需通过新模组或手动修复纠正 |
+| **回滚策略** | 模组禁用后，其历史 effects 不回滚（已持久化到 redb） | 世界状态不可逆——effects 一旦 apply 即永久生效。服主需通过新模组或手动修复纠正 |
 
 **进程内模式**（唯一生产运行模式）：Rhai engine 在核心引擎进程内执行。安全边界由 Ed25519 数字签名验证保证——所有模组必须签名，不存在"允许未签名"的宽松模式。
 

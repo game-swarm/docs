@@ -167,8 +167,8 @@ Swarm 支持三个扩展层级：
 
 | 架构 | 玩家容量 | 说明 |
 |------|---------|------|
-| 单 Engine 实例（垂直扩展） | 目标 = 500 活跃玩家 | 单机 + FDB 单一提交保证世界一致性 |
-| 单 Engine + FDB 分层缓存 | 1,000-5,000 活跃玩家 | 引入房间级读写分离与区域缓存 |
+| 单 Engine 实例（垂直扩展） | 目标 = 500 活跃玩家 | 单机 + redb 单一提交保证世界一致性 |
+| 单 Engine + redb 分层缓存 | 1,000-5,000 活跃玩家 | 引入房间级读写分离与区域缓存 |
 | 水平分片（多 Engine 实例） | 规模不限 | 跨 Engine 状态同步、跨分片移动为远期关注 |
 
 单实例下 redb 的单一 WriteTransaction 保证世界内的强一致性。水平分片为远期方向，数据模型和 API 设计预留了分片扩展接口。
@@ -217,7 +217,7 @@ Swarm 支持三个扩展层级：
   ├── 计算增量（与上一 tick 快照的实体差异）
   ├── Dragonfly 缓存更新
   ├── 通过 NATS → Gateway → WebSocket 客户端发布
-  └── 持久化：每 tick 存储 delta，每 K tick 存储 keyframe 到 FDB（回放用）
+  └── 持久化：每 tick 存储 delta，每 K tick 存储 keyframe 到 redb（回放用）
 ```
 
 ### Phase 2a/2b 分类原则
@@ -298,7 +298,7 @@ Swarm:     Move = Action  → 每 tick 移动 OR 采集 OR 攻击 OR 建造
 | **SNAPSHOT build** | ≤200ms (p95) | ≤50ms (p99) | 构建全量世界快照并按房间分片 |
 | **COLLECT (sandbox dispatch)** | ≤2500ms | ≤200ms | 并行分发 WASM 执行，含 sandbox deadline |
 | **EXECUTE (2a+2b)** | ≤400ms | ≤50ms | 命令应用 + ECS systems |
-| **COMMIT (FDB)** | ≤50ms (p99) | ≤20ms (p99) | FDB 原子提交 |
+| **COMMIT (redb)** | ≤50ms (p99) | ≤20ms (p99) | redb 原子提交 |
 | **BROADCAST** | ≤50ms | ≤10ms | Delta 广播 + 缓存更新 |
 | **Per-player sandbox deadline** | 2500ms | 200ms | 超时 → deterministic no-op / timeout rejection，不拖延整个 tick |
 
@@ -316,7 +316,7 @@ Swarm:     Move = Action  → 每 tick 移动 OR 采集 OR 攻击 OR 建造
 | **Pathfinding requests** | max 10 per player per tick | 超限 deterministic fail |
 | **Pathfinding budget** | 100,000 explored nodes/tick | 引擎全局；per-player 按活跃玩家数 fair-share 分配 |
 | **Pathfinding result path** | 500 nodes max | 返回路径最大长度；超长截断 |
-| **FDB transaction** | 小事务（head/manifest/hash/pointer） | tick 内世界 head 推进；大 blob 进入对象存储 |
+| **redb transaction** | 小事务（head/manifest/hash/pointer） | tick 内世界 head 推进；大 blob 进入对象存储 |
 | **TickTrace/keyframe retention** | 7d (hot) / 30d (warm) / 180d (cold) | 可配置 |
 
 > **B7 补充**：以下容量推导和准入公式为本节新增。

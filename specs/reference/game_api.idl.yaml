@@ -1047,7 +1047,7 @@ mcp_tools:
         deploy_id: DeployId
         accepted: bool
         validation_errors: "[string]"
-        fdb_version_counter: u64
+        redb_version_counter: u64
         object_store_key: string
       rate_limit: "10/h"
       required_scope: "swarm:deploy"
@@ -1057,9 +1057,9 @@ mcp_tools:
       rate_limit_key: per_player
       notes: >
         Uses deploy_mutation pattern (R16 B6): WASM blob is asynchronously uploaded
-        to the object store (see persistence.async_object_store_upload). The FDB commit
-        only writes a small manifest + hash pointer + fdb_version_counter.
-        The fdb_version_counter provides a strict total order for replay determinism.
+        to the object store (see persistence.async_object_store_upload). The redb commit
+        only writes a small manifest + hash pointer + redb_version_counter.
+        The redb_version_counter provides a strict total order for replay determinism.
 
     - name: swarm_validate_module
       category: Deploy
@@ -1084,7 +1084,7 @@ mcp_tools:
         status: DeployStatus
         errors: "[string]"
         deployed_at: u64
-        fdb_version_counter: u64
+        redb_version_counter: u64
         object_store_key: string
       rate_limit: "20/tick"
       required_scope: "swarm:read"
@@ -1098,7 +1098,7 @@ mcp_tools:
       input_schema:
         player_id: PlayerId
       output_schema:
-        deployments: "[{id, drone_id, status, at, fdb_version_counter}]"
+        deployments: "[{id, drone_id, status, at, redb_version_counter}]"
       rate_limit: "20/tick"
       required_scope: "swarm:read"
       subject_source: player_id
@@ -1878,24 +1878,24 @@ resource_operation:
       resource_flow: "target → drone"
 
 # =============================================================================
-# 10. Deploy — deploy_mutation + fdb_version_counter (R16 B6)
+# 10. Deploy — deploy_mutation + redb_version_counter (R16 B6)
 # =============================================================================
 deploy:
   description: >
     Deploy subsystem architecture. Per R16 B6, deployments use a deploy_mutation
     pattern: the full WASM blob is uploaded asynchronously to the object store,
-    and FDB only commits a small manifest record containing the hash pointer and
-    an fdb_version_counter. This keeps FDB transactions small and deterministic.
+    and redb only commits a small manifest record containing the hash pointer and
+    an redb_version_counter. This keeps redb transactions small and deterministic.
   mechanism: deploy_mutation
-  fdb_version_counter:
+  redb_version_counter:
     description: >
-      Monotonically increasing counter maintained in FDB. Assigned atomically
+      Monotonically increasing counter maintained in redb. Assigned atomically
       with the deploy manifest commit. Provides a strict total order across all
       deployments, which is critical for replay determinism — the replay engine
-      replays deploy events in fdb_version_counter order.
+      replays deploy events in redb_version_counter order.
     type: u64
-    atomicity: "incremented within the same FDB transaction as the deploy manifest"
-    replay_contract: "deploy events MUST be replayed in fdb_version_counter ascending order"
+    atomicity: "incremented within the same redb transaction as the deploy manifest"
+    replay_contract: "deploy events MUST be replayed in redb_version_counter ascending order"
 
   flow:
     step_1_validate:
@@ -1906,9 +1906,9 @@ deploy:
       actor: engine
       note: "Blob upload is async; the deploy call does not block on upload completion"
     step_3_commit_manifest:
-      description: "FDB transaction commits manifest record: {deploy_id, drone_id, blob_hash, metadata, fdb_version_counter}"
+      description: "redb transaction commits manifest record: {deploy_id, drone_id, blob_hash, metadata, redb_version_counter}"
       actor: engine
-      note: "This is the only FDB write — small, fast, deterministic"
+      note: "This is the only redb write — small, fast, deterministic"
     step_4_activate:
       description: "On next tick boundary, engine loads WASM from object store by blob_hash and activates on drone"
       actor: engine
@@ -1918,7 +1918,7 @@ deploy:
     deploy_id: DeployId
     accepted: bool
     validation_errors: "[string]"
-    fdb_version_counter: u64
+    redb_version_counter: u64
     object_store_key: string
 
 # =============================================================================
@@ -1927,7 +1927,7 @@ deploy:
 persistence:
   description: >
     Persistence layer for large binary objects. Per D5/B, object-store blob
-    uploads are asynchronous — they do not block the FDB commit path. FDB only
+    uploads are asynchronous — they do not block the redb commit path. redb only
     stores a small manifest record with the blob hash pointer. This decouples
     I/O throughput from transaction latency.
   async_object_store_upload:
@@ -1957,9 +1957,9 @@ persistence:
       failure_mode: "retry with exponential backoff (max 3 attempts); permanent failure → deploy rejected"
     fdb_manifest:
       description: >
-        FDB stores only a small manifest record per blob: {blob_hash, object_store_key,
-        size, uploaded_at, status}. This record is part of the deploy_mutation FDB
-        transaction and is covered by fdb_version_counter ordering.
+        redb stores only a small manifest record per blob: {blob_hash, object_store_key,
+        size, uploaded_at, status}. This record is part of the deploy_mutation redb
+        transaction and is covered by redb_version_counter ordering.
       fields:
         - blob_hash: "[u8; 32]"
         - object_store_key: string
@@ -2003,7 +2003,7 @@ changelog:
       - "B3: Add swarm_auth_login and swarm_auth_refresh to Auth category"
       - "B3: MCP tools now exactly 46 active; all have 5 security columns"
       - "B4: TickTrace envelope: wasm_status → terminal_state with explicit enum (7 variants)"
-      - "B5: Deploy: add deploy_mutation mechanism + fdb_version_counter to swarm_deploy output"
+      - "B5: Deploy: add deploy_mutation mechanism + redb_version_counter to swarm_deploy output"
       - "D5/B: Add persistence section with async_object_store_upload contract"
       - "Host functions: add explicit priority numbers to ABI error priority table"
       - "SwarmError envelope: add debug_detail to error.data schema"

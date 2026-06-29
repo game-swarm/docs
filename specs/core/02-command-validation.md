@@ -25,7 +25,7 @@ tick() 输出 JSON（来自 WASM 模块）
          │ Ok(ValidatedCommand[])
          ▼
 ┌─────────────────┐
-│  应用            │  修改世界状态（FDB 事务内）
+│  应用            │  修改世界状态（redb WriteTransaction 内）
 └────────┬────────┘
          │ Ok / Err(RejectionReason)
          ▼

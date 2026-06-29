@@ -61,15 +61,15 @@ Phase 2 — Settlement & Ack:
 | 跨分片 RangedAttack | 最终一致（两阶段） | 1 tick | ✅ 逻辑时钟 `(tick, shard_order, entity_id)` |
 | 跨分片 Move | 强一致（atomically transfer entity） | 0 | ✅ tick-by-tick |
 
-**确定性保证**：跨分片 tie-breaker 使用**逻辑时钟**，非物理时间戳。冲突排序键：`(tick, shard_priority, entity_id)`——全部由游戏状态派生，不依赖 FDB versionstamp 或墙钟。同一初始状态 + 同一指令 + 同一分片拓扑 → 同一结果 → 可 replay。
+**确定性保证**：跨分片 tie-breaker 使用**逻辑时钟**，非物理时间戳。冲突排序键：`(tick, shard_priority, entity_id)`——全部由游戏状态派生，不依赖存储引擎内部提交序号或墙钟。同一初始状态 + 同一指令 + 同一分片拓扑 → 同一结果 → 可 replay。
 
-## 5. FDB 多区域部署
+## 5. redb 单实例部署边界
 
-每个分片绑定到最近的 FDB 区域（zone-aware placement）。跨分片事务通过 FDB 的 multi-region 配置处理——冲突解决使用逻辑时钟排序键 `(tick, shard_priority, entity_id)`，不依赖 FDB versionstamp。
+redb 作为单 Engine 实例的嵌入式权威存储使用，所有分片在同一进程内提交到同一个 `.redb` 文件。跨分片提交通过 Engine 调度层汇总后进入同一个 redb WriteTransaction；冲突解决使用逻辑时钟排序键 `(tick, shard_priority, entity_id)`，不依赖存储引擎内部提交序号。
 
 ## 6. 身份/CRL/Deploy Nonce 跨分片链
 
-Auth Service 作为全局单例（非分片），所有分片通过 RPC 查询证书状态。CRL 缓存每分片本地维护，60s TTL + Auth Service push 失效。Deploy nonce 去重使用全局 nonce registry（单点 FDB key）——所有分片写入同一 `nonce/{nonce_id}` key，利用 FDB 事务原子性。
+Auth Service 作为全局单例（非分片），所有分片通过 RPC 查询证书状态。CRL 缓存每分片本地维护，60s TTL + Auth Service push 失效。Deploy nonce 去重使用全局 nonce registry（单点 redb key）——所有分片写入同一 `nonce/{nonce_id}` key，利用 redb WriteTransaction 原子性。
 
 ## 7. 跨分片 Replay/Anti-Cheat 审计链
 

@@ -129,7 +129,7 @@ enum SandboxExecutionStatus {
 ```
 Engine 接收 swarm_deploy(MCP):
 
-1. 校验 WASM + 编译 + FDB manifest commit（逻辑不变）
+1. 校验 WASM + 编译 + redb manifest commit（逻辑不变）
 2. 编译完成后：
    ├─ 计算 compiled_artifact_hash
    ├─ NATS broadcast: swarm.deploy.{compiled_artifact_hash}
