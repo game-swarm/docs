@@ -6,6 +6,10 @@
 
 **技术栈**：Rust + Bevy ECS + redb（嵌入式纯 Rust ACID KV 存储，零外部进程依赖）
 
+**部署模型**：世界按坐标范围静态分片。每 shard 一个 Engine 进程 + 一个 redb 文件。Shard 分片在 world.toml 中静态定义，无运行时 cluster/coordinator。
+
+**扩展机制**：Mod = Bevy Plugin，静态编译进 Engine 二进制。这是唯一的扩展机制——没有 Rhai 脚本层。
+
 ### 3.1 核心 ECS 实体
 
 ```rust
@@ -163,15 +167,14 @@ Swarm 世界由**离散的房间（Room）网格**构成，每个房间是一个
 
 #### 扩展策略声明
 
-Swarm 支持三个扩展层级：
+Swarm 按静态坐标范围分片——每 shard 一个 Engine 实例。Shard 分片在 world.toml 中定义，无运行时 cluster。WASM worker pool 跨所有 shard 共享。
 
 | 架构 | 玩家容量 | 说明 |
 |------|---------|------|
-| 单 Engine 实例（垂直扩展） | 目标 = 500 活跃玩家 | 单机 + redb 单一提交保证世界一致性 |
-| 单 Engine + redb 分层缓存 | 1,000-5,000 活跃玩家 | 引入房间级读写分离与区域缓存 |
-| 水平分片（多 Engine 实例） | 规模不限 | 跨 Engine 状态同步、跨分片移动为远期关注 |
+| 单 shard（垂直扩展） | 目标 = 500 活跃玩家 | 单机 + redb 单一提交保证 shard 内世界一致性 |
+| 多 shard（水平扩展） | 规模不限 | 按坐标范围增加 shard，每 shard 独立 Engine + redb |
 
-单实例下 redb 的单一 WriteTransaction 保证世界内的强一致性。水平分片为远期方向，数据模型和 API 设计预留了分片扩展接口。
+跨 shard 玩家迁移（drone 穿过 shard 边界出口）是边界事件，不在热路径。单玩家同时只在一个 shard。
 
 #### 新手房间分配策略
 
@@ -215,7 +218,7 @@ Swarm 支持三个扩展层级：
 
 阶段三：广播 (BROADCAST) — 即时
   ├── 计算增量（与上一 tick 快照的实体差异）
-  ├── Dragonfly 缓存更新
+  ├── Engine 进程内 Moka cache 更新
   ├── 通过 NATS → Gateway → WebSocket 客户端发布
   └── 持久化：每 tick 存储 delta，每 K tick 存储 keyframe 到 redb（回放用）
 ```
