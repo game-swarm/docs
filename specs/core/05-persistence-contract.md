@@ -414,3 +414,81 @@ Gate 失败 → 对应容量声明不可信，需降级规模或优化实现。
 - `design/engine.md` §3.3 (TickInputEnvelope)、§3.4.2 (容量合同)、§3.4.7 (keyframe)：本文件为权威持久化合同。engine.md 描述架构意图，本文档定义实现合同。
 - `specs/core/01-tick-protocol.md` §2.3 (快照)、§9.4 (TickCommitRecord 完整性)：本文件补充持久化层面。
 - `specs/core/02-command-validation.md`：apply 阶段在本文件的 "Phase A" 中执行。
+
+---
+
+## 10. redb 文件可恢复性
+
+redb 是嵌入式单文件 KV——没有内置副本或 WAL 恢复机制。本节定义防范和恢复策略。
+
+### 10.1 风险模型
+
+| 场景 | 后果 | 恢复 |
+|------|------|:--:|
+| 进程崩溃 | CoW B-tree：旧根或新根，无半页 | ✅ 自动 |
+| OS crash（fsync 未落盘） | 丢最近 1 tick | hash chain 断裂检测 → 从 keyframe replay |
+| 磁盘坏块 | `.redb` 部分损坏 | keyframe 独立存储 + replay |
+| `.redb` 误删 | 全丢 | keyframe 独立存储 + replay |
+| 静默损坏（bit rot） | hash chain 断裂可检测 | keyframe 恢复 |
+
+### 10.2 Keyframe 独立存储
+
+**Keyframe 不放在 redb 内**——否则 redb 损坏时 keyframe 一并丢失。
+
+```
+存储位置: $REDB_PATH.keyframes/{tick}.snap（独立文件）
+格式: canonical_serialize(Bevy World) + state_checksum
+写入时机: redb commit 成功后，仅当 tick % K == 0
+写入方式: tmp 文件 + fsync + 原子 rename
+保留: hot 7d (每 K tick) / cold 30d (每 10K tick)
+```
+
+### 10.3 灾难恢复
+
+```
+引擎启动:
+  1. 打开 redb
+     ├─ 成功 → recover_latest() → hash chain 验证
+     │   ├─ 全部通过 → 正常启动
+     │   └─ 断裂在 tick N → 从最近 keyframe 恢复到 N-1
+     └─ 失败 → 从 keyframe 文件恢复
+         └─ 加载最新 .snap → Bevy World 恢复 → 从该 tick 重新开始
+```
+
+### 10.4 备份
+
+```
+在线备份:
+  redb 读事务期间 cp swarm.redb → CoW 保证一致性
+  频率: 每 1000 tick 或每 keyframe 周期
+
+Keyframe 自身即可作备份:
+  cp -r $REDB_PATH.keyframes/ → 异地/异机存储
+```
+
+### 10.5 完整性校验
+
+```
+每 N tick 或启动时:
+  recover_latest() → 验证 hash chain 从 tick 0 到 latest
+  state_checksum 对比当前 Bevy World → 不匹配则 degraded + 告警
+```
+
+### 10.6 存储分层总览
+
+```
+┌────────────────────────────────────────────┐
+│  权威源: redb (小对象, 永久)                 │
+│  tick_head, manifest, hash_chain, audit     │
+├────────────────────────────────────────────┤
+│  恢复锚点: Keyframe Store (独立文件, 7-30d)  │
+│  完整世界快照，redb 失效时可独立恢复          │
+├────────────────────────────────────────────┤
+│  审计: Object Store (大 blob, 7-180d)        │
+│  RichTraceBlob, delta, WASM binaries        │
+├────────────────────────────────────────────┤
+│  运行时: WAL (内存, tick 内)                  │
+└────────────────────────────────────────────┘
+
+恢复优先级: Keyframe > redb > Object Store
+```
