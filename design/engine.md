@@ -4,7 +4,7 @@
 
 ## 3. Engine（Rust）
 
-**技术栈**：Rust + Bevy ECS + Tokio + FoundationDB
+**技术栈**：Rust + Bevy ECS + redb（嵌入式纯 Rust ACID KV 存储，零外部进程依赖）
 
 ### 3.1 核心 ECS 实体
 
@@ -171,7 +171,7 @@ Swarm 支持三个扩展层级：
 | 单 Engine + FDB 分层缓存 | 1,000-5,000 活跃玩家 | 引入房间级读写分离与区域缓存 |
 | 水平分片（多 Engine 实例） | 规模不限 | 跨 Engine 状态同步、跨分片移动为远期关注 |
 
-单实例下 FDB 的单一事务提交保证世界内的强一致性。水平分片为远期方向，数据模型和 API 设计预留了分片扩展接口。
+单实例下 redb 的单一 WriteTransaction 保证世界内的强一致性。水平分片为远期方向，数据模型和 API 设计预留了分片扩展接口。
 
 #### 新手房间分配策略
 
@@ -189,13 +189,15 @@ Swarm 支持三个扩展层级：
   ├── [tick 开始] 构建世界快照（一次性，按房间分区）
   │   ├── 序列化完整世界状态为结构化快照，按房间分片
   │   └── 快照构建在玩家代码执行前完成，天然确定
-  ├── 对每个活跃玩家（并行，sandbox worker pool）:
+  ├── 对每个活跃玩家（并行，分布式 Sandbox Container 或本地 Worker Pool）:
   │   ├── 根据玩家 drone 所在房间，拼接可见房间的快照分片
   │   │   └── 默认可见 = 当前房间 + 相邻房间（最多 9 个分片拼接）
-  │   ├── 实例化玩家 WASM 模块（部署时已预编译为原生码，tick 时仅实例化）
-  │   ├── 调用 tick(snapshot)，fuel limit = 玩家 CPU 配额
-  │   └── 收集 Vec<Command>，过滤无效指令（超配额、非法操作）
-  └── 收集全部指令到指令队列
+  │   ├── 引擎通过 NATS（分布式）或 Unix socket（本地）分发 snapshot + module_hash 到 Sandbox Container
+  │   ├── Sandbox Container: 加载预编译 WASM 模块 → 实例化 → 调用 tick(snapshot)
+  │   │   └── fuel limit = 玩家 CPU 配额，wall-clock timeout = 2500ms
+  │   ├── Sandbox Container 返回 Vec<Command>
+  │   └── 收集全部指令到指令队列
+  └── 详见 specs/core/12-distributed-sandbox.md
 
 阶段二：执行 (EXECUTE) — 约束并行
   ├── 将全部玩家命令按 canonical command order 排序（player order seed + player_id + sequence + command_id）
@@ -208,7 +210,7 @@ Swarm 支持三个扩展层级：
   │   └── Spawn 命令在 Phase 2a 中只校验不入队
   │   ├── Phase 2b: ECS Systems
     │   │   └── > **权威系统调度见 [Complete Tick Execution Manifest](../specs/core/06-phase2b-system-manifest.md)** — 31 systems（R30 B1：Phase 2a inline 6 + Phase 2b deferred 25），serial spine + 2 parallel sets
-  ├── FDB 原子提交（全或无）
+  ├── redb 原子提交（全或无）
   └── tick_counter 推进
 
 阶段三：广播 (BROADCAST) — 即时
@@ -461,14 +463,16 @@ total_reduction = Σ age_reduction per drone serviced (up to repair_capacity)
 
 `death_mark_system` 在 Phase 2b 开头标记待死亡 entity 并释放 room cap 槽位。在其之后的 `regeneration_system` 和 `decay_system` 必须跳过 `DeathMark` 标记的 entity——两者的所有读写操作在查询时过滤 `Without<DeathMark>`。`death_cleanup_system` 在 2b 末尾执行实际 despawn。
 
-#### 3.4.7 FDB 写入策略
+#### 3.4.7 redb 写入策略
 
 - Cross-room 操作先在 tick 内权威 Bevy World 中完成裁决并应用状态变更；只有裁决后的 affected rooms 才写入最终 content-addressed staging payload。staging payload 不承载待裁决 overlay，GlobalTickCommit 只发布已经反映跨房间裁决结果的 manifest/head/hash-chain。
-- FDB 存 head/manifest/hash/pointer——小事务推进 world head
+- redb WriteTransaction 存 head/manifest/hash/pointer——单事务原子推进 world head
 - 大型 RichTraceBlob/keyframe 进入对象存储或 append-only log
 - 每 K=100 tick 写入一次 keyframe，其余 tick 写入 delta
 - 每日写入预算：按 target load 估算（非 16MB/tick 全量写入）
 - `state_checksum`：覆盖 WorldState + mod_state/action_log + tick_metrics + config hash + manifest pointer
+
+> redb 是嵌入式纯 Rust ACID KV 存储，零外部进程依赖。Docker 镜像 = 单二进制 + 单 `.redb` 文件。存储层不需要分布式事务——引擎是单实例单写者，redb 的 WriteTransaction 原子批量写入完全满足每 tick 原子提交需求。水平分片为远期方向，届时再评估存储层是否需要升级。
 
 #### 3.4.8 数值溢出与舍入
 

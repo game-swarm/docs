@@ -1,4 +1,4 @@
-# Persistence Contract — FDB / TickCommitRecord / RichTraceBlob / WAL / Object Store 分层
+# Persistence Contract — redb / TickCommitRecord / RichTraceBlob / WAL / Object Store 分层
 
 > 详见 design/engine.md
 >
@@ -8,11 +8,11 @@
 
 ## 原则
 
-1. **FDB 只写小对象**：tick head、state checksum、small manifest、object pointers + content hashes。
+1. **redb 只写小对象**：tick head、state checksum、small manifest、object pointers + content hashes。
 2. **大 BLOB 进对象存储**：RichTraceBlob（debug/rich trace）、snapshot delta、replay artifacts、WASM module binaries。
-3. **单写事务原子性**：FDB commit 是唯一权威持久化点。对象存储写入失败不破坏 FDB 状态完整性。
-4. **Hash 链贯穿**：FDB 记录的 content hash 证明对象存储中数据的完整性。
-5. **Replay-critical 与 debug/rich 分离**：FDB 事务原子提交 replay-critical subset（保证确定性回放与反作弊审计）；对象存储承载非关键的 rich trace/debug blob（可降级、可延迟、可丢失而不影响核心正确性）。
+3. **单写事务原子性**：redb WriteTransaction commit 是唯一权威持久化点。对象存储写入失败不破坏 redb 状态完整性。
+4. **Hash 链贯穿**：redb 记录的 content hash 证明对象存储中数据的完整性。
+5. **Replay-critical 与 debug/rich 分离**：redb 事务原子提交 replay-critical subset（保证确定性回放与反作弊审计）；对象存储承载非关键的 rich trace/debug blob（可降级、可延迟、可丢失而不影响核心正确性）。
 
 ---
 
@@ -20,7 +20,7 @@
 
 | 存储层 | 存储内容 | 单条上限 | 保留期 |
 |--------|---------|:------:|--------|
-| **FDB** | tick head、state checksum、small manifest、object pointers、content hashes、audit rows | < 1KB/row | 永久（状态） |
+| **redb** | tick head、state checksum、small manifest、object pointers、content hashes、audit rows | < 1KB/row | 永久（状态） |
 | **Object Store** | RichTraceBlob、snapshot delta (full/diff)、replay artifacts、WASM binaries | < 10MB/object | 7d hot / 30d warm / 180d cold |
 | **WAL (Write-Ahead Log)** | 未提交的 apply 操作日志 | 滚动 | 提交后截断 |
 | **Keyframe Store** | 每 K tick 的完整世界状态快照 | < 100MB | 7d hot / 30d cold |
@@ -33,7 +33,7 @@
 
 ### 2.1 TickCommitRecord Fields（FDB 原子提交 — 不可降级）
 
-以下 10 个字段组成 TickCommitRecord，随每 tick FDB **同一事务**原子提交。缺失任一则 tick 不可 replay。
+以下 10 个字段组成 TickCommitRecord，随每 tick redb **同一 WriteTransaction**原子提交。缺失任一则 tick 不可 replay。
 
 **三层分离声明：**
 - **deterministic_replay**：仅需 FDB 中 TickCommitRecord 的 10 个字段 + keyframe/delta chain。对象存储中的任何数据均非 replay 必需。
