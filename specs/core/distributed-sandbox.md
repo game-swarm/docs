@@ -135,7 +135,7 @@ Engine 接收 swarm_deploy(MCP):
    ├─ NATS broadcast: swarm.deploy.{compiled_artifact_hash}
    │   payload = {
    │       module_hash, compiled_artifact_hash,
-   │       wasm_bytes,                    // 原始 WASM 二进制
+   │       module_bytes,                    // 原始 WASM 二进制
    │       compiled_native_bytes,         // 预编译原生码（可选）
    │       wasmtime_version,              // 版本对齐
    │       validation_policy_version,

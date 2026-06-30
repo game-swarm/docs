@@ -376,7 +376,7 @@ spectate_delay = 50
 
 ### 10.2 `omitted_count` 脱敏
 
-当前设计：`omitted_count` 告知被截断丢弃的实体精确数量——形成 oracle（攻击者可通过观察 `omitted_count` 变化推断被隐藏的实体数量）。
+目标设计：`omitted_count` 告知被截断丢弃的实体精确数量——形成 oracle（攻击者可通过观察 `omitted_count` 变化推断被隐藏的实体数量）。
 
 **修正**：`omitted_count` 改为分桶值：
 

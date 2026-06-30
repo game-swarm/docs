@@ -244,7 +244,7 @@ AI 玩家令牌: `swarm:deploy swarm:read swarm:debug`。
 ### 4.1 WASM 模块管理
 
 部署核心工具（权威定义见 [API Registry §3.2 Deploy](../reference/api-registry.md#deploy-7)）：
-- `swarm_deploy` — 上传/更新 WASM 模块（deploy_mutation 模式，异步 blob 上传至 blob store）
+- `swarm_deploy` — 提交 deploy_mutation manifest 与签名 payload
 - `swarm_validate_module` — 上传前预校验
 - `swarm_get_deploy_status` / `swarm_list_deployments` — 查询部署状态
 - `swarm_list_modules` — 列出已部署模块（active，详细定义见 [API Registry §3.2 Deploy](../reference/api-registry.md#deploy-7)）
@@ -257,7 +257,6 @@ AI 玩家令牌: `swarm:deploy swarm:read swarm:debug`。
 {
   "tool": "swarm_deploy",
   "params": {
-    "wasm_bytes": "<base64>",
     "language": "rust",
     "version_tag": "v1.2.0",
     "room_id": 5
@@ -266,7 +265,7 @@ AI 玩家令牌: `swarm:deploy swarm:read swarm:debug`。
 → { "module_id": "mod_42_v3", "status": "active", "deployed_at": "..." }
 ```
 
-部署后，引擎在下一 tick 自动加载新模块。旧模块保留作为回滚目标。
+部署 manifest 提交且 compiled artifact 就绪后，引擎在 tick boundary 加载新模块。替换前模块保留作为回滚目标。
 
 ### 4.2 世界状态查看
 

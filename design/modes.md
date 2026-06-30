@@ -80,9 +80,9 @@ NPC 掉落金额引用 Resource Ledger `PvEAward` tier 表：Creep 映射为 T1 
 
 玩家通过扩张自然遭遇更强 PvE——不需要「副本入口」或「排队系统」。PvE 难度是**地理属性**。
 
-> **扩展方向**：深度 PvE（Boss 战多阶段 AI、副本区域链、阵营声望、讨伐进度）不作为原生引擎内容——属于 overhaul 模组范畴。模组可通过 Bevy Plugin 注册 ECS system、ActionRegistry handler 和世界事件处理器来实现自定义 NPC 行为、Boss 阶段触发器和声望系统。引擎仅提供 NPC 实体基础设施（HP、伤害、巡逻/驻守 AI、掉落表、事件钩子）——不硬编码 Boss 机制。
->
-> **RFC-MERCHANT**：游商、交易事件、动态 NPC 商店和 `MerchantTrade` 账本操作不属于当前 World PvE 内容。若后续引入，必须先在 Resource Ledger 中定义预算、费率、TickTrace、transfer lock 与反滥用规则。
+Boss 与 multi-stage AI 属于 mod surface。Vanilla 发行包自带 `vanilla_boss` Plugin，默认通过 world.toml 启用，可向 World 与 Arena 注册 Boss 模板、阶段触发器、ActionRegistry handler 和掉落表。引擎核心仅提供 NPC 实体基础设施（HP、伤害、巡逻/驻守 AI、掉落表、事件钩子），不硬编码 Boss 机制。
+
+**RFC-MERCHANT**：游商、交易事件、动态 NPC 商店和 `MerchantTrade` 账本操作属于独立 RFC surface。进入 active Resource Ledger 前必须定义预算、费率、TickTrace、transfer lock 与反滥用规则。
 
 ### 9.1 Arena 房间模型
 
@@ -147,7 +147,7 @@ Create -> Configure -> Ready -> Play -> Finish -> Replay
 
 赛后自动生成回放（TickTrace JSONL）。房间 `public` 则回放公开可访问；`unlisted/private` 则仅参与者可见。回放播放器支持速度控制、双视角切换、tick 定位、指令展开。
 
-> **社区传播（RFC）**：分享 URL、战报卡（highlight card）、自动摘要、社区 replay 排行榜为产品扩展项——不阻塞当前设计冻结。
+> **社区传播（RFC）**：分享 URL、战报卡（highlight card）、自动摘要、社区 replay 排行榜为产品扩展项——不阻塞目标设计冻结。
 
 #### 9.1.5 PvE 挑战模式
 
@@ -181,7 +181,7 @@ map_seed = 12345                 # 地图种子（相同 seed 可复现）
 | **Guardian Gauntlet** | 地图中心有 5 Guardian + 20 Creep。玩家在一个角落出生，需消灭所有 NPC | 完成 tick、drone 存活数、资源剩余 |
 | **Swarm Defense** | 每 50 tick 一波 Swarmling（递增数量）向玩家基地进攻。存活 500 tick | 存活 tick、击杀数、建筑存活 |
 | **Resource Race** | 地图散布 10 个富矿，被 Guardian 守卫。采集最多 Energy | 采集总量、完成时间 |
-| **Ruin Siege** | 地图中心遗迹有 Boss NPC（1000 HP、多阶段 AI）。击败 Boss | 完成 tick、伤害效率、drone 损失 |
+| **Ruin Siege** | 地图中心遗迹启用 `vanilla_boss` Plugin 的 Boss NPC（1000 HP、多阶段 AI）。击败 Boss | 完成 tick、伤害效率、drone 损失 |
 
 **评分公式**：
 

@@ -2,38 +2,25 @@
 # Auth API IDL — Machine-Readable Single Source of Truth
 # =============================================================================
 # Canonical source for auth subsystem codegen / SDK / CI. All other auth docs
-# derive from this file. This file is validated by CI — do not edit Markdown
-# tables directly.
+# derive from this file. This file is validated by CI; do not edit generated
+# Markdown tables directly.
 #
-# R33 B4 重写: bearer token → application-layer certificate chain model
-# Per design/auth.md: CSR→certificate→credential→session, Ed25519 canonical
-# request signatures, audience/scope labels, passkey/recovery/federation.
+# Per design/auth.md: CSR -> certificate -> credential -> session, Ed25519
+# canonical request signatures, audience/scope labels, and optional email
+# recovery.
 # =============================================================================
 
 api_version: "0.2.0"
 
-# =============================================================================
-# 1. CSR Lifecycle Tools — 7 core CSR/certificate lifecycle tools
-# =============================================================================
 csr_lifecycle_tools:
   description: >
-    Core CSR registration and certificate lifecycle tools. All clients must
-    register via PoW challenge → CSR submit → certificate issuance before
-    accessing any protected resources. Application-layer certificates (Ed25519)
-    are the sole trust root. No bearer tokens, no OAuth2, no TLS/mTLS certs.
+    Core CSR registration and certificate lifecycle tools. All clients register
+    via PoW challenge -> CSR submit -> certificate issuance before accessing
+    protected resources. Application-layer certificates signed by the
+    single-layer Server CA are the sole trust root. No bearer tokens, OAuth2,
+    TLS/mTLS client certificates.
   total_tools: 7
-
-  rate_limits:
-    challenge: "10/min per IP"
-    submit_csr: "1/30s per IP"
-    renew: "5/min per player"
-    revoke: "5/min per player"
-    cert_list: "30/min per player"
-    cert_check: "100/min per player"
-    server_trust: "30/min"
-
   tools:
-    # --- 1.1 Register Challenge ---
     - name: swarm_register_challenge
       index: 1
       category: csr_lifecycle
@@ -50,13 +37,8 @@ csr_lifecycle_tools:
       visibility_filter: none
       rate_limit_key: per_ip
       transport: "agent-mcp, cli-rest, wasm-sdk"
-      description: >
-        Request a PoW challenge for CSR registration. Returns a blake3-based
-        challenge with configurable difficulty bits. Challenge expires after
-        TTL (default 300s). Anti-spam: L1 PoW per IP, L2 per-ASN, L3 global
-        semaphore, L4 bounded queue, L5 audit throttle.
+      description: "Request a one-use PoW challenge for CSR registration."
 
-    # --- 1.2 Submit CSR ---
     - name: swarm_submit_csr
       index: 2
       category: csr_lifecycle
@@ -64,12 +46,10 @@ csr_lifecycle_tools:
         username: string
         csr: string
         certificate_profile: string
-        device_label: string
         challenge_id: string
         nonce: string
         csr_signature: string
-        email: string
-        recovery_password: string
+        email: "string?"
       output_schema:
         certificate_bundle:
           client_auth_cert: string
@@ -88,13 +68,11 @@ csr_lifecycle_tools:
       transport: "agent-mcp, cli-rest, wasm-sdk"
       description: >
         Submit a CSR with PoW proof and Ed25519 csr_signature. Server validates
-        the multi-layer admission chain (L1-L6), then issues ClientAuthCertificate
-        + CodeSigningCertificate via Server Intermediate CA. CSR payload: SWARM-CSR-V1
-        with username, public_key, requested_usages, certificate_profile,
-        challenge_id, challenge. redb transaction atomically consumes challenge,
-        creates/updates user, records public key, and issues certificates.
+        admission, atomically consumes the challenge, creates or updates the
+        player record, and issues ClientAuthCertificate plus
+        CodeSigningCertificate via the Server CA. Optional email is a bootstrap
+        recovery address and is not an active auth surface.
 
-    # --- 1.3 Renew Certificate ---
     - name: swarm_renew_certificate
       index: 3
       category: csr_lifecycle
@@ -116,14 +94,8 @@ csr_lifecycle_tools:
       visibility_filter: owner
       rate_limit_key: per_player
       transport: "agent-mcp, cli-rest, wasm-sdk"
-      description: >
-        Renew an application-layer certificate by proving possession of the
-        same Ed25519 private key. Issues new ClientAuthCertificate +
-        CodeSigningCertificate. Old certificate is NOT revoked (valid until
-        expiry) unless explicitly revoked. Cannot be called by temporary_device
-        or managed_device certificates to renew other devices' certs.
+      description: "Renew certificates by proving possession of the same Ed25519 private key."
 
-    # --- 1.4 Revoke Certificate ---
     - name: swarm_revoke_certificate
       index: 4
       category: csr_lifecycle
@@ -141,22 +113,15 @@ csr_lifecycle_tools:
       visibility_filter: owner
       rate_limit_key: per_player
       transport: "agent-mcp, cli-rest, wasm-sdk"
-      description: >
-        Self-service certificate revocation. Revokes the specified certificate
-        and updates the CRL. Cannot be called by temporary_device or
-        managed_device certificates to revoke other devices' certs. Admin
-        revocation uses the admin-critical path with dual-audit.
+      description: "Self-service certificate revocation; admin revocation uses the audited admin path."
 
-    # --- 1.5 List Certificates ---
     - name: swarm_cert_list
       index: 5
       category: csr_lifecycle
       input_schema:
         status: string
       output_schema:
-        certificates: >
-          [{cert_id, usage, device_label, fingerprint, issued_at, expires_at,
-          status, managed_by_server}]
+        certificates: "[{cert_id, usage, label, fingerprint, issued_at, expires_at, status}]"
       rate_limit: "30/min"
       required_scope: "swarm:auth"
       subject_source: player_id
@@ -164,12 +129,8 @@ csr_lifecycle_tools:
       visibility_filter: owner
       rate_limit_key: per_player
       transport: "agent-mcp, cli-rest, wasm-sdk"
-      description: >
-        List all certificates for the authenticated player, optionally filtered
-        by status (active, expired, revoked). Returns usage type, device label,
-        fingerprint, validity window, and managed_by_server flag.
+      description: "List certificates for the authenticated player."
 
-    # --- 1.6 Check Certificate ---
     - name: swarm_cert_check
       index: 6
       category: csr_lifecycle
@@ -190,20 +151,16 @@ csr_lifecycle_tools:
       visibility_filter: owner
       rate_limit_key: per_player
       transport: "agent-mcp, cli-rest, wasm-sdk"
-      description: >
-        Validate an application-layer certificate and return its metadata.
-        Lightweight check that does not extend the certificate validity.
-        Used by internal services for certificate introspection.
+      description: "Validate an application-layer certificate and return its metadata."
 
-    # --- 1.7 Get Server Trust ---
     - name: swarm_get_server_trust
       index: 7
       category: csr_lifecycle
       input_schema: {}
       output_schema:
         server_id: string
-        root_ca_fingerprint: string
-        intermediate_ca_fingerprint: string
+        server_ca_fingerprint: string
+        server_ca_certificate: string
         supported_algorithms: "[string]"
         supported_audiences: "[string]"
       rate_limit: "30/min"
@@ -213,514 +170,144 @@ csr_lifecycle_tools:
       visibility_filter: none
       rate_limit_key: global
       transport: "agent-mcp, cli-rest, wasm-sdk"
-      description: >
-        Return server trust anchor information. Used by new clients on first
-        connection to verify the server identity via TOFU (Trust On First Use)
-        or explicit pinning. Client compares returned fingerprint against the
-        server's declared root CA.
+      description: "Return Server CA trust anchor information for TOFU or explicit pinning."
 
-# =============================================================================
-# 2. Device Registration & Recovery Tools — 5 tools
-# =============================================================================
-device_recovery_tools:
-  description: >
-    Device registration, passkey, recovery, and federation identity tools.
-    Devices must be registered before they can hold certificates.
-    Recovery paths (passkey, email, admin reset) provide bootstrap for
-    initial CSR submission or private key loss recovery.
-  total_tools: 5
-
-  tools:
-    # --- 2.1 Device Register ---
-    - name: swarm_device_register
-      index: 1
-      category: device
-      input_schema:
-        device_id: string
-        device_name: string
-        device_fingerprint: string
-        public_key: string
-        metadata: DeviceMetadata
-      output_schema:
-        registered: bool
-        device_id: string
-        registration_time: u64
-      rate_limit: "30/min"
-      required_scope: "swarm:auth"
-      subject_source: player_id
-      replay_class: idempotent_mutation
-      visibility_filter: owner
-      rate_limit_key: per_player
-      transport: "agent-mcp, cli-rest, wasm-sdk"
-      description: >
-        Register a new device for the authenticated player. Devices must be
-        registered before they can hold certificates. Per-player device cap:
-        10 devices, 5 active certificates.
-
-    # --- 2.2 Device List ---
-    - name: swarm_device_list
-      index: 2
-      category: device
-      input_schema: {}
-      output_schema:
-        devices: >
-          [{device_id, device_name, registered_at, last_seen, status,
-          active_certificates}]
-      rate_limit: "30/min"
-      required_scope: "swarm:auth"
-      subject_source: player_id
-      replay_class: read_replay_safe
-      visibility_filter: owner
-      rate_limit_key: per_player
-      transport: "agent-mcp, cli-rest, wasm-sdk"
-      description: >
-        List all registered devices for the authenticated player.
-
-    # --- 2.3 Passkey Registration ---
-    - name: swarm_passkey_register
-      index: 3
-      category: recovery
-      input_schema:
-        passkey_credential: string
-      output_schema:
-        registered: bool
-        credential_id: string
-      rate_limit: "10/min"
-      required_scope: "swarm:auth"
-      subject_source: player_id
-      replay_class: idempotent_mutation
-      visibility_filter: owner
-      rate_limit_key: per_player
-      transport: "cli-rest"
-      description: >
-        Register a WebAuthn passkey for account recovery. Used to bootstrap
-        a new CSR submission after private key loss.
-
-    # --- 2.4 Recovery Email Bind ---
-    - name: swarm_recovery_email_bind
-      index: 4
-      category: recovery
-      input_schema:
-        email: string
-      output_schema:
-        bound: bool
-        verification_sent: bool
-      rate_limit: "5/min"
-      required_scope: "swarm:auth"
-      subject_source: player_id
-      replay_class: idempotent_mutation
-      visibility_filter: owner
-      rate_limit_key: per_player
-      transport: "agent-mcp, cli-rest, wasm-sdk"
-      description: >
-        Bind a recovery email to the player account. Sends verification link.
-        Recovery email can be used to generate a recovery link for CSR
-        re-submission after private key loss.
-
-    # --- 2.5 Federation Identity ---
-    - name: swarm_federation_identity
-      index: 5
-      category: federation
-      input_schema:
-        target_server_id: string
-      output_schema:
-        federation_token: string
-        target_player_id: PlayerId
-        expires_at: u64
-      rate_limit: "5/min"
-      required_scope: "swarm:auth"
-      subject_source: player_id
-      replay_class: idempotent_mutation
-      visibility_filter: owner
-      rate_limit_key: per_player
-      transport: "agent-mcp, cli-rest, wasm-sdk"
-      description: >
-        Request a federation identity token for cross-server identity mapping.
-        player_id = blake3("federation:" + source_server_id + ":" +
-        source_player_id). FederationCertificate bridges identity across
-        cooperating servers.
-
-# =============================================================================
-# 3. Application-Layer Certificate Types
-# =============================================================================
 certificate_types:
   description: >
-    Swarm uses application-layer certificates (Ed25519) signed by the server's
-    Intermediate CA. These are carried in HTTP/MCP/WebSocket headers, NOT in
-    TLS client certificates. Swarm CA is never installed in system/browser
-    trust stores.
-
+    Swarm uses exactly two application-layer certificate types signed by a
+    single-layer Server CA. Admin authorization is a scope flag on
+    ClientAuthCertificate, not a separate certificate type.
   types:
     - type: ClientAuthCertificate
       usage: "client_auth"
       audience_scope: "swarm-aud-v1:<transport>:<server_id>:<world_id>:<player_id>"
-      ttl: "15 min–180 days"
+      ttl: "default 24h; configurable 15min-7d"
       renewal: "swarm_renew_certificate"
-      description: >
-        Carried in Swarm-Certificate header with Swarm-Cert-Id. Validated via canonical
-        request signature (SWARM-REQUEST-V1). Used for MCP queries, session
-        renewal, and general authenticated requests.
-
+      description: "Carries authenticated MCP, REST, and WebSocket requests using SWARM-REQUEST-V1."
     - type: CodeSigningCertificate
       usage: "code_signing"
       audience_scope: "swarm-aud-v1:wasm-sdk:<server_id>:<world_id>:<player_id>"
-      ttl: "30–180 days (default 30d)"
+      ttl: "30-180d (default 30d)"
       renewal: "swarm_renew_certificate"
-      description: >
-        Signs module_hash + metadata for WASM deployment. Validated at deploy
-        time. Expired CodeSigningCertificate does NOT invalidate already-deployed
-        modules. Compromised cert revocation may freeze or rollback modules.
-
-    - type: ClientAuthCertificate
-      usage: "client_auth"
-      audience_scope: "swarm-aud-v1:cli-rest:<server_id>:<world_id>:<admin_id>"
-      ttl: "15 min–1h"
-      renewal: "manual only (no auto-renew)"
-      description: >
-        Administrative operations use ClientAuthCertificate with admin scope
-        (cert revocation, CA policy, bans). Hardware key preferred. Sensitive operations require dual-signature.
-        Cannot be issued to temporary_device or managed_device profiles.
-
+      description: "Signs SWARM-DEPLOY-V1 payloads for module deployment."
   per_certificate_metadata:
     - cert_id: string
     - usage: string
     - audience: string
     - scope: string
     - public_key_fingerprint: string
-    - device_label: string
-    - managed_by_server: bool
+    - label: string
     - issued_at: u64
     - expires_at: u64
     - revoked_at: u64
-
   per_player_limits:
     max_active_certificates: 10
-    max_active_devices: 5
+    max_active_client_auth_certificates: 10
 
-# =============================================================================
-# 4. Canonical Request Signature — SWARM-REQUEST-V1
-# =============================================================================
 canonical_request_signature:
   description: >
     Every authenticated request carries a canonical Ed25519 signature over a
-    SWARM-REQUEST-V1 payload. The signature is in the Swarm-Signature header.
-    The application-layer certificate is in the Swarm-Certificate header.
-
+    SWARM-REQUEST-V1 payload. The signature covers Swarm-Cert-Id; Gateway
+    rejects requests where the header id does not match the certificate body.
   headers:
     - "Swarm-Certificate: <base64 ClientAuthCertificate or CodeSigningCertificate>"
     - "Swarm-Cert-Id: <certificate_id>"
     - "Swarm-Timestamp: <unix_ms>"
     - "Swarm-Nonce: <random 128-bit>"
     - "Swarm-Signature: <ed25519 signature by user private key>"
-
   signature_payload:
     format: "SWARM-REQUEST-V1\nmethod: <v>\npath: <v>\nbody_hash: <v>\ntimestamp: <v>\nnonce: <v>\ncertificate_id: <v>\nplayer_id: <v>\naudience: <v>\n"
     fields:
       - "method: HTTP method or MCP tool name"
       - "path: HTTP path or MCP tool name"
-      - "body_hash: blake3 canonical body hash (blake3('') for empty body)"
+      - "body_hash: blake3 canonical body hash"
       - "timestamp: unix_ms as decimal string"
       - "nonce: random 128-bit hex"
-      - "certificate_id: cert_id from issued certificate"
+      - "certificate_id: Swarm-Cert-Id header and certificate body cert_id"
       - "player_id: authenticated player ID"
       - "audience: swarm-aud-v1:<transport>:<server_id>:<world_id>:<player_id>"
     encoding: "UTF-8, LF line endings, no BOM"
     algorithm: Ed25519
-
   validation_order:
-    - "1. Certificate chain traces to server trust root, not expired, not revoked"
-    - "2. Leaf certificate usage covers current operation"
-    - "3. Swarm-Signature verifiable by leaf certificate's Ed25519 public key"
-    - "4. Timestamp within allowed window (default 60s)"
-    - "5. Nonce not previously consumed"
-    - "6. Scope covers operation, audience/world_id match"
-
+    - "1. Certificate signed by Server CA, not expired, not revoked"
+    - "2. Swarm-Cert-Id header equals cert_id in certificate body"
+    - "3. Certificate usage covers current operation"
+    - "4. Swarm-Signature verifies with certificate public key"
+    - "5. Timestamp within allowed window"
+    - "6. Nonce not previously consumed"
+    - "7. Scope covers operation and audience/world_id match"
   transport_labels:
     agent-mcp: "AI agent via MCP session"
     cli-rest: "Human CLI or REST client"
-    wasm-sdk: "WASM SDK (deploy, code signing)"
+    wasm-sdk: "WASM SDK for deploy and code signing"
 
-# =============================================================================
-# 4a. Deploy Canonical Signature — SWARM-DEPLOY-V1 (R34 CV-B3)
-# =============================================================================
 deploy_canonical_signature:
   description: >
-    Deploy-specific canonical Ed25519 signature payload. Extends SWARM-REQUEST-V1
-    with deploy-specific fields for certificate binding, replay protection, and
-    module integrity verification. Signed by CodeSigningCertificate private key.
-
+    SWARM-DEPLOY-V1 is signed by CodeSigningCertificate and binds the canonical
+    deploy body, module hash, player identity, audience, deploy_id, and
+    per-slot version_counter.
   signature_payload:
-    format: "SWARM-DEPLOY-V1\nmethod: swarm_deploy\npath: /deploy\nbody_hash: <v>\ntimestamp: <v>\nnonce: <v>\ncertificate_id: <v>\nplayer_id: <v>\naudience: <v>\ndeploy_id: <v>\nmodule_hash: <v>\nredb_version_counter_predicted: <v>\n"
+    format: "SWARM-DEPLOY-V1\nmethod: swarm_deploy\npath: /deploy\nbody_hash: <v>\ntimestamp: <v>\nnonce: <v>\ncertificate_id: <v>\nplayer_id: <v>\naudience: <v>\ndeploy_id: <v>\nmodule_hash: <v>\nversion_counter: <v>\n"
     fields:
       - "method: swarm_deploy"
       - "path: /deploy"
-      - "body_hash: blake3 of WASM module bytes + metadata"
+      - "body_hash: blake3 canonical deploy body hash"
       - "timestamp: unix_ms"
       - "nonce: random 128-bit hex"
       - "certificate_id: CodeSigningCertificate cert_id"
       - "player_id: deploying player"
       - "audience: swarm-aud-v1:wasm-sdk:<server_id>:<world_id>:<player_id>"
-      - "deploy_id: unique deploy identifier (server-generated, returned on accept)"
+      - "deploy_id: unique deploy identifier"
       - "module_hash: blake3 of WASM module bytes"
-      - "redb_version_counter_predicted: expected redb counter value for anti-replay"
+      - "version_counter: per-player/per-slot deploy counter"
     encoding: "UTF-8, LF line endings, no BOM"
     algorithm: Ed25519
-
   validation:
     - "1. Certificate is CodeSigningCertificate, not expired, not revoked"
-    - "2. SWARM-DEPLOY-V1 signature verifiable by cert's Ed25519 public key"
-    - "3. module_hash matches actual WASM module bytes"
-    - "4. deploy_id is unique (not previously consumed)"
-    - "5. redb_version_counter_predicted matches or is within allowed skew"
-    - "6. Timestamp within window (default 60s), nonce not consumed"
-    - "7. audience matches server + world + player"
-
+    - "2. SWARM-DEPLOY-V1 signature verifies with certificate public key"
+    - "3. module_hash matches submitted module bytes"
+    - "4. deploy_id is unique for the player"
+    - "5. version_counter is greater than the stored slot counter"
+    - "6. Timestamp within window and nonce not consumed"
+    - "7. audience matches server, world, player, and wasm-sdk transport"
   replay_protection:
-    mechanism: "redb version_counter + deploy_id uniqueness"
-    description: >
-      Deploy replay protection uses redb atomic version_counter increment,
-      not volatile nonce cache. The predicted counter is signed into the deploy
-      payload; server validates counter prediction, atomically bumps redb
-      counter, and accepts only if prediction matches. Combined with
-      deploy_id uniqueness, this guarantees idempotent single-accept
-      semantics across server restarts.
+    mechanism: "redb manifest transaction + per-slot version_counter + deploy_id uniqueness"
+    description: "The accepted deploy manifest is written atomically with the version counter update."
 
-# =============================================================================
-# 4.5 SWARM-DEPLOY-V1 Canonical Payload
-# =============================================================================
-deploy_signature:
-  description: >
-    Deploy-specific canonical signature payload. SWARM-DEPLOY-V1 extends
-    the SWARM-REQUEST-V1 fields with deploy-specific bindings (deploy_id,
-    module_hash, redb_version_counter_predicted) that prevent replay and
-    ensure the certificate authorizes the exact module being deployed.
-  payload_name: "SWARM-DEPLOY-V1"
-  format: >
-    SWARM-DEPLOY-V1\n
-    method: swarm_deploy\n
-    path: /mcp\n
-    body_hash: <blake3 of wasm_bytes>\n
-    timestamp: <unix_ms>\n
-    nonce: <random 128-bit hex>\n
-    certificate_id: <code_signing_certificate_id>\n
-    player_id: <authenticated player_id>\n
-    audience: swarm-aud-v1:wasm-sdk:<server_id>:<world_id>:<player_id>\n
-    deploy_id: <client-generated unique deploy request id>\n
-    module_hash: <blake3 of wasm_bytes>\n
-    redb_version_counter_predicted: <预期 redb 计数器值，用于绑定原子提交>
-  fields:
-    - name: method
-      description: "固定为 swarm_deploy"
-    - name: path
-      description: "固定为 /mcp"
-    - name: body_hash
-      description: "WASM 模块二进制完整 blake3 hash"
-    - name: timestamp
-      description: "Unix 毫秒时间戳"
-    - name: nonce
-      description: "128-bit 随机 nonce，redb 去重"
-    - name: certificate_id
-      description: "CodeSigningCertificate 的 cert_id"
-    - name: player_id
-      description: "已认证玩家 ID"
-    - name: audience
-      description: "swarm-aud-v1:wasm-sdk:<server_id>:<world_id>:<player_id>"
-    - name: deploy_id
-      description: "客户端生成的唯一部署请求 ID，用于幂等重试"
-    - name: module_hash
-      description: "WASM 模块二进制 blake3 hash（与 body_hash 相同值，显式绑定）"
-    - name: redb_version_counter_predicted
-      description: "预期 redb 版本计数器值，绑定原子提交防止竞态"
-  algorithm: Ed25519
-  encoding: "UTF-8, LF line endings, no BOM"
-  validation:
-    - "1. CodeSigningCertificate 链回溯至 server trust root，未过期，未吊销"
-    - "2. Certificate usage = code_signing"
-    - "3. Ed25519 签名可用 certificate public key 验证"
-    - "4. timestamp 在允许窗口内（默认 60s）"
-    - "5. nonce 之前未被消费（redb 去重）"
-    - "6. audience 匹配当前 server_id/world_id/player_id"
-    - "7. module_hash 匹配实际 WASM blob 的 hash"
-    - "8. deploy_id 格式 valid，未被重放"
-
-# =============================================================================
-# 5. RejectionReason — 12 canonical auth codes
-# =============================================================================
 rejection_reason:
   description: >
-    All auth-specific rejection reasons. These 12 canonical codes form the
-    stable wire enum for certificate-chain authentication failures. Auth codes
-    use the auth-specific namespace (1000+ index) to avoid collision with
-    core game codes.
-  total_canonical_codes: 12
+    Auth-specific rejection reasons. These 9 canonical codes form the stable
+    wire enum for certificate authentication failures.
+  total_canonical_codes: 9
   namespace_offset: 1000
-
   variants:
-    - code: InvalidCertificate
-      index: 1001
-      description: "Certificate chain invalid, untrusted, or malformed"
-
-    - code: CertExpired
-      index: 1002
-      description: "Certificate has expired"
-
-    - code: CertRevoked
-      index: 1003
-      description: "Certificate has been explicitly revoked (CRL)"
-
-    - code: NotAuthorized
-      index: 1004
-      description: "Principal lacks required scope for this operation"
-
-    - code: ScopeInsufficient
-      index: 1005
-      description: "Certificate scope narrower than required for operation"
-
-    - code: DeviceNotRegistered
-      index: 1006
-      description: "Device not found in trust registry"
-
-    - code: DeviceLimitReached
-      index: 1007
-      description: "Per-player device cap reached (10 devices / 5 active certs)"
-
-    - code: CertificateLimitReached
-      index: 1008
-      description: "Per-player active certificate cap reached (10 certs)"
-
-    - code: InvalidCSR
-      index: 1009
-      description: "CSR signature, PoW proof, or payload validation failed"
-
-    - code: UnknownCredential
-      index: 1010
-      description: "Credential or certificate type not recognized"
-
-    - code: RateLimited
-      index: 1011
-      description: "Auth endpoint rate limit exceeded"
-
-    - code: InternalAuthError
-      index: 1012
-      description: "Internal auth subsystem error (CA, redb, or token store)"
-
+    - { code: InvalidCertificate, index: 1001, description: "Certificate invalid, untrusted, malformed, or header/body mismatch" }
+    - { code: CertExpired, index: 1002, description: "Certificate has expired" }
+    - { code: CertRevoked, index: 1003, description: "Certificate has been revoked" }
+    - { code: NotAuthorized, index: 1004, description: "Principal lacks required authorization" }
+    - { code: ScopeInsufficient, index: 1005, description: "Certificate scope narrower than required" }
+    - { code: CertificateLimitReached, index: 1006, description: "Per-player active certificate cap reached" }
+    - { code: InvalidCSR, index: 1007, description: "CSR signature, PoW proof, or payload validation failed" }
+    - { code: RateLimited, index: 1008, description: "Auth endpoint rate limit exceeded" }
+    - { code: InternalAuthError, index: 1009, description: "Internal auth subsystem error" }
   debug_detail:
-    description: >
-      Non-canonical, human-readable detail string providing context. NOT part
-      of the RejectionReason wire enum — separate string payload.
     max_length: 512
     unit: "bytes"
 
-# =============================================================================
-# 6. Auth Tick Trace Events
-# =============================================================================
 auth_trace_events:
-  description: >
-    Auth-specific events emitted into tick trace stream. Recorded for audit,
-    security monitoring, and replay integrity. Auth events do NOT affect game
-    state.
-  total_event_types: 8
-
+  description: "Auth-specific audit events emitted into the tick trace stream."
+  total_event_types: 7
   events:
-    - name: auth_csr_submit
-      index: 1
-      fields:
-        - { name: tick, type: u64 }
-        - { name: player_id, type: PlayerId }
-        - { name: username, type: string }
-        - { name: certificate_profile, type: string }
-        - { name: ip_address, type: string }
-        - { name: success, type: bool }
-        - { name: rejection_code, type: string }
-      replay_class: non_replayable
-      description: "Emitted on swarm_submit_csr"
+    - { name: auth_csr_submit, index: 1, replay_class: non_replayable, description: "Emitted on swarm_submit_csr" }
+    - { name: auth_cert_issue, index: 2, replay_class: admin_critical, description: "Emitted when a certificate is issued" }
+    - { name: auth_cert_renew, index: 3, replay_class: idempotent_mutation, description: "Emitted on swarm_renew_certificate" }
+    - { name: auth_cert_revoke, index: 4, replay_class: admin_critical, description: "Emitted on certificate revocation" }
+    - { name: auth_recovery_bind, index: 5, replay_class: non_replayable, description: "Emitted on optional email recovery binding" }
+    - { name: auth_rate_limit_hit, index: 6, replay_class: non_replayable, description: "Emitted when an auth endpoint rate limit is exceeded" }
+    - { name: auth_security_alert, index: 7, replay_class: non_replayable, description: "Emitted on security-relevant auth anomaly" }
 
-    - name: auth_cert_issue
-      index: 2
-      fields:
-        - { name: tick, type: u64 }
-        - { name: player_id, type: PlayerId }
-        - { name: cert_id, type: string }
-        - { name: usage, type: string }
-        - { name: fingerprint, type: string }
-        - { name: issued_at, type: u64 }
-        - { name: expires_at, type: u64 }
-      replay_class: admin_critical
-      description: "Emitted when a certificate is issued"
-
-    - name: auth_cert_renew
-      index: 3
-      fields:
-        - { name: tick, type: u64 }
-        - { name: player_id, type: PlayerId }
-        - { name: old_cert_id, type: string }
-        - { name: new_cert_id, type: string }
-        - { name: new_fingerprint, type: string }
-      replay_class: idempotent_mutation
-      description: "Emitted on swarm_renew_certificate"
-
-    - name: auth_cert_revoke
-      index: 4
-      fields:
-        - { name: tick, type: u64 }
-        - { name: actor_id, type: string }
-        - { name: target_player_id, type: PlayerId }
-        - { name: cert_id, type: string }
-        - { name: reason, type: string }
-      replay_class: admin_critical
-      description: "Emitted on certificate revocation"
-
-    - name: auth_device_register
-      index: 5
-      fields:
-        - { name: tick, type: u64 }
-        - { name: player_id, type: PlayerId }
-        - { name: device_id, type: string }
-        - { name: device_name, type: string }
-        - { name: device_fingerprint, type: string }
-      replay_class: idempotent_mutation
-      description: "Emitted on swarm_device_register"
-
-    - name: auth_recovery_bind
-      index: 6
-      fields:
-        - { name: tick, type: u64 }
-        - { name: player_id, type: PlayerId }
-        - { name: recovery_type, type: string }
-        - { name: success, type: bool }
-      replay_class: non_replayable
-      description: "Emitted on recovery email/passkey binding"
-
-    - name: auth_rate_limit_hit
-      index: 7
-      fields:
-        - { name: tick, type: u64 }
-        - { name: endpoint, type: string }
-        - { name: key_type, type: string }
-        - { name: key_value, type: string }
-        - { name: current_count, type: u32 }
-        - { name: limit, type: u32 }
-      replay_class: non_replayable
-      description: "Emitted when an auth endpoint rate limit is exceeded"
-
-    - name: auth_security_alert
-      index: 8
-      fields:
-        - { name: tick, type: u64 }
-        - { name: alert_type, type: string }
-        - { name: severity, type: string }
-        - { name: player_id, type: PlayerId }
-        - { name: ip_address, type: string }
-        - { name: detail, type: string }
-      replay_class: non_replayable
-      description: "Emitted when auth subsystem detects a security-relevant anomaly"
-
-# =============================================================================
-# 7. Auth Rate Limits
-# =============================================================================
 auth_rate_limits:
   description: "Authoritative rate limits for all auth endpoints."
-
   csr_limits:
     challenge: { limit: "10/min", key: per_ip, burst: 15 }
     submit_csr: { limit: "1/30s", key: per_ip, burst: 2 }
@@ -728,99 +315,34 @@ auth_rate_limits:
     revoke: { limit: "5/min", key: per_player, burst: 8 }
     cert_list: { limit: "30/min", key: per_player, burst: 45 }
     cert_check: { limit: "100/min", key: per_player, burst: 150 }
-
-  device_limits:
-    register: { limit: "30/min", key: per_player, burst: 45 }
-    list: { limit: "30/min", key: per_player, burst: 45 }
-    max_devices_per_player: 10
-    max_active_certificates_per_player: 10
-
-  recovery_limits:
-    passkey: { limit: "10/min", key: per_player }
-    email_bind: { limit: "5/min", key: per_player }
-
-  federation_limits:
-    identity: { limit: "5/min", key: per_player }
-
+    server_trust: { limit: "30/min", key: global, burst: 45 }
   global_limits:
     max_concurrent_sessions_per_player: 5
     session_idle_timeout: "30m"
     session_absolute_timeout: "24h"
-    certificate_validity_max: "365d"
+    client_auth_certificate_default_ttl: "24h"
+    client_auth_certificate_min_ttl: "15min"
+    client_auth_certificate_max_ttl: "7d"
+    code_signing_certificate_default_ttl: "30d"
     csr_challenge_ttl: "300s"
     csr_challenge_default_difficulty: 20
-    failed_csr_lockout_threshold: 5
-    failed_csr_lockout_window: "15m"
-    failed_csr_lockout_duration: "30m"
 
-# =============================================================================
-# 8. Security Columns — Per-Tool Metadata
-# =============================================================================
 security_columns:
-  description: >
-    Every MCP/auth tool declaration includes these security columns.
-    Canonical values defined here.
-
+  description: "Every auth tool declaration includes these security columns."
   columns:
     - name: required_scope
       values:
-        - "none — pre-auth endpoints (challenge, submit_csr, server_trust)"
-        - "swarm:auth — base auth scope (renew, revoke, cert_list, device ops)"
-        - "swarm:read — read-only game data"
-        - "swarm:deploy — WASM deployment (requires CodeSigningCertificate)"
-        - "swarm:admin — administrative operations (cert governance, bans)"
-
+        - "none"
+        - "swarm:auth"
+        - "swarm:read"
+        - "swarm:deploy"
+        - "swarm:debug"
+        - "swarm:admin"
     - name: subject_source
-      values:
-        - "none — pre-auth (no subject)"
-        - "player_id — authenticated player from certificate"
-        - "admin_id — authenticated administrator from ClientAuthCertificate with admin scope"
-
+      values: ["none", "player_id", "admin_id", "world", "drone_id"]
     - name: replay_class
-      values:
-        - "non_replayable — excluded from game-state replay (CSR, challenge)"
-        - "read_replay_safe — read-only, safe to replay (check, list)"
-        - "idempotent_mutation — stable result across replays (device register, renew)"
-        - "non_idempotent_mutation — redb transaction consumption (submit_csr)"
-        - "admin_critical — MUST be replayed deterministically (revoke)"
-
+      values: ["non_replayable", "read_replay_safe", "idempotent_mutation", "non_idempotent_mutation", "admin_critical", "deploy_mutation"]
     - name: visibility_filter
-      values:
-        - "none — no filtering"
-        - "owner — only the authenticated player's own data"
-        - "admin_scope — only visible to administrators"
-
-    - name: rate_limit_key
-      values:
-        - "per_ip — tracked by client IP"
-        - "per_player — tracked by authenticated player ID"
-        - "per_admin — tracked by admin ID"
-        - "global — shared across all callers"
-
+      values: ["none", "owner", "admin_scope", "fog_of_war", "owner_or_visible", "arena_only"]
     - name: transport
-      description: "Audience transport labels for certificate audience field"
-      values:
-        - "agent-mcp — AI agent via MCP session"
-        - "cli-rest — Human CLI or REST client"
-        - "wasm-sdk — WASM SDK (deploy, code signing)"
-
-# =============================================================================
-# Changelog
-# =============================================================================
-changelog:
-  - version: "0.2.0"
-    date: "2026-06-21"
-    changes:
-      - "R33 B4: Complete rewrite — bearer token model → application-layer certificate chain"
-      - "Replaced auth_lifecycle_tools (login/refresh/logout) with CSR lifecycle (challenge/submit/renew/revoke/list/check)"
-      - "Replaced auth_mcp_tools (TLS cert rotate/issue/revoke) with device + recovery + federation tools"
-      - "Updated all 12 RejectionReason codes for certificate model"
-      - "Updated all 8 trace events for certificate model"
-      - "Added canonical request signature specification (SWARM-REQUEST-V1)"
-      - "Added certificate_types section (ClientAuth, CodeSigning, Admin, Federation)"
-      - "Added transport labels (agent-mcp, cli-rest, wasm-sdk)"
-      - "Removed: bearer token, refresh token, JWT envelope, TLS/mTLS cert management, RSA/ECDSA, OAuth2"
-  - version: "0.1.0"
-    date: "2026-06-18"
-    changes:
-      - "Initial auth API IDL (bearer token model — superseded by 0.2.0)"
+      values: ["agent-mcp", "cli-rest", "wasm-sdk", "browser-http", "agent-ws", "spectator-ws"]

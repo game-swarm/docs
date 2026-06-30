@@ -153,7 +153,7 @@ impl WorldConfig {
         let registry = ResourceRegistry::from_config(self);
         app.insert_resource(registry);
 
-        // 基础系统始终注册（Phase 2b: Inline 命令执行后的系统链）
+        // 基础系统始终注册（Stage 2b: Inline 命令执行后的系统链）
         app.add_systems(Update, (
             death_mark_system,       // 标记待死亡 entity，释放 room cap
             spawn_system,            // 统一创建校验通过的 drone
@@ -201,7 +201,7 @@ impl WorldConfig {
 }
 ```
 
-> **R27 ML-3 — ECS Entity Iteration Determinism**: Bevy ECS 不保证 archetype/table 内部存储的遍历顺序。引擎在所有遍历中必须显式排序（按 `entity_id` 字典序），确保相同世界状态 → 相同遍历顺序 → 相同输出。CI 增加 `randomized-entity-iteration` test mode：通过 feature flag 随机化 Bevy 内部存储顺序，运行确定性 replay 场景并断言 `state_checksum` 一致。此测试不改变生产行为，仅验证排序假设未被隐式依赖打破。
+> **— ECS Entity Iteration Determinism**: Bevy ECS 不保证 archetype/table 内部存储的遍历顺序。引擎在所有遍历中必须显式排序（按 `entity_id` 字典序），确保相同世界状态 → 相同遍历顺序 → 相同输出。CI 增加 `randomized-entity-iteration` test mode：通过 feature flag 随机化 Bevy 内部存储顺序，运行确定性 replay 场景并断言 `state_checksum` 一致。此测试不改变生产行为，仅验证排序假设未被隐式依赖打破。
 
 ## 4. 规则 System 示例
 
@@ -227,7 +227,7 @@ fn code_propagation_system(
         if let Some(dist) = nearest_source {
             // 计算传播延迟：距离 / 速度 = tick 数
             let propagation_delay = dist / speed;
-            // 如果版本太新还没传播到，保持旧版本
+            // 如果版本太新还没传播到，保持替换前本
             if version.updated_at + propagation_delay > current_tick() {
                 version.fallback_to_previous();
             }

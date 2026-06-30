@@ -1,18 +1,12 @@
-# R27 未闭合项 — Playtest-Gated 追踪
+# Empirical Calibration Requirements
 
-> 来源：R27 评审议会（10 reviewers + Speaker）  
-> 状态：B1-B5 + D1-D6 + S-H1~ML-12 已闭合（commit `65cb3d1`）  
-> 以下 4 项因需要 **playtest 数据或数学模型验证** 无法在文档层面闭合
+以下项目依赖 playtest 数据或数学模型验证；文档定义目标机制，实测数据用于校准参数
 
 ---
 
-## PG-1: 早期经济曲线与 first-hour 承诺 (D-H1)
+## PG-1: 早期经济曲线与 first-hour 承诺
 
-**来源**: GPT Design/Economy G1/E1, DSV4 G2/G3  
-**Speaker Verdict**: D-H1 — 列入 Direction High  
-**D-item 裁决**: D4 — Novice 默认 onboarding / Standard = seasoned deflationary ✅
-
-**阻塞原因**: D4 裁决了方向，但 Standard balance sheet 中 1/5/20/50 房 net flow 全为负，而 resource-ledger.md 声称 "tick 2000+ 自维持"。需要 **实际玩家数据** 来验证：
+**校准需求**: D4 裁决了方向，但 Standard balance sheet 中 1/5/20/50 房 net flow 全为负，而 resource-ledger.md 声称 "tick 2000+ 自维持"。需要 **实际玩家数据** 来验证：
 
 | 需要的数据 | 说明 |
 |-----------|------|
@@ -23,15 +17,11 @@
 
 **涉及文件**: `design/gameplay.md`, `specs/core/resource-ledger.md`, `design/economy-balance-sheet.md`
 
-**闭合条件**: playtest 产出 tick-by-tick 经济数据 → 与文档承诺对比 → 调整参数或文档
+**校准条件**: playtest 产出 tick-by-tick 经济数据 → 与文档承诺对比 → 调整参数或文档
 
 ---
 
-## PG-4: Standard 经济中期自维持区间 (D4/A)
-
-**来源**: R33 D4/A 裁决  
-**Speaker Verdict**: Standard 曲线 — 2-5 房良好代码/RCL/PvE/适度扩张下小幅正流量，20+递减，50 接近不可持续  
-**D-item 裁决**: D4/A — 重写 balance sheet，标注 playtest-gated ✅
+## PG-4: Standard 经济中期自维持区间
 
 **涉及文件**: `design/economy-balance-sheet.md`
 
@@ -44,17 +34,13 @@
 | Source 产出 × 效率乘数模型准确性 | 文档中 1.5×-2.0× 效率是否与现实代码优化产出匹配 |
 | RCL 升级带来的被动收入梯度 | Controller income 的数值是否过低或过高 |
 
-**闭合条件**: playtest 收集 ≥50 active players / ≥5000 tick 的经济数据，验证自维持区间的上下界 → 调参或调整文档
+**校准条件**: playtest 收集 ≥50 active players / ≥5000 tick 的经济数据，验证自维持区间的上下界 → 调参或调整文档
 
 ---
 
-## PG-2: 特殊攻击完整状态机 (D-H3)
+## PG-2: 特殊攻击完整状态机
 
-**来源**: GPT Design/Economy G5, DSV4 G5/G7/G8  
-**Speaker Verdict**: D-H3 — 列入 Direction High  
-**D-item 裁决**: D5 — **保留全部 8 个** 作为目标设计，补齐未完整定义的状态机 ✅
-
-**状态机状态**: 已规范化，待 playtest 验证平衡性。权威参数见 `specs/reference/special-attack-table.md`；命令校验与状态机见 `specs/core/command-validation.md` §3.10-3.19。
+**状态机模型**: 已规范化，待 playtest 验证平衡性。权威参数见 `specs/reference/special-attack-table.md`；命令校验与状态机见 `specs/core/command-validation.md` §3.10-3.19。
 
 | 攻击 | 已规范化项 | 需 playtest 验证 |
 |------|------|-----------------|
@@ -66,18 +52,15 @@
 
 **涉及文件**: `specs/reference/special-attack-table.md`, `specs/core/command-validation.md` §3.10-3.19, `design/gameplay.md`
 
-**闭合条件**: playtest 验证 8 个 special attack 的博弈深度 → 补齐缺失的状态转换 → 调参
+**校准条件**: playtest 验证 8 个 special attack 的博弈深度 → 补齐缺失的状态转换 → 调参
 
 ---
 
-## PG-3: Storage tax 与 PvE faucet 量化 (E-H2)
+## PG-3: Storage tax 与 PvE faucet 量化
 
-**来源**: GPT Design/Economy E2/E3, DSV4 G4  
-**Speaker Verdict**: E-H2 — 列入 Direction High
+**校准需求**: 缺少玩家可理解的时间尺度和 PvE 定位：
 
-**阻塞原因**: 缺少玩家可理解的时间尺度和 PvE 定位：
-
-| 当前 | 需要 | 原因 |
+| 目标 | 需要 | 原因 |
 |------|------|------|
 | `bp/tick` 单位 | per-hour / per-day 人类可读单位 | 玩家无法直观理解 bp/tick 的经济影响 |
 | PvE 收益 = 独立数值 | 阶段收入表（early/mid/late game） | 玩家需要知道 PvE 的定位：catch-up / skill test / risk reward |
@@ -86,16 +69,16 @@
 
 **涉及文件**: `specs/core/resource-ledger.md`, `design/economy-balance-sheet.md`
 
-**闭合条件**: playtest 收集实际经济数据 → 将 bp/tick 转换为人类时间尺度 → 明确 PvE 定位
+**校准条件**: playtest 收集实际经济数据 → 将 bp/tick 转换为人类时间尺度 → 明确 PvE 定位
 
 ---
 
 ## 追踪状态
 
-| ID | 项 | 闭合条件 | 预计来源 |
+| ID | 项 | 校准条件 | 预计来源 |
 |----|-----|---------|---------|
 | PG-1 | 早期经济曲线 | tick-by-tick 经济数据 | World playtest (≥50 active players, ≥5000 tick) |
 | PG-2 | 特殊攻击状态机 | 8 个 special attack 博弈验证 | Arena playtest + 针对性测试场景 |
 | PG-3 | Storage tax / PvE 量化 | 经济数学模型 + 玩家反馈 | 经济参数 sweep simulation |
 
-**无截止日期。** 这些是设计目标（设计即目标）——不阻塞实现冻结，但需要在正式发布前闭合。
+这些是经验校准项；机制已在目标文档中定义，参数随实测数据调整。

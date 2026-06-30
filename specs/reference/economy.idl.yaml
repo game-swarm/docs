@@ -508,22 +508,3 @@ limits:
       description: "Maximum number of active alliances per player"
 
 # =============================================================================
-# Changelog
-# =============================================================================
-changelog:
-  - version: "0.1.1"
-    date: "2026-06-18"
-    changes:
-      - "R22 B2: StorageTax changed to percentage-based tiers (30/60/85/100% capacity) per resource-ledger.md §2.2"
-      - "R22 B2: UpkeepDeduction changed to superlinear empire upkeep formula per resource-ledger.md §Empire Upkeep"
-      - "R22 B2: AlliedTransfer added 200bp fee, 200 tick delay, 500 tick cooldown, 10000 daily cap"
-      - "R22 B2: Added authority annotations referencing specs/core/resource-ledger.md"
-  - version: "0.1.0"
-    date: "2026-06-18"
-    changes:
-      - "Initial economy IDL with 7 resource operations"
-      - "Fixed-point types only: BasisPoints, ResourceRate_i64, MilliUnits"
-      - "StorageTax: 4-tier tax schedule (0/1/5/20 bp)"
-      - "RecycleRefund: lifespan-proportional 10-50% refund formula"
-      - "Economy-specific limits: max_storage_per_player, global_resource_cap"
-      - "All amounts in u64/u32 integer units"

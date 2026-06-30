@@ -1,11 +1,9 @@
 # Codegen Pipeline — IDL → API Registry / SDK / Docs
 
-> **R22 B4 修复**。定义 IDL YAML → 生成产物的输入输出链，禁止手写分叉。
-
 ## 原则
 
-1. **IDL 是唯一机器源**：`game_api.idl.yaml`, `auth_api.idl.yaml`, `economy.idl.yaml`。
-2. **API Registry 全量生成**：`api-registry.md` 的表格/列表/计数由 codegen 产出，禁止手写。
+1. **IDL 是唯一机器源**：`*.idl.yaml` 是 schema、SDK、ABI、Registry 的唯一机器可读输入。
+2. **API Registry 全量生成**：`api-registry.md` 是 codegen 从 IDL 生成的人类可读 canonical publication；表格、列表、计数禁止手写。
 3. **CI diff check**：CI 比较生成产物与 repo 内容，发现漂移 → 阻塞合并。
 
 ## 输入 → 输出映射
@@ -29,7 +27,7 @@
 - Host function 数量（见 Registry §4）
 - `MAX_DRONES_PER_PLAYER`（见 Registry §5）
 - Body part costs（见 Registry §10）
-- Storage tax tiers（见 Registry §10）
+- Storage tax anchors（见 Registry §10）
 - Refund rates（见 Registry §10）
 - Rate limits（见 Registry §3.1）
 
@@ -53,4 +51,4 @@ hermes codegen generate --source specs/reference/*.idl.yaml --check
 
 ## 版本同步
 
-IDL 版本变更时自动更新 API Registry 头部 `api_version` 行和 changelog 表。
+IDL 版本变更时自动更新 API Registry 头部 `api_version` 行。`game_api` 版本为 `0.5.0`，`auth_api` 版本为 `0.2.0`。

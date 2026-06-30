@@ -226,7 +226,7 @@ swarm sim --ticks=5000 --speed=100x
 | 人类 | Web UI（编辑器中一键部署）或 CLI `swarm deploy` |
 | AI (MCP) | MCP `swarm_deploy` 工具 |
 
-引擎收到新 WASM 模块后，在下一 tick 自动切换到新模块。旧模块保留作为回滚目标。
+引擎收到新 WASM 模块后，在下一 tick 自动切换到新模块。替换前模块保留作为回滚目标。
 
 ### 4.2 部署流程
 

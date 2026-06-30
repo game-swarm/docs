@@ -1,8 +1,6 @@
 # Economy Balance Sheet — Vanilla / Tutorial / Standard
 
-> **R15 B7 + B6/D3/D4 修复**。本文档证明 Vanilla/Standard 世界的 maintenance curve 与 anti-snowball 目标一致性，并提供 1/5/20/50 房间的数值闭环验证。**所有费率、公式以 `specs/core/resource-ledger.md` §2 统一参数表为唯一权威源。**
->
-> **Canonical target curve 初始参数化**：以下具体参数为目标经济曲线的示意性估算（illustrative estimates），用于表达 2–10 房间自维持、20 房后递减、50 房软上限的目标状态。后续 playtest 仅用于校准参数，不改变本文定义的目标曲线语义。
+> 以下具体参数为目标经济曲线的示意性估算，用于表达 2-10 房间自维持、20 房后递减、50 房软上限的目标状态。实测校准只调整参数，不改变本文定义的目标曲线语义。
 
 ## 1. Maintenance Curve
 
@@ -28,7 +26,7 @@ upkeep = base_upkeep × rooms × (1 + rooms / room_soft_cap)
 
 维护费随房间数呈 **超线性增长**（O(n²) 趋势）。50 房间的维护费是 5 房间的 40 倍（而非 10 倍线性）。
 
-存储税使用 Resource Ledger §2.2 tiered 公式（权威 tier 定义见 `specs/core/resource-ledger.md` §2 统一参数表），以下场景中的存储税数值均由此公式导出。
+存储税使用 Resource Ledger §2.2 连续边际税率公式，以下场景中的存储税数值均由固定步长整数积分导出。
 
 ## 2. 收支平衡表
 
@@ -45,8 +43,7 @@ upkeep = base_upkeep × rooms × (1 + rooms / room_soft_cap)
 |--------|:------:|------|
 | Source Harvester ×2 | 20 | L1 source, 10/tick each |
 | Controller income | 2 | RCL 1 |
-| free_upkeep 覆盖 | +55 | 前 1 controller + 3 drone 免维护费 |
-| **总收入** | **77** | free_upkeep 期内维护费不计 |
+| **总收入** | **22** | free_upkeep 不计为收入；仅免除对应维护费 |
 
 | 支出项 | 量/tick | 说明 |
 |--------|:------:|------|
@@ -56,9 +53,9 @@ upkeep = base_upkeep × rooms × (1 + rooms / room_soft_cap)
 
 | 净流量 | 量/tick |
 |--------|:------:|
-| **净盈余** | **+77** |
+| **净盈余** | **+22** |
 
-> **1 房间 free_upkeep 期内纯盈余**。初始资源包 + free_upkeep 允许玩家快速建立初始经济基础。free_upkeep 结束后维护费恢复（55/tick），基础收入 22/tick → 净亏损 -33/tick。此时需要扩张到 2 房间或提升代码效率来达到收支平衡。
+> **1 房间 free_upkeep 期内净盈余**。初始资源包 + free_upkeep 允许玩家快速建立初始经济基础。free_upkeep 结束后维护费恢复（55/tick），基础收入 22/tick → 净亏损 -33/tick。此时需要扩张到 2 房间或提升代码效率来达到收支平衡。
 
 ### 2.2 Standard 模式 — 2 房间（优化代码）
 
@@ -94,13 +91,13 @@ upkeep = base_upkeep × rooms × (1 + rooms / room_soft_cap)
 | 支出项 | 量/tick | 可重算输入 |
 |--------|:------:|------|
 | 维护费 | 375 | `50 × 5 × (1 + 5 / 10)` |
-| 存储税 | 15 | `storage_capacity=1,000,000`, `stored_total=450,000`; tier 1 taxable=`450,000-300,000=150,000`; `150,000 × 1bp / 10000` |
-| **总支出** | **390** | |
+| 存储税 | 2 | `storage_capacity=1,000,000`, `stored_total=450,000`; continuous marginal integral ≈ 2.79, floor=2 |
+| **总支出** | **377** | |
 
 | 净流量 | 量/tick |
 |--------|:------:|
 | **净亏损（基础）** | **-110** |
-| **净盈余（优化）** | **0** |
+| **净盈余（优化）** | **+13** |
 
 > **5 房间阶段：良好代码可达收支平衡**。优化代码（×1.5）+ Controller 升级（RCL 3-4）+ Source 升级到 L2 可实现小幅盈余。这是「中期自维持可达」的核心验证点——适度扩张（2-5 房）下，良好代码与 RCL 管理可维持自给自足的正流量。
 
@@ -117,13 +114,13 @@ upkeep = base_upkeep × rooms × (1 + rooms / room_soft_cap)
 | 支出项 | 量/tick | 可重算输入 |
 |--------|:------:|------|
 | 维护费 | 1,000 | `50 × 10 × (1 + 10 / 10)` |
-| 存储税 | 75 | `storage_capacity=3,000,000`, `stored_total=1,650,000`; tier 1 taxable=`900,000`; tier 2 taxable=`750,000`; `(900,000 × 1bp + 750,000 × 5bp) / 10000` |
-| **总支出** | **1,075** | |
+| 存储税 | 30 | `storage_capacity=3,000,000`, `stored_total=1,650,000`; continuous marginal integral ≈ 30.24, floor=30 |
+| **总支出** | **1,030** | |
 
 | 净流量 | 量/tick |
 |--------|:------:|
-| **净亏损（基础）** | **-435** |
-| **净盈余（优化）** | **+55** |
+| **净亏损（基础）** | **-420** |
+| **净盈余（优化）** | **+100** |
 
 > **10 房间阶段：高效代码可达小幅盈余**。多 Source 并行 + 高效代码（×2.0）+ PvE 收益维持正流量。但边际收益已开始递减——维护费超线性增长要求持续优化而非单纯扩张。这是「中期自维持仍可达，但扩张成本显著上升」的警示点。
 
@@ -140,14 +137,14 @@ upkeep = base_upkeep × rooms × (1 + rooms / room_soft_cap)
 | 支出项 | 量/tick | 可重算输入 |
 |--------|:------:|------|
 | 维护费 | 3,000 | `50 × 20 × (1 + 20 / 10)` |
-| 存储税 | 180 | `storage_capacity=4,000,000`, `stored_total=2,880,000`; tier 1 taxable=`1,200,000`; tier 2 taxable=`480,000`; `(1,200,000 × 1bp + 480,000 × 5bp) / 10000` |
+| 存储税 | 141 | `storage_capacity=4,000,000`, `stored_total=2,880,000`; continuous marginal integral ≈ 141.04, floor=141 |
 | Drone spawn cost (avg 0.2/tick) | 40 | |
-| **总支出** | **3,220** | |
+| **总支出** | **3,181** | |
 
 | 净流量 | 量/tick |
 |--------|:------:|
-| **净亏损（基础）** | **-1,900** |
-| **净亏损（优化）** | **-880** |
+| **净亏损（基础）** | **-1,861** |
+| **净亏损（优化）** | **-841** |
 
 > **20 房间：边际收益显著递减**。维护费超线性增长（O(n²)）开始压倒收入增长。高效代码可缩小缺口但仍为净亏损——这是「大帝国需要顶尖代码和 PvE 农场」的设计目标。中期自维持在 20 房不再可达——明确的自维持区间上限。
 
@@ -164,36 +161,36 @@ upkeep = base_upkeep × rooms × (1 + rooms / room_soft_cap)
 | 支出项 | 量/tick | 可重算输入 |
 |--------|:------:|------|
 | 维护费 | 15,000 | `50 × 50 × (1 + 50 / 10)` |
-| 存储税 | 765 | `storage_capacity=3,000,000`, `stored_total=2,700,000`; tier 1 taxable=`900,000`; tier 2 taxable=`750,000`; tier 3 taxable=`450,000`; `(900,000 × 1bp + 750,000 × 5bp + 450,000 × 20bp) / 10000` |
+| 存储税 | 364 | `storage_capacity=3,000,000`, `stored_total=2,700,000`; continuous marginal integral ≈ 364.50, floor=364 |
 | Drone upkeep | 1,000 | |
-| **总支出** | **16,765** | |
+| **总支出** | **16,364** | |
 
 | 净流量 | 量/tick |
 |--------|:------:|
-| **净亏损（基础）** | **-12,690** |
-| **净亏损（优化）** | **-10,865** |
+| **净亏损（基础）** | **-12,289** |
+| **净亏损（优化）** | **-10,464** |
 
 > **50 房间是软上限逼近**。维护费吞噬全部收入——即使顶尖代码也无法盈利。只有顶尖玩家 + PvE 农场 + 联盟交易才能维持。这是 anti-snowball 的自然天花板。
 
 ### 2.7 收支平衡汇总表 (Standard 模式)
 
-以下汇总表提供 1/2/3/5/10/20/50 房间的收支对比。**所有数值为 canonical target curve 的初始参数化（illustrative estimates）；后续 playtest 仅用于校准 Resource Ledger 参数。** 存储税由 `storage_capacity`、`stored_total` 与 Resource Ledger tier 公式逐行重算。
+以下汇总表提供 1/2/3/5/10/20/50 房间的收支对比。**所有数值为 canonical target curve 的初始参数化（illustrative estimates）；后续 playtest 仅用于校准 Resource Ledger 参数。** 存储税由 `storage_capacity`、`stored_total` 与 Resource Ledger 连续边际公式逐行重算。
 
-|| 房间数 | 收入/tick (基础) | 收入/tick (优化) | 维护费/tick | storage_capacity | stored_total | 存储税/tick | tier formula | 净流量趋势 | 说明 |
+|| 房间数 | 收入/tick (基础) | 收入/tick (优化) | 维护费/tick | storage_capacity | stored_total | 存储税/tick | storage tax formula | 净流量趋势 | 说明 |
 ||:------:|:--------:|:--------:|:---------:|:---------:|:---------:|:---------:|------|:---------:|------|
 || 1 | 22 | 22 | 0¹ | 1,000,000 | 200,000 | 0 | below 30%; no taxable tier | **大幅盈余**¹ | free_upkeep 纯盈余 |
 || 2 | 92 | 138 | 120 | 1,000,000 | 250,000 | 0 | below 30%; no taxable tier | **基础小亏 / 优化小盈** | 「中期自维持」起点——2 房即可转正 |
 || 3 | 175 | 250 | 195 | 1,000,000 | 290,000 | 0 | below 30%; no taxable tier | **优化小幅盈余** | Harvester 优化 + RCL 升级驱动正流量 |
-|| 5 | 280 | 390 | 375 | 1,000,000 | 450,000 | 15 | `(450,000 - 300,000) × 1bp / 10000` | **优化收支平衡** | 良好代码 + RCL 3-4 → 自维持可达 |
-|| 10 | 610 | 1,130 | 1,000 | 3,000,000 | 1,650,000 | 75 | `(900,000 × 1bp + 750,000 × 5bp) / 10000` | **优化小幅盈余** | 高效代码维持正流量，边际收益递减开始 |
-|| 20 | 1,320 | 2,340 | 3,000 | 4,000,000 | 2,880,000 | 180 | `(1,200,000 × 1bp + 480,000 × 5bp) / 10000` | **大额亏损** | 边际收益显著递减——自维持区间上限 |
-|| 50 | 4,075 | 5,900 | 15,000 | 3,000,000 | 2,700,000 | 765 | `(900,000 × 1bp + 750,000 × 5bp + 450,000 × 20bp) / 10000` | **严重亏损** | 软上限逼近，顶尖玩家维持 |
+|| 5 | 280 | 390 | 375 | 1,000,000 | 450,000 | 2 | continuous integral floor | **优化小幅盈余** | 良好代码 + RCL 3-4 → 自维持可达 |
+|| 10 | 610 | 1,130 | 1,000 | 3,000,000 | 1,650,000 | 30 | continuous integral floor | **优化小幅盈余** | 高效代码维持正流量，边际收益递减开始 |
+|| 20 | 1,320 | 2,340 | 3,000 | 4,000,000 | 2,880,000 | 141 | continuous integral floor | **大额亏损** | 边际收益显著递减——自维持区间上限 |
+|| 50 | 4,075 | 5,900 | 15,000 | 3,000,000 | 2,700,000 | 364 | continuous integral floor | **严重亏损** | 软上限逼近，顶尖玩家维持 |
 
 > **自维持区间：2-10 房间**。良好代码（×1.5-2.0 效率）+ 适度 RCL 升级 + PvE 补充下，Standard 经济可实现小幅正流量。20 房间边际收益显著递减，50 房间接近不可持续——形成自然天花板。此区间是 canonical target curve；实际玩家数据仅用于校准参数，详见 `specs/gameplay/PLAYTEST-GATED.md` PG-1。
 
 > `¹` 1 房间 free_upkeep 期内；free_upkeep 结束后维护费恢复 → 净流量 -33（基础）。free_upkeep 默认 2000 tick，初始资源包 `{Energy: 5000}` 足够度过此阶段。
 >
-> **可重算公式**：`upkeep = base_upkeep × rooms × (1 + rooms / room_soft_cap)`；`tax = Σ taxable_units_in_tier × tier_rate_bp / 10000`，其中 `taxable_units_in_tier` 由 `storage_capacity`、`stored_total` 与 `storage_tax_tiers` 的容量百分比边界换算为资源单位。所有参数 world.toml 可配置——修改 `base_upkeep`、`room_soft_cap`、`storage_tax_tiers`、`storage_capacity` 或 `stored_total` 后本表数值相应变化。
+> **可重算公式**：`upkeep = base_upkeep × rooms × (1 + rooms / room_soft_cap)`；`tax = floor(∫ marginal_rate_bp(u) d stored_units / 10000)`，其中 `marginal_rate_bp` 由 Resource Ledger §2.2 的 smoothstep 锚点定义。所有参数 world.toml 可配置——修改 `base_upkeep`、`room_soft_cap`、`storage_tax_curve`、`storage_capacity` 或 `stored_total` 后本表数值相应变化。
 >
 > **代码效率乘数含义**：1.5×-2.0× 表示减少 idle 时间、优化路径、减少拥堵——随着房间扩张，效率从 1.5× 逐渐提升到 2.0× 需要持续优化投入。200% (2×) 仅在完美路径 + 无拥堵 + 最优 body 组合下可达。
 >
@@ -211,7 +208,7 @@ upkeep = base_upkeep × rooms × (1 + rooms / room_soft_cap)
 | `pve_global_cap_pct` | 50% | 40% | 30% |
 | `global_transfer_enabled` | true | true | true |
 | `allied_transfer_enabled` | true | false | **true (Restricted)** |
-| `storage_tax` | 免税 | tiered (0/1/5/20 bp) | tiered (0/1/5/20 bp) |
+| `storage_tax` | 免税 | continuous marginal anchors 30/60/85/100% | continuous marginal anchors 30/60/85/100% |
 | `global_deposit_delay` | 10 | 10 | 10 |
 | `global_withdraw_delay` | 100 | 100 | 100 |
 | `safe_mode_duration` | 2000 | 500 | 500 |
@@ -225,7 +222,7 @@ upkeep = base_upkeep × rooms × (1 + rooms / room_soft_cap)
 
 Controller/Depot age repair 的权威模型见 `specs/core/resource-ledger.md` §2.4：无全局 repair cap，Controller 免费，Depot 消耗本地资源，维修吞吐只受物理范围、每设施容量和队列约束。
 
-> **存储税权威源**：tier 定义见 `design/gameplay.md` §8「累进存储税」和 `specs/core/resource-ledger.md` §StorageTax。Tutorial 全免，Vanilla/Standard 使用相同 tier 结构（税率由 `storage_tax_tiers` 配置）。
+> **存储税权威源**：曲线锚点见 `design/gameplay.md` §8「累进存储税」和 `specs/core/resource-ledger.md` §StorageTax。Tutorial 全免，Vanilla/Standard 使用相同 曲线锚点（税率由 `storage_tax_curve` 配置）。
 >
 > **Allied Transfer 模式差异**：Standard 默认启用 Restricted Allied Transfer（fee=200bp, delay=200 tick, cooldown=500 tick, daily_cap=10000, intercept enabled）。Novice/Tutorial 可通过 world.toml 禁用 (`allied_transfer_enabled = false`)。Arena 模式禁用 Allied Transfer（竞技公平）。
 
@@ -233,12 +230,34 @@ Tutorial 模式弱维护费 + 长保护期，适合新手学习。Vanilla 模式
 
 ## 4. Anti-Snowball 证明
 
-通过超线性维护费曲线，Standard 模式满足：
+令房间数为 `n`。边际收益函数：
 
-1. **边际收益递减**：第 N+1 个房间的维护费增长 > 收入增长。
-2. **净正反馈克制**：玩家必须通过代码优化获得更高效率，而非单纯扩张。
-3. **自然上限**：50 房间附近维护费吞噬全部收入，形成 soft cap。
-4. **No Teleport + 物流成本**：远距离资源转移承担转换时间/损耗，强化 "维持大帝国需要物流基础设施"。
+```
+r(n) = expected_income(n)
+     = source_income(n) × code_efficiency(n) + controller_income(n) + pve_award(n)
+```
+
+`source_income(n)` 受房间 source 密度与 harvester 通行拥堵约束，按近似线性增长；`code_efficiency(n)` 有上界 `E_max`；`pve_award(n)` 受 Resource Ledger 的 Global/Zone/Player/Event 四维 budget 约束。故存在常数 `A`、`B`，使 `r(n) <= A × n + B`。
+
+边际成本函数：
+
+```
+c(n) = upkeep(n) + tax(n) + conversion_loss(n)
+upkeep(n) = base_upkeep × n × (1 + n / room_soft_cap)
+tax(n) = continuous_storage_tax(stored(n), capacity(n))
+conversion_loss(n) >= 0
+```
+
+其中 `upkeep(n)` 含二次项 `(base_upkeep / room_soft_cap) × n²`，`tax(n)` 非负且随存储利用率单调不减，`conversion_loss(n)` 非负。于是：
+
+```
+c(n) >= (base_upkeep / room_soft_cap) × n²
+r(n) <= A × n + B
+```
+
+定义净流量 `f(n)=r(n)-c(n)`。`f(n)` 在小 `n` 区间可为正；当 `n -> infinity` 时，二次成本项支配线性收益项，`f(n) -> -infinity`。因此存在有限均衡点 `n*`，满足 `f(n*) >= 0` 且 `f(n*+1) < 0`。按本文 Standard 初始参数，良好代码下 `n*` 位于 10 与 20 房之间：10 房净盈余约 +100/tick，20 房净亏损约 -841/tick。
+
+No Teleport 物流成本通过 `conversion_loss(n)` 与延迟约束提高大帝国边际成本，但不是证明有限均衡点的必要条件；维护费二次项已足以保证 `n*` 存在且有限。
 
 ## 5. 与 Resource Ledger 的关系
 
@@ -248,9 +267,9 @@ Tutorial 模式弱维护费 + 长保护期，适合新手学习。Vanilla 模式
 |---------|------------|---------|
 | 维护费 (UpkeepDeduction) | Resource Ledger §Empire Upkeep | 验证数值合理性 |
 | 回收 (RecycleRefund) | Resource Ledger §6 (lifespan 10%–50%) | 引用 |
-| 存储税 (StorageTax) | Resource Ledger §2 + gameplay.md §8 tier 表 | 引用 |
+| 存储税 (StorageTax) | Resource Ledger §2 + gameplay.md §8 曲线锚点 | 引用 |
 | 费率模型 (basis points) | Resource Ledger §2 | 不重复 |
 
 ## 6. 存储税均衡证明 (Storage Tax Equilibrium Proof)
 
-存储税使用 Resource Ledger §2.2 tiered 公式（权威 tier 定义见 `specs/core/resource-ledger.md` §2 统一参数表），以下场景中的存储税数值均由此公式导出。
+存储税使用 Resource Ledger §2.2 连续边际税率公式，以下场景中的存储税数值均由固定步长整数积分导出。

@@ -1,12 +1,6 @@
 # Resource Ledger — 统一资源入口（单一经济权威）
 
 > 详见 design/gameplay.md
->
-> **R15 B9 修复**。本文档定义 Swarm 引擎中所有资源流动的唯一切入点（Transfer Gateway），消除 local transfer / global transfer / allied transfer / PvE award 等多入口的资源逃逸路径。
->
-> **R22 B2 修复**。本文档为 Swarm 经济系统的**唯一设计/数学权威**。所有费率、公式、参数以本文档为准，涵盖所有成本、费用、物流参数。`economy.idl.yaml` 为机器 schema（引用本文档），`api-registry.md` 为生成产物（禁止手写经济数值）。
->
-> **R33 B5 修复**。本文档明确为经济系统的**数学/执行顺序权威**——所有成本/费用/物流参数唯一在此定义，其他文档（design/gameplay.md、design/economy-balance-sheet.md、design/engine.md）必须引用此文档参数。
 
 ## 原则
 
@@ -58,7 +52,7 @@
 | `SpawnCost` | Owner → Drone | 生成消耗 |
 | `UpkeepDeduction` | Owner → World | 维护费扣除 |
 | `StorageTax` | Storage → World | 存储税 |
-| `ContractSettlement` | Contract → Participants | 合约结算 (Out-of-Scope) |
+| `ContractSettlement` | Contract → Participants | 合约结算（独立 RFC surface） |
 
 ---
 
@@ -82,44 +76,44 @@
 | `allied_transfer_cooldown` | 500 | tick | 同目标联盟转移冷却 |
 | `allied_daily_cap` | `max(10_000, receiver_gcl × 20_000)` | units | 每日联盟转移上限（按接收方 GCL 缩放，最低 10,000） |
 | `allied_daily_cap_world_multiplier` | 100 | u32 (scale×100) | 世界模式乘数（Standard=100=1.0×, Arena=50=0.5×, Tutorial=500=5.0×） |
-| **Storage Tax (累进)** | | | |
-| `storage_tax_tiers` | `[(30,0),(60,1),(85,5),(100,20)]` | (容量%, bp) | 累进存储税 tier 定义 |
-| `storage_tax_tier_0_threshold` | 30% | capacity% | 0–30% 免税 |
-| `storage_tax_tier_0_rate` | 0 | bp | Tier 0 税率 |
-| `storage_tax_tier_1_threshold` | 60% | capacity% | 30–60% |
-| `storage_tax_tier_1_rate` | 1 | bp | Tier 1 税率 (0.01%/tick) |
-| `storage_tax_tier_2_threshold` | 85% | capacity% | 60–85% |
-| `storage_tax_tier_2_rate` | 5 | bp | Tier 2 税率 (0.05%/tick) |
-| `storage_tax_tier_3_threshold` | 100% | capacity% | 85–100% |
-| `storage_tax_tier_3_rate` | 20 | bp | Tier 3 税率 (0.20%/tick) |
+| **Storage Tax (连续边际曲线)** | | | |
+| `storage_tax_anchor_0` | `(300000 ppm, 0 bp)` | utilization, bp | 30% 容量处边际税率 |
+| `storage_tax_anchor_1` | `(600000 ppm, 1 bp)` | utilization, bp | 60% 容量处边际税率 |
+| `storage_tax_anchor_2` | `(850000 ppm, 5 bp)` | utilization, bp | 85% 容量处边际税率 |
+| `storage_tax_anchor_3` | `(1000000 ppm, 20 bp)` | utilization, bp | 100% 容量处边际税率 |
+| `storage_tax_curve` | `quadratic_smoothstep` | enum | 分段三次 Hermite smoothstep 插值，端点连续 |
 | **Recycle** | | | |
 | `recycle_refund_base` | 5000 | bp | 基础退还比例 (50%) |
 | `recycle_refund_min` | 1000 | bp | 最低退还比例 (10%) |
+| **Drone Lifespan** | | | |
+| `MIN_LIFESPAN` | 100 | tick | body part modifier 后的最小寿命 |
+| `BASE_AGE` | 1500 | tick | drone 基础寿命 |
+| `drone_decay_rate` | 10000 | bp | 每 tick 基础 age 增长倍率 |
 | **New Player Gate** | | | |
 | `new_player_transfer_lock` | 500 | tick | 新玩家 player↔player 转移双向锁：禁止发送与接收 |
 | `soft_launch_duration` | 1500 | tick | safe_mode 结束后 PvE-only 保护期 |
 
-### 2.2 存储税 tiered 公式
+### 2.2 存储税连续边际税率公式
 
 ```
-storage_pct = floor(stored_units × 100 / storage_capacity_units)
-storage_tax(tick) = Σ over each tier i where storage_pct > tier_start_pct[i]:
-    tier_capacity_units = storage_capacity_units × tier_width_pct[i] / 100
-    taxable_units_in_tier = min(stored_units - tier_start_units[i], tier_capacity_units)
-    tax = taxable_units_in_tier × tier_rate_bp[i] / 10000
+u_ppm = floor(stored_units × 1_000_000 / storage_capacity_units)
+marginal_rate_bp(u_ppm) =
+    smoothstep_interpolate([
+      (300_000, 0),
+      (600_000, 1),
+      (850_000, 5),
+      (1_000_000, 20)
+    ])
+storage_tax(tick) = floor( ∫[0, stored_units] marginal_rate_bp(x / storage_capacity_units) dx / 10_000 )
 ```
 
-其中 `tier_start_units[i] = storage_capacity_units × tier_start_pct[i] / 100`，`tier_width_pct[i] = tier_end_pct[i] - tier_start_pct[i]`。`taxable_units_in_tier` 的单位永远是资源单位，不是百分比；`tier_rate_bp` 是每 tick 对该 tier 内存储资源单位征收的 basis points 税率。
+`smoothstep_interpolate` 对相邻锚点使用 `s(t)=3t²-2t³`，并用整数 ppm 计算 `t_ppm`。低于 30% 容量时边际税率为 0；高于 100% 的写入由容量规则拒绝。积分通过固定 1,000 ppm 步长的左闭右开整数求和近似执行，所有中间值使用 `u128`，提交时 floor 到整数资源单位。该曲线保留 30/60/85/100% 的可解释锚点，同时消除阶梯边界跳变。
 
-**示例**（容量 1,000,000，存储量 750,000 = 75%）：
-- Tier 0 (0-30%): 300,000 × 0 bp = 0
-- Tier 1 (30-60%): 300,000 × 1 bp = 30
-- Tier 2 (60-75%): 150,000 × 5 bp = 75
-- **总税 = 105 / tick**
+**示例**（容量 1,000,000，存储量 750,000 = 75%）：积分覆盖 30%–60% 与 60%–75% 两段，按 smoothstep 曲线求和后约为 45/tick；具体值由固定步长整数积分产生，replay 必须逐 tick 一致。
 
 ### 2.3 Starting Resources & Free Upkeep Waiver
 
-> **R23 D1/A 裁决**：第一个 controller 和前 N 个 drone 免维护费（数量可配置）。
+> **裁决**：第一个 controller 和前 N 个 drone 免维护费（数量可配置）。
 
 **World 启动经济**：Standard World 的 1-room balance sheet 长期为负——若无初始资源与免维护期，新玩家将在 safe/soft_launch 期间陷入 upkeep deficit 死亡螺旋。
 
@@ -127,7 +121,7 @@ storage_tax(tick) = Σ over each tier i where storage_pct > tier_start_pct[i]:
 
 | 参数 | 默认值 | 说明 |
 |------|--------|------|
-| `starting_resources` | `{Energy: 5000}` | 新玩家初始资源包 — R35 D6: Vanilla 默认单一 Energy |
+| `starting_resources` | `{Energy: 5000}` | 新玩家初始资源包 —  Vanilla 默认单一 Energy |
 | `free_upkeep_controllers` | 1 | 免维护费的 controller 数量 |
 | `free_upkeep_drones` | 3 | 免维护费的 drone 数量 |
 | `free_upkeep_ticks` | 2000 | 免维护费持续 tick 数（自首次 spawn 起） |
@@ -174,7 +168,7 @@ recycle_refund = max(body_cost × recycle_refund_min / 10000, recycle_refund)
 
 即 drone 在寿命 10% 时回收退还 10%，在寿命 100% 时退还 50%。`recycle_refund_base` = 5000 bp (50%)，`recycle_refund_min` = 1000 bp (10%)。新手保护（Tutorial 前 500 tick）退还 100%，由 world.toml `tutorial_recycle_refund_full_ticks` 控制。
 
-`new_player_transfer_lock` canonical 语义：锁定期内禁止任何 player↔player 资源转移的发送与接收，覆盖 `AlliedTransfer`、本地 player transfer 以及未来 `ContractSettlement`。该锁不影响玩家自身账户内的 `GlobalDeposit` / `GlobalWithdraw`（local↔global 转换）、`PvEAward`、`RecycleRefund`、`BuildCost`、`SpawnCost` 或其它非交易式账本操作。
+`new_player_transfer_lock` canonical 语义：锁定期内禁止任何 player↔player 资源转移的发送与接收，覆盖 `AlliedTransfer`、本地 player transfer 以及 `ContractSettlement` RFC surface。该锁不影响玩家自身账户内的 `GlobalDeposit` / `GlobalWithdraw`（local↔global 转换）、`PvEAward`、`RecycleRefund`、`BuildCost`、`SpawnCost` 或其它非交易式账本操作。
 
 Allied transfer 附加约束：
 - 双方必须是同一联盟成员 ≥ 100 tick
@@ -283,7 +277,7 @@ TransferDelay: u32             # 延迟 (tick)
 **公式引用**（权威定义见 §2）：
 - Global transfer fee: `amount * global_deposit_fee / 10000`（存入） / `amount * global_withdraw_fee / 10000`（提取）
 - Allied transfer fee: `amount * allied_transfer_fee / 10000`
-- Storage tax: tiered 公式见 §2.2
+- Storage tax: 连续边际税率公式见 §2.2
 - Recycle refund: lifespan 10%-50% 公式见 §2.5
 
 ### Empire Upkeep（帝国维护费）
@@ -302,15 +296,15 @@ room_soft_cap = 10 (Standard) / 15 (Vanilla) / 20 (Tutorial)
 
 ---
 
-## 7. 远期入口
+## 7. 独立 RFC Surface
 
-以下入口为远期扩展，**不进入当前 Resource Ledger**：
+以下入口不属于 active Resource Ledger：
 
 | 入口 | 状态 | 替代方案 |
 |------|------|---------|
-| Contract Settlement | Out-of-Scope | Challenge Board 用非资源奖励 |
-| Merchant NPC | Out-of-Scope | — |
-| Drone P2P Offer | Out-of-Scope | Allied Transfer (受限) 部分覆盖 |
+| Contract Settlement | RFC | Challenge Board 用非资源奖励 |
+| Merchant NPC | RFC | — |
+| Drone P2P Offer | RFC | Allied Transfer (受限) 部分覆盖 |
 
 ---
 

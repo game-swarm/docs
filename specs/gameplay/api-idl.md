@@ -2,13 +2,13 @@
 
 > 详见 design/interface.md
 >
-> **本文档说明 IDL 的设计理念、代码生成流程和 SDK 分发机制。权威数据类型定义见 [API Registry](../reference/api-registry.md)。IDL YAML 文件是实现侧代码生成输入，必须与 Registry 保持一致；Registry 是设计时 canonical schema authority。**
+> **本文档说明 IDL 的设计理念、代码生成流程和 SDK 分发机制。`*.idl.yaml` 是唯一机器源；[API Registry](../reference/api-registry.md) 是由 IDL 生成的人类可读 publication。**
 
 > **目标**: host functions / Command / Validator / SDK / MCP schema 单一真相来源
 
 ## 1. 原则
 
-**Registry 与 IDL YAML 共同驱动所有绑定——不一致即编译错误。** Registry 是设计时 canonical schema authority；`specs/reference/*.idl.yaml` 是机器可读实现输入。CI 必须逐字段比对两者，禁止任一侧静默分叉。
+**IDL YAML 驱动所有绑定——不一致即编译错误。** `specs/reference/*.idl.yaml` 是机器可读实现输入；Registry 由 codegen 生成。CI 必须比较生成结果与仓库内容，禁止静默分叉。
 
 **Core IDL vs World Action Manifest 边界**：
 
@@ -25,6 +25,30 @@ game_api.idl  (单一真相)
     └──→ Test:   property-based test generators
 ```
 
+### 2.0 TickResult
+
+WASM `tick(snapshot)` export 返回 `TickResult`。`commands` 是游戏动作意图；`messages` 是纯通信 payload，不产生经济副作用。
+
+```yaml
+TickResult:
+  additionalProperties: false
+  required: [commands]
+  fields:
+    commands: Vec<CommandIntent>
+    messages:
+      type: Vec<DroneMessage>
+      default: []
+
+DroneMessage:
+  additionalProperties: false
+  required: [recipient_id, payload]
+  fields:
+    recipient_id: ObjectId
+    payload: Bytes[0..256]
+```
+
+消息投递结果写入下一 tick 的 `snapshot.messages`，排序键为 `(sender_id, recipient_id, sequence)`。资源交换必须通过 Transfer Gateway；消息 schema 不包含 amount settlement、escrow、fee 或 ownership mutation 字段。
+
 **IDL 定义的指令类型是 CommandIntent**——即 WASM 模块 `tick()` 的可信输出格式。CommandIntent 仅包含 `sequence` + `action` 两个字段。`player_id`、`source`、`tick` 等身份/时序字段由服务端 Source Gate 注入后形成 RawCommand（见 specs/core/command-validation §2）。IDL 不定义 RawCommand 的 envelope 字段——那些是引擎内部结构。所有校验规则（`validator` 数组）定义在 CommandIntent 的 `action` 字段上。
 
 **Schema 不可扩展性**：所有 JSON schema（CommandIntent、每个 Command action、MCP tool input/output、REST API response）默认设置 `additionalProperties: false`——拒绝未知字段。唯一例外需在本文件中显式声明。此规则防止字段注入攻击和实现分叉：不同实现者看到同一 schema 不会因未知字段处理策略不同而产生分歧。
@@ -32,13 +56,13 @@ game_api.idl  (单一真相)
 **扩展 action 的字段**：`CommandIntent.action` 使用 `Action { type, payload }` 派发到 ActionRegistry。vanilla action 与 mod action 的参数结构由 World Action Manifest 定义并通过 IDL 生成对应子 schema；每个子 schema `additionalProperties: false`，不影响 CommandIntent envelope。
 
 **ABI 向后兼容**：`abi_version` 每次 host function 签名变更时递增。ABI 公告期如下：
-| 变更类型 | 公告期 | 旧模块行为 |
+| 变更类型 | 公告期 | 替换前模块行为 |
 |---|---|---|
-| 新增 host function | 即时生效 | 旧模块不受影响（不使用新函数即可） |
-| 修改 host function 签名 | 至少 30 天公告期 | 公告期内旧签名仍可用，公告期后旧模块部署被拒（`abi_version_mismatch`） |
+| 新增 host function | 即时生效 | 替换前模块不受影响（不使用新函数即可） |
+| 修改 host function 签名 | 至少 30 天公告期 | 公告期内替换前签名仍可用，公告期后替换前模块部署被拒（`abi_version_mismatch`） |
 | 移除 host function | 至少 60 天公告期 | 公告期内标记 deprecated（WASM 收到 warning），公告期后移除 |
 
-`abi_version` 变更记录在 IDL changelog 中。SDK、MCP schema、starter bot 随 `abi_version` 递增同步更新。
+`abi_version` 变更记录在 IDL schema_notes 中。SDK、MCP schema、starter bot 随 `abi_version` 递增同步更新。
 
 ## 2. IDL 格式
 
@@ -65,7 +89,7 @@ enums:
   StructureType: [Spawn, Extension, Tower, Storage, Link, Extractor, Lab,
                   Terminal, Nuker, Observer, PowerSpawn, Factory, Depot]
   RejectionReason:
-    # > 权威定义见 [API Registry](../reference/api-registry.md) §2 — 48 canonical wire codes
+    # > 生成 publication 见 [API Registry](../reference/api-registry.md) §2
     - InvalidJson
     - SchemaViolation
     - ObjectNotFound
@@ -106,9 +130,9 @@ enums:
     - CertExpired
     - DeviceNotRegistered
     - SessionLimitReached
-    - RefreshTokenInvalid
+    - CertRevoked
     - ScopeInsufficient
-    - TokenRevoked
+    - CertificateLimitReached
     - MultiDeviceConflict
     - UnknownCredential
     - InternalAuthError

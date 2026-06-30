@@ -16,7 +16,7 @@ AI：  MCP 看世界 → 生成 WASM → 部署 ───┘
 
 ### 4.1 MCP 工具分类
 
-> **权威工具清单见 [API Registry](../specs/reference/api-registry.md) §3** — Game API `all_declared=57` / `active_only=53` / `rfc_gated=4`，Auth API `all_declared=12` / `active_only=12` / `rfc_gated=0`。
+> **权威工具清单见 [API Registry](../specs/reference/api-registry.md) §3** — Game API `all_declared=57` / `active_only=53` / `rfc_gated=4`，Auth API `all_declared=7` / `active_only=7` / `rfc_gated=0`。
 >
 > 以下为**概念分类概述**，不列完整表。所有工具的 canonical schema、replay_class、rate_limit、security columns 以 Registry 为准。本表仅作方向性说明，不得用于实现引用。
 
@@ -26,10 +26,10 @@ AI：  MCP 看世界 → 生成 WASM → 部署 ───┘
 | **部署** | `swarm_deploy` (deploy_mutation), `swarm_validate_module`, `swarm_list_modules` | WASM 上传与预检 |
 | **调试** | `swarm_explain_last_tick`, `swarm_get_tick_trace`, `swarm_dry_run`, `swarm_simulate` | 开发者诊断与离线模拟 |
 | **经济** | `swarm_get_economy`, `swarm_get_drone_efficiency`, `swarm_get_economy_trend` | 资源流查询 |
-| **认证** | 见 [auth_api.idl.yaml](../specs/reference/auth_api.idl.yaml) | 设备注册、证书管理、passkey 恢复等 |
+| **认证** | 见 [auth_api.idl.yaml](../specs/reference/auth_api.idl.yaml) | 设备注册、证书管理、email 恢复 |
 | **锦标赛** | `swarm_tournament_create`, `swarm_tournament_status`, `swarm_match_result` | 竞技赛事管理 |
 
-> ⚠️ **已从 registry 移除的工具**：`swarm_attack`/`swarm_build`/`swarm_move`/`swarm_spawn` → MCP 不做游戏动作；`swarm_rollback` → `swarm_admin_rollback`；`swarm_inspect_entity` → `swarm_get_drone`；`swarm_inspect_room` → `swarm_get_room`；`swarm_get_objects_in_range` → host function（非 MCP 工具）；`swarm_dry_run_commands` → `swarm_dry_run`。旧 OAuth / bearer / refresh-token 工具不在 Registry 中，认证入口为 CSR/certificate lifecycle（见 Registry §3.3）。
+> ⚠️ **已从 registry 移除的工具**：`swarm_attack`/`swarm_build`/`swarm_move`/`swarm_spawn` → MCP 不做游戏动作；`swarm_rollback` → `swarm_admin_rollback`；`swarm_inspect_entity` → `swarm_get_drone`；`swarm_inspect_room` → `swarm_get_room`；`swarm_get_objects_in_range` → host function（非 MCP 工具）；`swarm_dry_run_commands` → `swarm_dry_run`。替换前 OAuth / bearer / refresh-token 工具不在 Registry 中，认证入口为 CSR/certificate lifecycle（见 Registry §3.3）。
 
 ### 4.1a MCP Capability Profiles
 
@@ -52,7 +52,7 @@ MCP 不做游戏动作。不存在 `swarm_move`、`swarm_attack`、`swarm_build`
 
 ## 5. 游戏 API（Deferred Command Model）
 
-WASM 模块通过 **deferred command model** 与引擎交互：
+WASM 模块通过 **queued command model** 与引擎交互：
 
 ```
 部署:  上传 WASM → 验证 `wasm_module_hash` → 预编译为原生码 → 存储（按服务端派生 `compiled_artifact_hash` 索引）
@@ -153,6 +153,6 @@ Pathfinding 确定性要求：固定 neighbor order（NESW 顺时针）、cost t
 
 **swarm_simulate**: 给定 snapshot 离线模拟 N tick。不执行其他玩家 WASM——使用 NPC-only world。最大 100 tick，max_entities=1000，资源配额独立于热路径。输出 deterministic replay。参见 [API Registry](../specs/reference/api-registry.md) §5。
 
-**swarm_deploy 部署语义**: `replay_class: deploy_mutation` — 依赖 redb `version_counter` 防重放，不依赖易失 nonce/window。同 `module_hash` 重试只扣费一次（idempotency_key = module_hash）。module 保留策略：最近 10 个版本保留，旧版本在无引用后 GC。
+**swarm_deploy 部署语义**: `replay_class: deploy_mutation` — 依赖 redb `version_counter` 防重放，不依赖易失 nonce/window。同 `module_hash` 重试只扣费一次（idempotency_key = module_hash）。module 保留策略：最近 10 个版本保留，替换前本在无引用后 GC。
 
 ---

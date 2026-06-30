@@ -92,7 +92,7 @@ WASM 模块通过 `tick(snapshot) → CommandIntent[]` JSON 返回指令。
 ```json
 { "sequence": 12, "action": { "type": "Recycle", "object_id": "d1" } }
 ```
-- 校验：drone 在 Spawn 1 格内
+- 校验：`object_id` 属于调用者，实体可回收，且未处于禁止回收状态；不要求靠近 Spawn
 - 退还：`max(1000, remaining_lifespan × 5000 / total_lifespan) bp × body_cost / 10000`（范围 10%–50%）
 
 ### ClaimController
@@ -150,7 +150,7 @@ CommandAction::Action {
 
 > **D2/B 设计决策**：48 canonical code 为 wire enum。详细上下文信息（如 fatigue 状态、特定目标容量、body part 缺失等）放入 `debug_detail` 字段，而非增加 RejectionReason enum 变体。这保持 wire enum 稳定，同时提供丰富的调试数据。
 
-> 旧文档中出现的 `NotMovable`、`Fatigued`、`SourceEmpty`、`TargetFull`、`TargetEmpty`、`AlreadyHacked`、`MissingBodyPart`、`TileBlocked`、`CarryFull`、`NotYourRoom`、`BodyTooLarge` 等代码已被统一合并至 canonical code 或降级为 `debug_detail`。详见 [API Registry §2 命名规范](api-registry.md#命名规范)。
+> 替换前文档中出现的 `NotMovable`、`Fatigued`、`SourceEmpty`、`TargetFull`、`TargetEmpty`、`AlreadyHacked`、`MissingBodyPart`、`TileBlocked`、`CarryFull`、`NotYourRoom`、`BodyTooLarge` 等代码已被统一合并至 canonical code 或降级为 `debug_detail`。详见 [API Registry §2 命名规范](api-registry.md#命名规范)。
 
 ## 校验流程
 

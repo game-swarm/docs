@@ -69,7 +69,7 @@ type_registry:
 # =============================================================================
 # 1. CommandAction — 11 variants (+ Action system)
 # =============================================================================
-# Per R35 D3: All 11 combat actions (Attack, RangedAttack, Heal, Hack, Drain,
+# All 11 combat actions (Attack, RangedAttack, Heal, Hack, Drain,
 # Overload, Debilitate, Disrupt, Fortify, Leech, Fabricate) moved to
 # ActionRegistry. CommandAction retains only non-combat fundamental operations.
 command_action:
@@ -208,7 +208,7 @@ command_action:
           type: ActionPayload
           required: true
           description: "Type-specific action parameters"
-      description: "Execute a registered action via ActionRegistry dispatch. Replaces all combat/special-attack CommandAction variants (R35 D3)."
+      description: "Execute a registered action via ActionRegistry dispatch. Replaces all combat/special-attack CommandAction variants ."
 
   # =============================================================================
   # ActionRegistry — 11 vanilla + mod-extensible combat/effect actions
@@ -723,7 +723,7 @@ mcp_tools:
       rate_limit_key: per_player
 
     # =========================================================================
-    # Auth (3 tools) — R33 B4 证书链模型
+    # Auth (3 tools) — 证书链模型
     # =========================================================================
     - name: swarm_register_challenge
       category: Auth
@@ -743,7 +743,7 @@ mcp_tools:
       rate_limit_key: per_ip
       schema_source: auth_api
       alias_of: auth_api.swarm_register_challenge
-      notes: "R33 B4: CSR 注册 PoW challenge"
+      notes: "CSR 注册 PoW challenge"
 
     - name: swarm_submit_csr
       category: Auth
@@ -767,7 +767,7 @@ mcp_tools:
       rate_limit_key: per_ip
       schema_source: auth_api
       alias_of: auth_api.swarm_submit_csr
-      notes: "R33 B4: CSR 提交 + 证书签发"
+      notes: "CSR 提交 + 证书签发"
 
     - name: swarm_cert_check
       category: Auth
@@ -789,7 +789,7 @@ mcp_tools:
       rate_limit_key: per_player
       schema_source: auth_api
       alias_of: auth_api.swarm_cert_check
-      notes: "R33 B4: 证书验证"
+      notes: "证书验证"
 
     # =========================================================================
     # Play (14 tools)
@@ -1043,14 +1043,16 @@ mcp_tools:
       input_schema:
         player_id: PlayerId
         drone_id: DroneId
-        wasm_bytes: bytes
+        deploy_payload: DeployPayload
+        code_signature: Ed25519Signature
+        certificate_id: string
+        version_counter: u64
         metadata: Metadata
       output_schema:
         deploy_id: DeployId
         accepted: bool
         validation_errors: "[string]"
         redb_version_counter: u64
-        object_store_key: string
       rate_limit: "10/h"
       required_scope: "swarm:deploy"
       subject_source: player_id
@@ -1058,15 +1060,12 @@ mcp_tools:
       visibility_filter: owner
       rate_limit_key: per_player
       notes: >
-        Uses deploy_mutation pattern (R16 B6): WASM blob is asynchronously uploaded
-        to the object store (see persistence.async_object_store_upload). The redb commit
-        only writes a small manifest + hash pointer + redb_version_counter.
-        The redb_version_counter provides a strict total order for replay determinism.
+        Uses deploy_mutation pattern: deploy_payload, code_signature, certificate_id, version_counter, and metadata are validated and committed to redb manifest atomically. Activation depends only on redb manifest plus compiled artifact.
 
     - name: swarm_validate_module
       category: Deploy
       input_schema:
-        wasm_bytes: bytes
+        module_bytes: bytes
       output_schema:
         valid: bool
         errors: "[string]"
@@ -1087,7 +1086,6 @@ mcp_tools:
         errors: "[string]"
         deployed_at: u64
         redb_version_counter: u64
-        object_store_key: string
       rate_limit: "20/tick"
       required_scope: "swarm:read"
       subject_source: player_id
@@ -1250,7 +1248,7 @@ mcp_tools:
     - name: swarm_dry_run
       category: Debug
       input_schema:
-        wasm_bytes: bytes
+        module_bytes: bytes
         tick_count: u32
       output_schema:
         trace: TickTrace
@@ -1516,14 +1514,14 @@ mcp_tools:
       rate_limit_key: global
 
   # ---------------------------------------------------------------------------
-  # RFC / Future tools — not in active tool count, not yet implemented
+  # RFC tools — not in active tool count
   # ---------------------------------------------------------------------------
   rfc_tools:
-    description: "Tools reserved for future RFC implementation. Not active, not included in total_tools count."
+    description: "Tools reserved for RFC publication. Not active and not included in total_tools count."
     tools:
       - name: swarm_list_market_orders
         category: Play
-        rfc_status: future
+        rfc_status: rfc
         rfc_tracking: "RFC-MARKET-001"
         input_schema:
           room_id: RoomId
@@ -1776,7 +1774,7 @@ tick_trace_envelope:
     - { name: world_action_manifest_hash, type: "[u8; 32]", description: "World Action Manifest hash" }
     - { name: validator_version, type: u32, description: "Validator version" }
     - { name: rejection_reason_registry_version, type: u32, description: "RejectionReason registry version" }
-    - { name: system_manifest_hash, type: "[u8; 32]", description: "Phase 2b System Manifest hash" }
+    - { name: system_manifest_hash, type: "[u8; 32]", description: "Stage 2b System Manifest hash" }
     - { name: limits_manifest_hash, type: "[u8; 32]", description: "Limits Manifest hash" }
     - { name: host_abi_version, type: u32, description: "Host Function ABI version" }
     - { name: canonical_codec_version, type: u32, description: "Canonical Codec version" }
@@ -1814,7 +1812,7 @@ tick_trace_envelope:
 # 7. Direction4 — enum
 # =============================================================================
 direction4:
-  description: "4-direction enum used by Move command. 8-direction (NE/NW/SE/SW) is a future RFC, not in current core."
+  description: "4-direction enum used by Move command. 8-direction (NE/NW/SE/SW) is a RFC, not in current core."
   type: enum
   values:
     - { name: North, value: 0 }
@@ -1880,14 +1878,11 @@ resource_operation:
       resource_flow: "target → drone"
 
 # =============================================================================
-# 10. Deploy — deploy_mutation + redb_version_counter (R16 B6)
+# 10. Deploy — deploy_mutation + redb_version_counter
 # =============================================================================
 deploy:
   description: >
-    Deploy subsystem architecture. Per R16 B6, deployments use a deploy_mutation
-    pattern: the full WASM blob is uploaded asynchronously to the object store,
-    and redb only commits a small manifest record containing the hash pointer and
-    an redb_version_counter. This keeps redb transactions small and deterministic.
+    Deploy subsystem architecture. Deployments use a deploy_mutation pattern: deploy_payload, code_signature, certificate_id, version_counter, metadata, and redb_version_counter are committed as a small redb manifest. Activation depends on this manifest and the compiled artifact.
   mechanism: deploy_mutation
   redb_version_counter:
     description: >
@@ -1901,30 +1896,25 @@ deploy:
 
   flow:
     step_1_validate:
-      description: "Client calls swarm_validate_module or includes wasm_bytes in swarm_deploy"
+      description: "Client calls swarm_validate_module or submits deploy_payload in swarm_deploy"
       actor: client
-    step_2_upload_blob:
-      description: "WASM blob uploaded to object store via async_object_store_upload (see persistence section)"
-      actor: engine
-      note: "Blob upload is async; the deploy call does not block on upload completion"
-    step_3_commit_manifest:
-      description: "redb transaction commits manifest record: {deploy_id, drone_id, blob_hash, metadata, redb_version_counter}"
+    step_2_commit_manifest:
+      description: "redb transaction commits manifest record: {deploy_id, drone_id, deploy_payload_hash, metadata, redb_version_counter}"
       actor: engine
       note: "This is the only redb write — small, fast, deterministic"
-    step_4_activate:
-      description: "On next tick boundary, engine loads WASM from object store by blob_hash and activates on drone"
+    step_3_activate:
+      description: "On next tick boundary, engine activates compiled artifact matching the manifest"
       actor: engine
-      note: "Activation is deferred to tick boundary for deterministic scheduling"
+      note: "Activation occurs at tick boundary for deterministic scheduling"
 
   swarm_deploy_output:
     deploy_id: DeployId
     accepted: bool
     validation_errors: "[string]"
     redb_version_counter: u64
-    object_store_key: string
 
 # =============================================================================
-# 11. Persistence — async_object_store_upload (D5/B)
+# 11. Persistence — async_object_store_upload
 # =============================================================================
 persistence:
   description: >
@@ -1937,7 +1927,7 @@ persistence:
       Asynchronous upload of binary blobs (WASM modules, replay recordings,
       snapshot archives) to the object store. The upload runs in a background
       task pool; the caller receives an immediate acknowledgment with an
-      object_store_key that can be polled for completion status.
+      archive_key that can be polled for completion status.
     storage_backend: "pluggable (default: local filesystem; production: S3-compatible)"
     blob_types:
       - type: wasm_module
@@ -1953,67 +1943,20 @@ persistence:
         retention: "per tick_trace_retention policy"
         content_hash: Blake3
     upload_contract:
-      invocation: "fire-and-forget from deploy flow (step 2)"
-      acknowledgment: "immediate — returns object_store_key"
+      invocation: "fire-and-forget for non-deploy archives"
+      acknowledgment: "immediate — returns archive_key"
       completion_polling: "use swarm_get_deploy_status to check upload completion"
-      failure_mode: "retry with exponential backoff (max 3 attempts); permanent failure → deploy rejected"
+      failure_mode: "retry with exponential backoff; permanent failure marks archive failed"
     fdb_manifest:
       description: >
-        redb stores only a small manifest record per blob: {blob_hash, object_store_key,
+        redb stores only a small manifest record per blob: {deploy_payload_hash, archive_key,
         size, uploaded_at, status}. This record is part of the deploy_mutation redb
         transaction and is covered by redb_version_counter ordering.
       fields:
-        - blob_hash: "[u8; 32]"
-        - object_store_key: string
+        - deploy_payload_hash: "[u8; 32]"
+        - archive_key: string
         - size: u64
         - uploaded_at: u64
         - status: "enum { pending, uploaded, failed }"
 
 # =============================================================================
-# Changelog
-# =============================================================================
-changelog:
-  - version: "0.4.2"
-    date: "2026-06-21"
-    changes:
-      - "R33 D1-A: Add host_get_random as 6th Host Function with seed=(tick_seed, player_id, drone_id, sequence), fuel=100+1/byte, max_output=256 bytes, per_tick_limit=10"
-      - "R33 D3-A: Overload target_id type EntityId → PlayerId; validation requires at least one visible entity proving target player existence"
-      - "R33 D7-A: Reference canonical special-attack-table.md for all 8 special attack parameters"
-      - "Host functions: total 5 → 6"
-  - version: "0.4.1"
-    date: "2026-06-20"
-    changes:
-      - "R26-K1 D2-A: Move swarm_get_leaderboard from Play→Arena (visibility: none→arena_only)"
-      - "R26-K1 D2-A: Add swarm_get_world_stats to Play (World non-competitive stats)"
-      - "R26-K1 D2-A: Add arena capability profile"
-      - "Arena tools: 4→5"
-  - version: "0.4.0"
-    date: "2026-06-18"
-    changes:
-      - "MCP tools: Add 10 engine-native tools to IDL registry (Onboarding +2, Play +2, Deploy +1, Debug +1, Arena +4)"
-      - "New Arena category with 4 tournament/match tools"
-      - "MCP tools total: 46 → 56 active"
-      - "Add arena capability profile"
-      - "Remove v0.3.0 inline version markers (changelog retained)"
-  - version: "0.3.0"
-    date: "2026-06-18"
-    changes:
-      - "B1: Bump api_version to 0.3.0"
-      - "B2/D2: Add debug_detail field to RejectionReason; wire enum stays 35 canonical codes"
-      - "B2/D2: Add detail_level enum (competitive/practice/training) to control debug_detail verbosity"
-      - "B3: Remove swarm_list_market_orders from active tools → RFC section"
-      - "B3: Add swarm_auth_login and swarm_auth_refresh to Auth category"
-      - "B3: MCP tools now exactly 46 active; all have 5 security columns"
-      - "B4: TickTrace envelope: wasm_status → terminal_state with explicit enum (7 variants)"
-      - "B5: Deploy: add deploy_mutation mechanism + redb_version_counter to swarm_deploy output"
-      - "D5/B: Add persistence section with async_object_store_upload contract"
-      - "Host functions: add explicit priority numbers to ABI error priority table"
-      - "SwarmError envelope: add debug_detail to error.data schema"
-  - version: "0.2.0"
-    date: "2026-06-18"
-    changes:
-      - "Initial structured IDL with 10 sections"
-  - version: "0.1.0"
-    date: "2026-06-18"
-    changes:
-      - "R15 B1+B4+H1: Initial authoritative registry"

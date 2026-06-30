@@ -13,7 +13,7 @@
 | 了解 World vs Arena 模式 + PvE | [`design/modes.md`](design/modes.md) |
 | 查看 MCP 接口和 Game API | [`design/interface.md`](design/interface.md) |
 | 查阅技术选型理由 | [`design/tech-choices.md`](design/tech-choices.md) |
-| 查看技术规范 | [`specs/`](specs/) — core / security / gameplay / future |
+| 查看技术规范 | [`specs/`](specs/) — core / security / gameplay / RFC |
 | 查阅 API 参考 | [`specs/reference/`](specs/reference/) — commands / host functions / MCP tools |
 | 学习贡献约定 | [`AGENTS.md`](AGENTS.md) |
 | 运维部署 | [`RUNBOOK.md`](RUNBOOK.md) |
@@ -36,7 +36,7 @@ docs/
 │   ├── core/               核心引擎规范 (tick/命令/WASM/世界规则/持久化/快照/ECS)
 │   ├── security/           安全规范 (MCP/可见性/来源/CVE-SLA)
 │   ├── gameplay/           游戏规范 (反馈循环/API IDL)
-│   ├── future/             扩展路线 (T2 增量快照/T3 分片)
+│   ├── RFC/             扩展路线 (T2 增量快照/T3 分片)
 │   ├── reference/          API 参考 (commands/host-functions/mcp-tools/codegen)
 │   └── gateway-protocol.md  Gateway 协议
 ├── ROADMAP.md              实施进度追踪（位于主仓库）

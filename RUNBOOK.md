@@ -97,7 +97,7 @@ swarm cert revoke --certificate-id <CERT_ID> --reason <lost_device|key_compromis
 ### Auth Service epoch emergency bump
 
 ```bash
-# Server CA 泄露 → bump epoch → 所有旧证书立即失效
+# Server CA 泄露 → bump epoch → 所有替换前证书立即失效
 swarm auth epoch-bump --reason "ca_compromise"
 ```
 

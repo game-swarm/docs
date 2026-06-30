@@ -1,7 +1,7 @@
 # 多世界分片协议 (Multi-World Shard Protocol)
 
 > 详见 design/engine.md
-> **R33 D12**: 原 Tier 3 内容，现已纳入核心设计。移除所有 "Tier/未来/候选/待定" 标签。
+多世界分片协议纳入核心设计。
 
 ## 1. 目标
 
@@ -40,17 +40,17 @@
 跨分片 combat（如 RangedAttack 跨越分片边界）使用两阶段协议：
 
 ```
-Phase 1 — Intent Broadcast:
+Stage 1 — Intent Broadcast:
   attacker_shard → target_shard: AttackIntent { attacker_id, target_id, damage, damage_type }
 
-Phase 2 — Settlement & Ack:
+Stage 2 — Settlement & Ack:
   target_shard: 本地结算 damage → target HP 更新
   target_shard → attacker_shard: AttackResult { actual_damage, target_hp_after }
 
 两阶段保证:
-  - attacker 的 Energy/fuel 消耗在 Phase 1 已扣除（不可逆）
-  - target 的 HP 变化在 Phase 2 结算
-  - 若 target 在 Phase 1-2 之间被其他攻击击杀 → Phase 2 返回 target_dead
+  - attacker 的 Energy/fuel 消耗在 Stage 1 已扣除（不可逆）
+  - target 的 HP 变化在 Stage 2 结算
+  - 若 target 在 Stage 1-2 之间被其他攻击击杀 → Stage 2 返回 target_dead
 ```
 
 ### 4.3 一致性与延迟

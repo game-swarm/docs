@@ -1,7 +1,7 @@
 # 增量快照协议 (Incremental Snapshot Protocol)
 
 > 详见 design/engine.md
-> **R33 D12**: 原 Tier 2 内容，现已纳入核心设计。移除所有 "Tier/未来/候选/待定" 标签。
+增量快照协议纳入核心设计。
 
 ## 1. 目标
 
@@ -25,7 +25,7 @@ struct TickModificationSet {
 
 ### 2.2 ComponentDelta
 
-每个修改的 component 记录 (entity_id, component_type_id, new_value)。不记录旧值——`base_snapshot_hash` 已锚定上一 tick 状态。
+每个修改的 component 记录 (entity_id, component_type_id, new_value)。不记录替换前值——`base_snapshot_hash` 已锚定上一 tick 状态。
 
 ### 2.3 增量重建
 
@@ -51,7 +51,7 @@ Replay verifier 加载 keyframe 后逐 tick 验证 hash chain，任一断裂 →
 
 ```
 方案: (entity_priority_bucket, last_modified_tick DESC, entity_id)
-  — 优先保留最近被修改的实体（高信息价值），旧实体先截断
+  — 优先保留最近被修改的实体（高信息价值），替换前实体先截断
   — modification_set 自带变更信息，无需额外索引
 ```
 

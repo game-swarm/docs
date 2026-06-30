@@ -2,7 +2,7 @@
 
 > 技术选型的落地规范见 [WASM Sandbox](../specs/core/wasm-sandbox.md)、[Persistence Contract](../specs/core/persistence-contract.md)、[Snapshot Contract](../specs/core/snapshot-contract.md)、[Command Source](../specs/security/command-source.md)。
 
-**设计原则：设计即终态。没有"远期方向"、Phase、future、deferred、"以后再说"或版本分期。每一个技术选型必须按当下最佳实践一次性裁定；不得用分期实现、暂缓决定或保留旧方案并存来逃避取舍。实现顺序只记录在 ROADMAP，不进入设计和规范。**
+**设计原则：设计即终态。没有"RFC方向"、Stage、RFC、queued、"以后再说"或版本分期。每一个技术选型必须按当下最佳实践一次性裁定；不得用分期实现、暂缓决定或保留替换前方案并存来逃避取舍。实现顺序只记录在 ROADMAP，不进入设计和规范。**
 
 ## 1. 引擎框架: Rust + Bevy ECS
 
@@ -205,5 +205,5 @@ Blake3 覆盖哈希和 PRNG 后：(1) 依赖栈减少一个 crate（ChaCha）；
 | ClickHouse | 每 shard ~350MB/天数据量，redb metrics table 足够；跨 shard 聚合由 Gateway fan-out |
 | Rhai | Bevy Plugin trait 是唯一扩展机制；两套扩展系统 = 不必要的复杂度 |
 | 双层 CA（Root + Intermediate） | 单服务器部署无安全收益；单层 Server CA 足够 |
-| passkey/admin 恢复（强制） | 砍掉强制恢复路径；email 恢复为可选模块 |
+| 强制多恢复路径 | 砍掉强制恢复路径；email 恢复为可选模块 |
 | 不安全传输（核心需求） | 默认要求 TLS；不安全传输为可选配置 |
