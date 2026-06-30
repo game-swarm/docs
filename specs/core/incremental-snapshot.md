@@ -71,7 +71,7 @@ else:
 | `keyframe_interval` | **100 tick**（约 5 分钟 @ 3s/tick） | 权衡存储成本（全量 keyframe ≈16MB）与重建延迟 |
 | `cow_page_size` | 256 entity/page | modification-set 为主策略，CoW 作为备选 |
 
-Keyframe 写入 `persistence-contract.md` 定义的 object store；modification_set 写入 redb（atomic mutation）。
+Keyframe 写入 `persistence-contract.md` 定义的 blob store；modification_set 写入 redb（atomic mutation）。
 
 ## 5. redb 增量提交整合
 

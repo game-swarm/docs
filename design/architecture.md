@@ -220,6 +220,38 @@ redb 不做分布式事务、不做共识协议、不做高频读缓存（进程
 
 ---
 
+## 6a. Blob Store（非权威二进制存储）
+
+Blob Store 存储 redb 不适合存的大型二进制对象。**非权威**——丢失不影响确定性 replay。
+
+| 数据类型 | 存储内容 | 可丢失? | 保留策略 |
+|---------|---------|:------:|---------|
+| RichTraceBlob | 完整 TickTrace（debug detail、per-system metrics） | ✅ 可降级 | 7d hot / 30d warm |
+| ReplayArtifact | 回放验证自包含 bundle | ❌ CI/审计用 | 180d |
+| DeployPayload | WASM binary + manifest + 签名 | ❌ 部署用 | 永久 |
+| Keyframe Snapshot | 每 K tick 全量快照 | ✅ 可从 delta 重建 | 30d |
+
+**默认后端**：本地文件系统 `/data/swarm/blobs/`，按 shard 分目录。
+
+**可配置远端**：通过 `world.toml` 切换为 S3 兼容存储：
+
+```toml
+[blob_store]
+backend = "s3"                              # "local" (默认) | "s3"
+[blob_store.local]
+path = "/data/swarm/blobs"
+[blob_store.s3]
+endpoint = "https://s3.example.com"
+bucket = "swarm-blobs"
+region = "auto"
+access_key = "$S3_ACCESS_KEY"               # 环境变量引用
+secret_key = "$S3_SECRET_KEY"
+```
+
+Blob Store 不是权威源——redb 的 TickCommitRecord 保存所有 blob 的 content hash 指针。丢失 blob 只影响 debug/audit 能力，不影响 world state 完整性。
+
+---
+
 ## 7. 消息总线：NATS
 
 NATS 承担两个职责：

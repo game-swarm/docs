@@ -511,7 +511,7 @@ Tick replay 分三层记录，字段不得混用：
 | Replay identity | collect_id、attempt_id、commit_id、api_version、engine_abi_version、world_action_manifest_hash、seed_epoch | 识别一次 collect/commit 尝试与世界规则版本；用于审计和 hash-chain |
 | `TickInputEnvelope` | module_hash、wasmtime_version、effective_tick、fuel_schedule_version、host_cost_table_version、wasm_status、deploy_events、rollback_events、admin_events、terminal_state | 记录 COLLECT 输入与运行环境；对象存储 rich trace 缺失时仍可由 redb core replay |
 
-Deterministic replay 只依赖 redb replay-critical core + keyframe/delta chain，不依赖 Object Store/RichTraceBlob。Rich debug replay 可读取 RichTraceBlob 补充 per-system metrics、debug detail 和可视化 annotation；RichTraceBlob 缺失只产生 `terminal_state = audit_gap`，不产生 `unreplayable`。
+Deterministic replay 只依赖 redb replay-critical core + keyframe/delta chain，不依赖 Blob Store/RichTraceBlob。Rich debug replay 可读取 RichTraceBlob 补充 per-system metrics、debug detail 和可视化 annotation；RichTraceBlob 缺失只产生 `terminal_state = audit_gap`，不产生 `unreplayable`。
 
 #### 3.5.6 错误恢复
 
@@ -990,7 +990,7 @@ TickCommitRecord (redb, same-tx)  ──→  不可降级，失败 = abandon
         ├──→ 直接用于 deterministic replay
         └──→ 与 keyframe/delta 组合 → ReplayArtifact
 
-RichTraceBlob (Object Store, async)  ──→  可降级，失败 = audit_gap
+RichTraceBlob (Blob Store, async)  ──→  可降级，失败 = audit_gap
         └──→ 提供 debug detail, rich events, per-system metrics
 ```
 

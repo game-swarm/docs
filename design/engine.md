@@ -10,6 +10,81 @@
 
 **扩展机制**：Mod = Bevy Plugin，静态编译进 Engine 二进制。这是唯一的扩展机制——没有 Rhai 脚本层。
 
+### 3.0 Mod 生命周期
+
+Mod = Bevy Plugin，完整生命周期分为开发→发布→部署→运行四个阶段：
+
+```
+[开发]                  [发布]                  [部署]                  [运行]
+Rust crate           .swarm-mod 包          服主安装               Engine 加载
+  │                     │                     │                      │
+  ├─ impl Plugin        ├─ tar.gz 归档         ├─ swarm mod add        ├─ 启动时验签
+  ├─ Cargo.toml         ├─ Ed25519 签名        ├─ 解包到 ~/.swarm/     ├─ Cargo features
+  └─ 源码               └─ {name}-{version}    └─ world.toml 启用     └─ add_plugins()
+                           .swarm-mod-signature
+```
+
+#### 打包格式
+
+`.swarm-mod` 是 tar.gz 归档：
+
+```
+{name}-{version}.swarm-mod:
+├── Cargo.toml           # Rust crate 元数据
+├── src/
+│   └── lib.rs           # impl Plugin for XxxMod
+└── mod.toml             # 模组声明
+    ├── [mod]            # name, version, description, engine semver 约束
+    ├── [meta]           # author_pubkey (Ed25519)
+    └── [config]         # 可配置参数 (type, default, min, max, description)
+```
+
+对应 `.swarm-mod-signature` 为 Ed25519 签名文件：`blake3(tar.gz) → Ed25519_sign(author_privkey, package_hash)`。
+
+#### 签名与信任
+
+- 开发者用 `swarm mod pack --key <private>` 生成 `.swarm-mod` + `.swarm-mod-signature`
+- `mod.toml` 中 `author_pubkey` 由开发者自行声明
+- 服主通过选择下载来源表达信任——下载即信任，无中心化 CRL
+- 引擎启动时验签：重新打包 → blake3 → Ed25519_verify(author_pubkey, package_hash, signature)
+
+#### 安装与激活
+
+```bash
+# 服主侧
+swarm mod add https://releases.example.com/mods/empire-upkeep-2.0.0.swarm-mod
+# → 下载 .swarm-mod + .swarm-mod-signature → 验签 → 解包到 ~/.swarm/mods/
+
+# world.toml 中启用
+[[mods]]
+name = "empire-upkeep"
+version = "2.0.0"
+
+[mods.config]
+drone_cost = 2
+room_base = 10
+```
+
+引擎编译时通过 Cargo features 引入：`cargo build --features "mod_empire_upkeep,mod_fog_of_war"`。
+
+#### 升级与禁用
+
+| 操作 | CLI | 效果 |
+|------|-----|------|
+| 升级 | `swarm mod upgrade <name> <new_version>` | 下一 tick 新版本生效 |
+| 降级 | `swarm mod downgrade <name> <old_version>` | 旧版本立即恢复 |
+| 禁用 | `swarm mod disable <name> --world <world>` | tick 不再调用该 Plugin |
+| 卸载 | `swarm mod remove <name>` | 从 ~/.swarm/mods/ 删除，下次编译不再引入 |
+
+信任模型详见 `design/auth.md`，模组配置参数详见 `specs/core/world-rules.md`。
+
+#### 两层信任边界
+
+| 层 | 机制 | 信任 | 能力 |
+|---|---|---|---|
+| 玩家代码 | WASM 沙箱（sandbox 进程） | 不可信 | 只产 `Command[]` |
+| 引擎 + Mod | Rust 静态编译（Engine 进程内） | 服主信任 | 完全访问 ECS、注册 system、定义建筑/action/规则 |
+
 ### 3.1 核心 ECS 实体
 
 ```rust
@@ -284,7 +359,7 @@ Swarm:     Move = Action  → 每 tick 移动 OR 采集 OR 攻击 OR 建造
 - `world_config_hash`, `mods_lock_hash`, `engine_abi_version`
 - `terminal_state`（verified/audit_gap/unreplayable/reconstructable, R16 B3 新增）
 
-**Replay 分层**：确定性 replay 只需要 redb 中的 replay-critical TickCommitRecord core（见 `specs/core/persistence-contract.md` §2.1）和 keyframe/delta chain。`TickInputEnvelope` 记录 COLLECT 输入与运行环境，Replay identity 记录 collect/attempt/commit 与规则版本，RichTraceBlob 仅用于 rich debug replay。Object Store/RichTraceBlob 缺失产生 `audit_gap`，不影响 deterministic replay。
+**Replay 分层**：确定性 replay 只需要 redb 中的 replay-critical TickCommitRecord core（见 `specs/core/persistence-contract.md` §2.1）和 keyframe/delta chain。`TickInputEnvelope` 记录 COLLECT 输入与运行环境，Replay identity 记录 collect/attempt/commit 与规则版本，RichTraceBlob 仅用于 rich debug replay。Blob Store/RichTraceBlob 缺失产生 `audit_gap`，不影响 deterministic replay。
 
 **反作弊**：
 - 全量回放：任意房间状态可完整重现

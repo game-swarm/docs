@@ -244,7 +244,7 @@ AI 玩家令牌: `swarm:deploy swarm:read swarm:debug`。
 ### 4.1 WASM 模块管理
 
 部署核心工具（权威定义见 [API Registry §3.2 Deploy](../reference/api-registry.md#deploy-7)）：
-- `swarm_deploy` — 上传/更新 WASM 模块（deploy_mutation 模式，异步 blob 上传至 object store）
+- `swarm_deploy` — 上传/更新 WASM 模块（deploy_mutation 模式，异步 blob 上传至 blob store）
 - `swarm_validate_module` — 上传前预校验
 - `swarm_get_deploy_status` / `swarm_list_deployments` — 查询部署状态
 - `swarm_list_modules` — 列出已部署模块（active，详细定义见 [API Registry §3.2 Deploy](../reference/api-registry.md#deploy-7)）

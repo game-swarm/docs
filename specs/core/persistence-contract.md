@@ -1,4 +1,4 @@
-# Persistence Contract — redb / TickCommitRecord / RichTraceBlob / WAL / Object Store 分层
+# Persistence Contract — redb / TickCommitRecord / RichTraceBlob / WAL / Blob Store 分层
 
 > 详见 design/engine.md
 >
@@ -21,7 +21,7 @@
 | 存储层 | 存储内容 | 单条上限 | 保留期 |
 |--------|---------|:------:|--------|
 | **redb** | tick head、state checksum、small manifest、object pointers、content hashes、audit rows | < 1KB/row | 永久（状态） |
-| **Object Store** | RichTraceBlob、snapshot delta (full/diff)、replay artifacts、WASM binaries | < 10MB/object | 7d hot / 30d warm / 180d cold |
+| **Blob Store** | RichTraceBlob、snapshot delta (full/diff)、replay artifacts、WASM binaries | < 10MB/object | 7d hot / 30d warm / 180d cold |
 | **WAL (Write-Ahead Log)** | 未提交的 apply 操作日志 | 滚动 | 提交后截断 |
 | **Keyframe Store** | 每 K tick 的完整世界状态快照 | < 100MB | 7d hot / 30d cold |
 
@@ -57,7 +57,7 @@
 
 ### 2.2 Debug/Rich（对象存储异步写入 — 可降级）
 
-**Object Store 仅承载 RichTraceBlob**。对象存储中不存放 replay-critical 数据。对象存储写入失败仅导致 `terminal_state = audit_gap`（审计记录缺失，游戏状态可从相邻 tick 重建），**绝不会**导致 `unreplayable`——redb 中 TickCommitRecord 的 10 个字段足够完成确定性 replay。
+**Blob Store 仅承载 RichTraceBlob**。对象存储中不存放 replay-critical 数据。对象存储写入失败仅导致 `terminal_state = audit_gap`（审计记录缺失，游戏状态可从相邻 tick 重建），**绝不会**导致 `unreplayable`——redb 中 TickCommitRecord 的 10 个字段足够完成确定性 replay。
 
 > **WASM 模块 blob 非 replay-critical（D6）**：WASM 模块二进制文件存储在对象存储中，其可用性不影响确定性 replay。Replay verifier 仅使用 redb 中的 TickCommitRecord（含 `commands`、`canonical_codec_version`、`manifest_hash` 等 10 字段）重放，不重新执行 WASM 模块。WASM 模块 blob 缺失只影响 rich audit/debug 路径——deploy 的 `deploy_activation_decision` 已在 redb 清单中通过 `wasm_module_hash`、`compiled_artifact_hash` + `redb_version_counter` 完整记录激活决策，replay 不需要原始 WASM 字节。
 
@@ -116,7 +116,7 @@ ACTIVE:
 
 FAILED:
   ├─ redb 记录 deploy_failure_reason
-  ├─ object store 中 blob (如有) 由 GC 清理 (保留 1h 后删除)
+  ├─ blob store 中 blob (如有) 由 GC 清理 (保留 1h 后删除)
   └─ 玩家可重新部署
 ```
 
@@ -483,11 +483,11 @@ Keyframe 自身即可作备份:
 │  恢复锚点: Keyframe Store (独立文件, 7-30d)  │
 │  完整世界快照，redb 失效时可独立恢复          │
 ├────────────────────────────────────────────┤
-│  审计: Object Store (大 blob, 7-180d)        │
+│  审计: Blob Store (大 blob, 7-180d)        │
 │  RichTraceBlob, delta, WASM binaries        │
 ├────────────────────────────────────────────┤
 │  运行时: WAL (内存, tick 内)                  │
 └────────────────────────────────────────────┘
 
-恢复优先级: Keyframe > redb > Object Store
+恢复优先级: Keyframe > redb > Blob Store
 ```

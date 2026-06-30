@@ -13,7 +13,7 @@
 | **游戏机制** | [`design/gameplay.md`](gameplay.md) | Vanilla Ruleset、身体部件、伤害类型、特殊攻击（8 种）、经济模型、Controller/建筑系统；经济平衡表见 [`design/economy-balance-sheet.md`](economy-balance-sheet.md) |
 | **游戏模式** | [`design/modes.md`](modes.md) | World 持久世界 vs Arena 竞技场、PvE 生态层、Arena PvE Challenge |
 | **MCP 与 API** | [`design/interface.md`](interface.md) | MCP 接口架构、Game API command-intent model、SDK |
-| **用户认证** | [`design/auth.md`](auth.md) | 应用层证书、CSR、passkey/email/admin 恢复、联邦跨世界身份、账号生命周期 |
+| **用户认证** | [`design/auth.md`](auth.md) | 应用层证书、CSR、Server CA、联邦跨世界身份、账号生命周期；安全规范见 [`specs/security/`](../specs/security/) |
 | **技术选型** | [`design/tech-choices.md`](tech-choices.md) | 各子系统技术栈对比与选型理由 |
 | **技术规范** | [`specs/`](../specs/) | 技术规范，按域分 core/security/gameplay |
 | **API 参考** | [`specs/reference/`](../specs/reference/) | 面向开发者的接口文档 |
@@ -241,12 +241,12 @@ Swarm 不追求与 Screeps API 兼容。设计哲学不同：
 | 术语 | 定义 | 存储层 |
 |------|------|--------|
 | `TickCommitRecord` | redb WriteTransaction 内原子提交的 replay-critical 子集——仅包含状态 checksum、命令哈希列表、rejection 计数、fuel 扣费、attempt_id。不包含 rich debug detail。 | redb |
-| `RichTraceBlob` | 完整 TickTrace 序列化（含 debug_detail、rich events、per-system metrics、overload pressure 等非关键信号）。可降级、可延迟写入、可丢失而不影响 replay 正确性。 | Object Store |
-| `ReplayArtifact` | 供回放验证器使用的自包含 bundle：包含 TickCommitRecord + snapshot delta + 必要的 seed material。CI 和反作弊审计使用此格式。 | Object Store |
+| `RichTraceBlob` | 完整 TickTrace 序列化（含 debug_detail、rich events、per-system metrics、overload pressure 等非关键信号）。可降级、可延迟写入、可丢失而不影响 replay 正确性。 | Blob Store |
+| `ReplayArtifact` | 供回放验证器使用的自包含 bundle：包含 TickCommitRecord + snapshot delta + 必要的 seed material。CI 和反作弊审计使用此格式。 | Blob Store |
 | `RawCommand` | WASM 输出 + 服务端注入的 player_id/tick/source/auth context。预校验阶段的输入。 | 内存 → redb trace |
 | `CommandIntent` | WASM tick() 的原始输出——仅含 sequence + action。不可信，不含任何服务端字段。 | 内存（COLLECT 阶段） |
 | `ValidatedCommand` | RawCommand 通过预校验后的形式——携带解析后的目标引用、距离、成本缓存。 | 内存 → 应用阶段 |
-| `DeployPayload` | 客户端提交的部署包：WASM binary + manifest + code-signing certificate + signature。 | Object Store |
+| `DeployPayload` | 客户端提交的部署包：WASM binary + manifest + code-signing certificate + signature。 | Blob Store |
 | `redb_version_counter` | Deploy/state 操作的 redb 原子递增计数器——保证跨节点一致性和防重放。与 `version_counter`（manifest 内字段）语义相同但存储位置不同。 | redb |
 
 所有文档中的 `TickTrace` 统称指向以上三种记录的集合——具体指向哪一层取决于上下文（replay-critical → TickCommitRecord，debug → RichTraceBlob，回放 → ReplayArtifact）。

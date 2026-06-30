@@ -390,7 +390,7 @@ TickTrace 中存储的审计日志受以下大小限制，防止磁盘 DoS：
 - 预编译版本就绪后原子切换：`active_module ← prewarm_module`
 
 **后台预编译触发**：
-1. 新 WASM 部署成功（`swarm_deploy` 完成 redb commit + object store upload）
+1. 新 WASM 部署成功（`swarm_deploy` 完成 redb commit + blob store upload）
 2. 后台编译 worker 收到通知 → 独立 Wasmtime Engine 实例编译模块
 3. 编译期间 active 版本不受影响（独立 Engine，独立 cgroup limits）
 4. 编译完成 → artifact hash 写入 `prewarm_registry`（redb `sandbox/prewarm/<player_id>/<compiled_artifact_hash>`）
