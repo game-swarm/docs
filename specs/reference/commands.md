@@ -19,9 +19,9 @@ WASM 模块通过 `tick(snapshot) → CommandIntent[]` JSON 返回指令。
 
 `player_id`、`source`、`tick` 由服务端 Source Gate 注入后形成 RawCommand（见 `specs/core/command-validation` §2）。
 
-## 指令列表 — 11 Core + Action dispatch（11 vanilla + mod）— 见 [API Registry](api-registry.md) §1
+## 指令列表 — 见 [API Registry](api-registry.md) §1
 
-以下 11 种指令对应 `CommandAction` enum 的非战斗基础变体；战斗/效果动作通过 `CommandAction::Action { type, payload }` 派发到 `ActionRegistry`（见下方「Action Dispatch」节）。**权威指令清单见 [API Registry](api-registry.md) §1**。
+以下指令对应 `CommandAction` enum 的非战斗基础变体；战斗/效果动作通过 `CommandAction::Action { type, payload }` 派发到 `ActionRegistry`（见下方「Action Dispatch」节）。**权威指令清单与数量由 IDL 生成，见 [API Registry](api-registry.md) §1**。
 
 ### Move
 移动 drone 到目标方向。
@@ -140,15 +140,15 @@ CommandAction::Action {
 | `scramble_commands` | 随机化目标下一条指令顺序 | enemy_drone | — |
 | `convert_to_structure` | 将目标 drone 转化为己方建筑 | enemy_drone | Psionic |
 
-（共 11 个 vanilla action + 3 个附加 special_effect handler 可供 mod action 复用）
+Vanilla action 与附加 special_effect handler 清单由 IDL/Registry 生成；本节只说明使用边界。
 
-> **Out-of-Scope RFC**: `SendMessage` 指令（drone 间消息传递）为 Out-of-Scope RFC，不在当前核心定义中。详见 [API Registry](api-registry.md) §1。
+> `TickResult.messages` 是 tick 输出中的消息结果面；`SendMessage` 若启用则作为 Registry 中的 command action 注册，不在本文手写枚举。
 
 ## 拒绝原因 — 见 [API Registry](api-registry.md) §2
 
-> 权威 `RejectionReason` enum 共 48 个 canonical code（定义见 [API Registry §2](api-registry.md)）。分为 Pipeline、Validation、MCP、Runtime、Auth 五层。
+> 权威 `RejectionReason` enum 与数量由 IDL 生成（定义见 [API Registry §2](api-registry.md)）。分为 Pipeline、Validation、MCP、Runtime、Auth 五层。
 
-> **D2/B 设计决策**：48 canonical code 为 wire enum。详细上下文信息（如 fatigue 状态、特定目标容量、body part 缺失等）放入 `debug_detail` 字段，而非增加 RejectionReason enum 变体。这保持 wire enum 稳定，同时提供丰富的调试数据。
+> Canonical code 为 wire enum。详细上下文信息（如 fatigue 状态、特定目标容量、body part 缺失等）放入 `debug_detail` 字段，而非增加 RejectionReason enum 变体。这保持 wire enum 稳定，同时提供丰富的调试数据。
 
 > 替换前文档中出现的 `NotMovable`、`Fatigued`、`SourceEmpty`、`TargetFull`、`TargetEmpty`、`AlreadyHacked`、`MissingBodyPart`、`TileBlocked`、`CarryFull`、`NotYourRoom`、`BodyTooLarge` 等代码已被统一合并至 canonical code 或降级为 `debug_detail`。详见 [API Registry §2 命名规范](api-registry.md#命名规范)。
 

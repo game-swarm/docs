@@ -298,17 +298,17 @@ git diff --exit-code        # 生成代码与提交代码一致 → 不一致则
 
  | ActionRegistry action | body part | 类别 | 说明 |
  |--------------|-----------|------|------|
- | `Attack` | Attack | basic_combat | 近战攻击，parts × 30，范围 1 |
- | `RangedAttack` | RangedAttack | basic_combat | 远程攻击，parts × 25，范围 3 |
+ | `Attack` | Attack | basic_combat | 近战攻击，参数见 canonical table |
+ | `RangedAttack` | RangedAttack | basic_combat | 远程攻击，参数见 canonical table |
  | `Heal` | Heal | basic_combat | 治疗/修复目标 |
- | `Hack` | Claim | special_attack | 夺取 drone → Neutral，200 tick CD |
- | `Drain` | Carry+Work | special_attack | 窃取资源，50 tick CD |
- | `Overload` | RangedAttack | special_attack | 消耗配额 -500k，200 tick CD |
- | `Debilitate` | Work | special_attack | 易伤 ×2，150 tick CD |
- | `Disrupt` | Attack | special_attack | 打断目标动作，50 tick CD |
- | `Fortify` | Tough | special_attack | 护盾 + 净化，300 tick CD |
- | `Leech` | Attack | special_attack | 吸血 50%，Kinetic 15 dmg |
- | `Fabricate` | Work+Carry | special_attack | 转化建筑，500 tick CD |
+ | `Hack` | Claim | special_attack | 参数见 canonical table |
+ | `Drain` | Carry+Work | special_attack | 参数见 canonical table |
+ | `Overload` | RangedAttack | special_attack | 参数见 canonical table |
+ | `Debilitate` | Work | special_attack | 参数见 canonical table |
+ | `Disrupt` | Attack | special_attack | 参数见 canonical table |
+ | `Fortify` | Tough | special_attack | 参数见 canonical table |
+ | `Leech` | Attack | special_attack | 参数见 canonical table |
+ | `Fabricate` | Work+Carry | special_attack | 参数见 canonical table；Vanilla 成本为纯 Energy |
 
 ### 5.2 注册规则
 

@@ -23,7 +23,7 @@ Standard/Arena 模式全量启用。Tutorial/Novice 模式可通过 `world.toml`
 | 8 | **Disrupt** | 21 | `special_attack` | `Attack` | Sonic | Target `Sonic` 抗性 | 100 Energy | 50 (per drone) | 1 | 瞬发 | ❌ 不可反制（打断已发生） | `command-validation.md` §3 — 打断目标当前持续动作 |
 | 9 | **Fortify** | 22 | `special_attack` | `Tough` | — | — | 400 Energy | 300 (per drone) | 1 (self/ally) | 瞬发 | ✅ 不可被 Disrupt 打断（瞬发增益） | `command-validation.md` §3 — 护盾+净化，per-target 300 tick 冷却 |
 | 10 | **Leech** | 23 | `special_attack` | `Attack` | Kinetic | Target `Kinetic` 抗性 | 300 Energy | 100 (per drone) | 1 | 瞬发 | ❌ 不可反制（瞬发吸血） | `command-validation.md` §3 — 伤害目标并自愈 50% |
-| 11 | **Fabricate** | 24 | `special_attack` | `Work` + `Carry` | — | — | 2000 Energy + 500 Matter | 500 (per drone) | 1 | 5 ticks (可被打断) | ✅ Disrupt 打断施法 | `command-validation.md` §3 — 转换敌方 drone 为己方结构 |
+| 11 | **Fabricate** | 24 | `special_attack` | `Work` + `Carry` | — | — | 5000 Energy | 500 (per drone) | 1 | 5 ticks (可被打断) | ✅ Disrupt 打断施法 | `command-validation.md` §3 — 转换敌方 drone 为己方结构 |
 
 ### 字段说明
 

@@ -64,7 +64,7 @@ NPC 掉落金额引用 Resource Ledger `PvEAward` tier 表：Creep 映射为 T1 
 | 掉落 | 来源 | 用途 |
 |------|------|------|
 | Energy | 所有 NPC | Vanilla 默认唯一资源 |
-| NPC 残骸 (Wreckage) | Guardian (100%) | 回收获取 `body_cost × 20%` Energy |
+| NPC/Drone 残骸 (Wreckage) | 被摧毁实体 | 回收获取 `body_cost × 5%–15%` Energy；低于 Recycle，随 tick 衰减 |
 
 **经济约束**：NPC 掉落总量不超过世界资源池注入上限——`max_pve_output_per_tick` 可配置（默认 = 全局 NPC 产出 / tick ≤ 世界再生总量 × 30%）。防止「刷怪经济」压倒 PvP 战略价值。
 
@@ -80,9 +80,9 @@ NPC 掉落金额引用 Resource Ledger `PvEAward` tier 表：Creep 映射为 T1 
 
 玩家通过扩张自然遭遇更强 PvE——不需要「副本入口」或「排队系统」。PvE 难度是**地理属性**。
 
-Boss 与 multi-stage AI 属于 mod surface。Vanilla 发行包自带 `vanilla_boss` Plugin，默认通过 world.toml 启用，可向 World 与 Arena 注册 Boss 模板、阶段触发器、ActionRegistry handler 和掉落表。引擎核心仅提供 NPC 实体基础设施（HP、伤害、巡逻/驻守 AI、掉落表、事件钩子），不硬编码 Boss 机制。
+Boss 与 multi-system AI 属于 mod surface。Vanilla 发行包自带 `vanilla_boss` Plugin，默认通过 world.toml 启用，可向 World 与 Arena 注册 Boss 模板、触发器、ActionRegistry handler 和掉落表。引擎核心仅提供 NPC 实体基础设施（HP、伤害、巡逻/驻守 AI、掉落表、事件钩子），不硬编码 Boss 机制。
 
-**RFC-MERCHANT**：游商、交易事件、动态 NPC 商店和 `MerchantTrade` 账本操作属于独立 RFC surface。进入 active Resource Ledger 前必须定义预算、费率、TickTrace、transfer lock 与反滥用规则。
+**Merchant extension**：游商、交易事件、动态 NPC 商店和 `MerchantTrade` 账本操作属于独立扩展 surface。进入 active Resource Ledger 前必须定义预算、费率、TickTrace 与反滥用规则。
 
 ### 9.1 Arena 房间模型
 
@@ -131,6 +131,7 @@ map_symmetry = "rotational"      # rotational | mirror
 | allow_spectate | true | 是否允许旁观 |
 | spectate_delay | 100 tick | 旁观延迟（实时旁观 vs 延迟播放） |
 | spectate_privacy | public | public（任何人可旁观）/ participants（仅参与者）/ private（仅房主） |
+| participant_visibility | fog_of_war | 默认参与者 WASM 使用 drone fog-of-war；`full_information` 为房间配置变体 |
 
 #### 9.1.3 比赛流程
 
@@ -145,13 +146,13 @@ Create -> Configure -> Ready -> Play -> Finish -> Replay
 
 #### 9.1.4 回放
 
-赛后自动生成回放（TickTrace JSONL）。房间 `public` 则回放公开可访问；`unlisted/private` 则仅参与者可见。回放播放器支持速度控制、双视角切换、tick 定位、指令展开。
+赛后自动生成回放（TickTrace JSONL）。参与者 replay 默认保留各自 fog-of-war 视角；spectator view 可在赛后以延迟全图公开。房间 `public` 则回放公开可访问；`unlisted/private` 则仅参与者可见。回放播放器支持速度控制、双视角切换、tick 定位、指令展开。全信息 Arena 是 `participant_visibility = "full_information"` 的房间变体选项，不是默认。
 
-> **社区传播（RFC）**：分享 URL、战报卡（highlight card）、自动摘要、社区 replay 排行榜为产品扩展项——不阻塞目标设计冻结。
+> **社区传播**：分享 URL、战报卡（highlight card）、自动摘要、社区 replay 排行榜为产品扩展项。
 
 #### 9.1.5 PvE 挑战模式
 
-Arena 除 PvP 对决外，提供 **PvE Challenge** 模式——玩家用 WASM 对抗预设 NPC 场景，按完成时间和效率评分。
+Arena 除 PvP 对决外，提供 **PvE Challenge** 模式——玩家用 WASM 对抗预设 NPC 场景，按完成时间和 diligence 评分。
 
 **房间类型**：
 
@@ -186,13 +187,13 @@ map_seed = 12345                 # 地图种子（相同 seed 可复现）
 **评分公式**：
 
 ```
-PvE Score = base_score × efficiency_multiplier × difficulty_multiplier
+PvE Score = base_score × diligence_multiplier × difficulty_multiplier
 
 base_score = f(scenario, completion)  — 场景特定基础分
-efficiency = min(1.0, par_time / actual_time)  — 效率倍率
+diligence = min(1.0, par_time / actual_time)  — 执行质量倍率
 difficulty = 1.0 + 0.5 × (difficulty - 1)     — 难度倍率
 
-最终: 1000 × efficiency × difficulty + bonus
+最终: 1000 × diligence × difficulty + bonus
 bonus: 全部 drone 存活 +100，全建筑存活 +50
 ```
 

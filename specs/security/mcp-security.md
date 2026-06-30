@@ -172,7 +172,7 @@ AI Agent / CLI
 WebSocket 连接按客户端类型分为两条安全路径：
 
 **A. 已认证 Agent 会话（Authenticated WS）**：
-连接建立时通过 `SWARM-WS-HANDSHAKE-V1` WebSocket 证书握手完成身份绑定。握手签名 payload 固定为 `SWARM-WS-HANDSHAKE-V1\n<transport>\n<server_id>\n<world_id>\n<cert_id>\n<timestamp>\n<nonce>\n<audience>`，其中 `transport = agent-ws`，`audience = swarm-aud-v1:agent-ws:<server_id>:<world_id>:<player_id>`。会话建立后，**每条消息必须携带递增序列号 + MAC/Ed25519 签名**，防止会话内消息重放、注入或重排。具体要求：
+连接建立时通过 `SWARM-WS-HANDSHAKE-V1` WebSocket 证书握手完成身份绑定。握手签名 payload 固定为 `SWARM-WS-HANDSHAKE-V1\n<transport>\n<server_id>\n<world_id>\n<cert_id>\n<timestamp>\n<nonce>\n<audience>`，其中 `transport = agent-ws`，`audience = swarm-aud-v1:agent-ws:<server_id>:<world_id>:<player_id>`。会话建立后使用 TLS 传输、已认证 session 与 per-role ACL；客户端写操作仍走 canonical request signature。具体要求：
 
 - `seq`: 单调递增序号（从 1 开始），接收方严格检查 `seq == last_seq + 1`
 - `mac`: 对 `SWARM-WS-MSG-V1\n<transport>\n<direction>\n<session_id>\n<seq>\n<tick>\n<body_hash>\n<audience>` 的 Ed25519 签名，使用握手绑定的用户私钥
@@ -187,7 +187,7 @@ WebSocket 连接按客户端类型分为两条安全路径：
 - 无 per-message 签名要求（只读、无状态变更）
 - 速率限制：每个 spectator 连接最多 10 events/s
 
-**决策记录 (D3)**：已认证 Agent WS 会话采用方案 B（per-message seq/MAC/signature），浏览器 spectator 采用方案 A（只读订阅）。
+**NATS/WebSocket 安全模型**：传输层 TLS + 应用层证书认证 + per-role ACL；不要求消息级 MAC 或签名信封。
 
 ## 3. 认证
 

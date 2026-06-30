@@ -25,7 +25,7 @@ AI：  MCP 看世界 → 生成 WASM → 部署 ───┘
 | **世界查看** | `swarm_get_snapshot`, `swarm_get_terrain`, `swarm_list_drones`, `swarm_get_room` | AI agent 感知世界的「眼睛」 |
 | **部署** | `swarm_deploy` (deploy_mutation), `swarm_validate_module`, `swarm_list_modules` | WASM 上传与预检 |
 | **调试** | `swarm_explain_last_tick`, `swarm_get_tick_trace`, `swarm_dry_run`, `swarm_simulate` | 开发者诊断与离线模拟 |
-| **经济** | `swarm_get_economy`, `swarm_get_drone_efficiency`, `swarm_get_economy_trend` | 资源流查询 |
+| **经济** | `swarm_get_economy`, `swarm_get_drone_diligence`, `swarm_get_economy_trend` | 资源流查询 |
 | **认证** | 见 [auth_api.idl.yaml](../specs/reference/auth_api.idl.yaml) | 设备注册、证书管理、email 恢复 |
 | **锦标赛** | `swarm_tournament_create`, `swarm_tournament_status`, `swarm_match_result` | 竞技赛事管理 |
 
@@ -50,9 +50,9 @@ MCP 不做游戏动作。不存在 `swarm_move`、`swarm_attack`、`swarm_build`
 
 ---
 
-## 5. 游戏 API（Deferred Command Model）
+## 5. 游戏 API（Command Intent Model）
 
-WASM 模块通过 **queued command model** 与引擎交互：
+WASM 模块通过 **command intent model** 与引擎交互：
 
 ```
 部署:  上传 WASM → 验证 `wasm_module_hash` → 预编译为原生码 → 存储（按服务端派生 `compiled_artifact_hash` 索引）
@@ -81,6 +81,7 @@ fn host_get_world_rules(rule_id_ptr: i32, rule_id_len: i32, out_ptr: i32, out_le
 
 // 确定性随机
 fn host_get_random(sequence: u64, out_ptr: i32, out_len: i32) -> i32;
+fn host_get_fuel_remaining() -> u64;
 ```
 
 > **注意**: 以下为概念签名。权威定义见 [API Registry](../specs/reference/api-registry.md) §4.1
@@ -112,11 +113,11 @@ fn host_get_random(sequence: u64, out_ptr: i32, out_len: i32) -> i32;
 
 ### 5.4 CommandAction 定义 (单一事实源)
 
-**CommandAction 的唯一权威定义在 [API Registry](../specs/reference/api-registry.md) §1**。所有 11 个 CommandAction 变体的完整 schema、参数、分类和 actor_id/object_id 语义以 Registry 为准。combat/effect 能力（包括 vanilla `Attack`/`RangedAttack`/`Heal` 与 8 个 special action）通过 ActionRegistry 派发，不作为顶层 CommandAction 变体计数。本文档及其他设计文档不得重新声明 CommandAction 列表或参数；只能引用 Registry。
+**CommandAction 的唯一权威定义在 [API Registry](../specs/reference/api-registry.md) §1**。CommandAction 变体的完整 schema、参数、分类和 actor_id/object_id 语义以 IDL 生成的 Registry 为准。combat/effect 能力（包括 vanilla `Attack`/`RangedAttack`/`Heal` 与 special action）通过 ActionRegistry 派发，不作为顶层 CommandAction 变体计数。本文档及其他设计文档不得重新声明 CommandAction 列表、数量或参数；只能引用 Registry。
 
 Notes:
-- Move: 4方向 (N/S/E/W)。8方向为 Out-of-Scope RFC，不在当前核心定义中。
-- SendMessage: Out-of-Scope RFC: drone间消息传递。当前不在 Core CommandAction 中。
+- Move: 4方向 (N/S/E/W)。
+- Drone messaging active surface 区分 `TickResult.messages`（WASM tick 输出中的本地消息结果）与 `SendMessage` command action（若世界启用消息 action，则按 IDL/Registry 注册，不混入默认 CommandAction 文本）。
 
 ### 5.5 Host Function 成本模型
 
@@ -136,7 +137,7 @@ Pathfinding 确定性要求：固定 neighbor order（NESW 顺时针）、cost t
 |------|------|
 | `error.code` | numeric JSON-RPC error code；Swarm application error 固定使用 `-32000`，不得填 RejectionReason 字符串 |
 | `error.message` | 人类可读摘要 |
-| `error.data.rejection_reason` | canonical RejectionReason wire enum string (48 codes, 见 Registry §2) |
+| `error.data.rejection_reason` | canonical RejectionReason wire enum string（见 Registry §2；数量由 IDL 生成） |
 | `error.data.debug_detail` | 非 canonical 上下文详情 (≤ 512 bytes)；详细程度由 `detail_level` 控制 |
 | `error.data.retry_allowed` | 是否可安全重试 (machine-readable) |
 | `error.data.idempotency_key` | 幂等重试 key (machine-readable) |

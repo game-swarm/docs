@@ -339,7 +339,7 @@ Drone 1003 本 tick 未行动。原因:
 - 代码在比赛开始时锁定（赛中不可改）
 - 赛后自动发布回放
 - 无自动匹配、无天梯排名、无赛季
-- Tournament/League 为上层编排，通过多场 Room Match 组合实现（Out-of-Scope，后续 Stage 交付）
+- Tournament/League 为上层编排，通过多场 Room Match 组合实现（Extension，后续 Stage 交付）
 
 ## 7. 功能清单
 

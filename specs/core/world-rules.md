@@ -37,7 +37,7 @@ propagation_speed = 0
 propagation_source = "Spawn"
 
 # ═════════════════════════════════════
-# 自定义资源类型
+# Vanilla 资源类型
 # ═════════════════════════════════════
 
 [[resource_types]]
@@ -46,27 +46,18 @@ display_name = "能量"
 category = "energy"
 starting_amount = 1000
 max_storage = 100000
-decay_rate = 0.0
-tradeable = true
-
-[[resource_types]]
-name = "Matter"
-display_name = "物质"
-category = "mineral"
-starting_amount = 500
-max_storage = 50000
-decay_rate = 0.001
+decay_rate_ppm = 0
 tradeable = true
 
 # 各动作资源消耗（键名来自 resource_types.name）
 [actions.costs]
-spawn = { Energy = 200, Matter = 50 }
+spawn = { Energy = 200 }
 build.Extension = { Energy = 50 }
-build.Tower = { Energy = 100, Matter = 25 }
+build.Tower = { Energy = 100 }
 body_part.Move = { Energy = 50 }
 body_part.Work = { Energy = 100 }
-body_part.Attack = { Energy = 80, Matter = 20 }
-body_part.Heal = { Energy = 250, Matter = 100 }
+body_part.Attack = { Energy = 80 }
+body_part.Heal = { Energy = 250 }
 code_update = { Energy = 500 }
 
 # 资源点类型
@@ -75,12 +66,6 @@ name = "EnergyField"
 produces = { Energy = 1 }
 capacity = 3000
 regeneration = 300
-
-[[source_types]]
-name = "MatterDeposit"
-produces = { Matter = 1 }
-capacity = 2000
-regeneration = 10
 
 # ═════════════════════════════════════
 
@@ -100,13 +85,13 @@ drone_decay_rate = 10000            # fixed<u32,4>: 1.0
 
 # 物流配置
 global_storage_enabled = true
-transfer_to_global_cost = { Energy = 0.01 }
-transfer_from_global_cost = { Energy = 0.05 }
+transfer_to_global_fee_bp = 100
+transfer_from_global_fee_bp = 500
 
 [combat]
 pvp_enabled = true
 friendly_fire = false
-damage_multiplier = 1.0
+damage_multiplier_bp = 10000
 
 [visibility]
 fog_of_war = true
@@ -127,8 +112,34 @@ onshortfall = "damage"
 name = "resource-decay"
 version = "0.3.0"
 [mods.config]
-decay_rate = 0.001
+decay_rate_ppm = 1000
 
+```
+
+Vanilla/Standard 默认资源集合只有 `Energy`。`Matter`、矿物、多资源 build cost 或多资源 action cost 属于 advanced/modded world 示例，必须在对应 mod 的 `[[resource_types]]`、`[[source_types]]` 与 action cost schema 中显式声明。
+
+```toml
+# advanced/modded world example — not Vanilla
+[[resource_types]]
+name = "Matter"
+display_name = "物质"
+category = "mineral"
+starting_amount = 500
+max_storage = 50000
+decay_rate_ppm = 1000
+tradeable = true
+
+[[source_types]]
+name = "MatterDeposit"
+produces = { Matter = 1 }
+capacity = 2000
+regeneration = 10
+
+[actions.costs]
+spawn = { Energy = 200, Matter = 50 }
+build.Tower = { Energy = 100, Matter = 25 }
+body_part.Attack = { Energy = 80, Matter = 20 }
+body_part.Heal = { Energy = 250, Matter = 100 }
 ```
 
 ## 3. ECS Plugin 注册
@@ -153,7 +164,7 @@ impl WorldConfig {
         let registry = ResourceRegistry::from_config(self);
         app.insert_resource(registry);
 
-        // 基础系统始终注册（Stage 2b: Inline 命令执行后的系统链）
+        // 基础系统始终注册（System Pass 2b: Inline 命令执行后的系统链）
         app.add_systems(Update, (
             death_mark_system,       // 标记待死亡 entity，释放 room cap
             spawn_system,            // 统一创建校验通过的 drone
@@ -323,7 +334,7 @@ World rules are defined via Bevy Plugins, statically compiled into the Engine bi
  `code.propagation_speed` | 0 | 0 |
  `drone.env_vars` | true | true |
  `combat.pvp_enabled` | true | true |
- `visibility.fog_of_war` | true | false（全场可见） |
+ `visibility.fog_of_war` | true | true（参与者使用 drone fog-of-war；观众/回放可延迟全图） |
 
 ## 7. 可配置类型系统
 
@@ -344,7 +355,7 @@ name = "Work"
 description = "工作——采集资源、建造建筑、维修"
 action = ["Harvest", "Build"]
 range = 1
-cost = { Energy = 100 }
+cost = { Energy = 150 }
 
 [[body_part_types]]
 name = "Carry"
@@ -359,7 +370,7 @@ description = "近战攻击——距离 1，每 part 30 伤害"
 action = "Attack"
 damage_type = "Kinetic"
 base_damage = 30
-range = 1
+range = 3
 cost = { Energy = 80 }
 
 [[body_part_types]]
@@ -874,16 +885,16 @@ actions.set_attribute(entity_id, "Flaming", true);
 
 所有 vanilla combat/effect action 通过 ActionRegistry 注册；权威参数见 `specs/reference/special-attack-table.md`。本文只列名称完整性，避免重复定义数值。
 
- 攻击 | body part | 效果 | 冷却 | 消耗 | 抗性 |
-------|----------|------|------|------|------|
- Hack | Claim | 夺取 drone 转 Neutral | 200 tick | 1000E | Psionic |
- Drain | Carry+Work | 窃取资源，每 tick transfer | 50 tick | 200E/tick | EMP |
- Overload | RangedAttack | 目标 fuel -500k | 200 tick | 300E | EMP |
- Debilitate | Work | 指定伤害类型抗性 ×2, 50 tick | 150 tick | 200E | Corrosive |
- Disrupt | Attack | 打断目标动作 | 50 tick | 100E | Sonic |
- Fortify | Tough | 护盾 ×0.5 + 清除负面状态 | 300 tick | 400E | — |
- Leech | Attack | 吸血攻击 | 100 tick | 300E | Kinetic |
- Fabricate | Work+Carry | 转化敌方 drone 为己方建筑 | 500 tick | 2000E + 500 Matter | — |
+| 攻击 | 说明 |
+|------|------|
+| Hack | special attack，参数见 canonical table |
+| Drain | special attack，参数见 canonical table |
+| Overload | special attack，参数见 canonical table |
+| Debilitate | special attack，参数见 canonical table |
+| Disrupt | special attack，参数见 canonical table |
+| Fortify | special attack，参数见 canonical table |
+| Leech | special attack，参数见 canonical table |
+| Fabricate | special attack；Vanilla 成本为纯 Energy，参数见 canonical table |
 
 **通用规则**：
 - 特殊攻击与 HP 伤害互斥——同一 body part 同一 tick 只能执行一种
@@ -970,7 +981,7 @@ onshortfall = { type = "enum", default = "degrade", values = ["degrade", "damage
 
  字段 | 类型 | 必需 | 说明 |
 |------|------|------|------|
-| `type` | string | ✅ | `u32` / `u64` / `f64` / `fixed<u32,N>` / `bool` / `string` / `enum` / `[u32]` |
+| `type` | string | ✅ | `u32` / `u64` / `i64` / `fixed<u32,N>` / `bool` / `string` / `enum` / `[u32]` |
 | `default` | 对应 type | ✅ | 默认值 |
 | `min` / `max` | 对应 type | 否 | 范围约束 |
 | `values` | string[] | enum 时必需 | 枚举可选值 |
@@ -985,7 +996,7 @@ onshortfall = { type = "enum", default = "degrade", values = ["degrade", "damage
 ```toml
 [meta.description_i18n]
 zh = "帝国规模维护费——drone 和房间越多，每 tick 消耗越大。维护费不足时效率下降。"
-en = "Empire upkeep — more drones and rooms cost more per tick. Shortfall degrades efficiency."
+en = "Empire upkeep — more drones and rooms cost more per tick. Shortfall degrades diligence."
 ja = "帝国維持費——ドローンと部屋が多いほど毎 tick のコストが増加。不足時は効率低下。"
 
 [config.onshortfall.description_i18n]

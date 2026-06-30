@@ -1,6 +1,6 @@
 # Distributed WASM Sandbox 设计
 
-> 将 WASM 执行从引擎本地 Worker Pool 解耦为独立容器，引擎仅作为权威调度器。
+> 详见 `wasm-sandbox.md`。本文是 WASM Sandbox 的 distributed profile：继承本地 sandbox 的 ABI、fuel、内存、WASI 禁用和安全约束，并把 worker transport 从本地进程通信扩展为 NATS request-reply。
 
 ## 1. 架构对比
 
@@ -34,6 +34,17 @@
 | WASM 执行 | ❌ | ✅ |
 | WASM 模块缓存 | 分发 | ✅ 本地预编译缓存 |
 | OS 隔离 | ❌ | ✅ seccomp/cgroup/netns |
+
+### 2.1 Local vs Distributed Profile
+
+| 维度 | Local profile (`wasm-sandbox.md`) | Distributed profile（本文） |
+|------|-----------------------------------|-----------------------------|
+| Worker 位置 | Engine 同机本地进程池 | 独立 Sandbox Container 集群 |
+| Memory limit | 同一 cgroup profile，按 worker 限制 | 每容器同一 cgroup profile，按 worker 限制 |
+| CPU 计量 | Wasmtime fuel + deadline | Wasmtime fuel + deadline；NATS 排队不改变 per-player deadline |
+| Transport | Unix socket / 本地 IPC | NATS request-reply + queue group |
+| Deadline | Engine 本地计时，超时为空命令 | Engine 发出请求时携带 absolute collect deadline，超时为空命令 |
+| 状态持有 | Worker 不持有世界状态 | Worker 不持有世界状态 |
 
 ## 3. COLLECT 阶段流程
 
@@ -82,6 +93,10 @@ swarm.deploy.{module_hash}.ack           — sandbox 确认已缓存模块
 
 swarm.sandbox.heartbeat.{instance_id}     — sandbox 存活心跳
 ```
+
+### 4.1.1 NATS 安全
+
+NATS 连接必须使用 TLS 与 per-role ACL。Engine 只允许 publish sandbox request、subscribe sandbox reply；Sandbox worker 只允许 subscribe sandbox queue group、publish reply 与 heartbeat。NATS message 不要求 MAC/签名信封；安全边界由 NATS credential、topic ACL、Engine/Gateway 应用层认证和 mod 源码审查提供。
 
 ### 4.2 Request 载荷
 

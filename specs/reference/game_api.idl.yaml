@@ -57,7 +57,7 @@ type_registry:
       description: "Machine-readable objective type for swarm_get_objectives. AI agents use this to plan."
       total_variants: 8
       variants:
-        - { name: collect_resource, value: 0, description: "Gather resources (Energy, Matter, etc.)" }
+        - { name: collect_resource, value: 0, description: "Gather resources; Vanilla resource set is Energy-only, multi-resource worlds are advanced/modded" }
         - { name: build_structure, value: 1, description: "Build a specific structure type" }
         - { name: claim_room,      value: 2, description: "Claim a room controller to target RCL" }
         - { name: spawn_drones,    value: 3, description: "Spawn N drones with specified body composition" }
@@ -285,7 +285,7 @@ command_action:
             - name: target_id
               type: EntityId
               required: true
-          description: "Reduce target efficiency"
+          description: "Reduce target combat throughput"
 
         - type: Disrupt
           index: 21
@@ -323,20 +323,20 @@ command_action:
               required: true
           description: "Convert enemy drone into friendly structure (Tower/Storage/Wall) — requires 5-tick channel"
 
-# 2. RejectionReason — 35 canonical codes + debug_detail (D2/B)
+# 2. RejectionReason — canonical wire enum + debug_detail
 # =============================================================================
 rejection_reason:
   description: >
     All command rejection reasons. Covers Pipeline, Validation, MCP, and Runtime layers.
-    Per D2/B: The 35 canonical codes are the wire enum. Detailed contextual information
+    Canonical codes are the wire enum. Detailed contextual information
     (e.g. NotMovable, Fatigued, specific target state) goes into the `debug_detail` field,
     NOT into additional RejectionReason enum variants. This keeps the wire enum stable
     while providing rich debugging data.
-  total_canonical_codes: 35
+  total_canonical_codes: generated
   debug_detail:
     description: >
       Non-canonical, human-readable detail string providing context beyond the
-      35 canonical codes. Examples: "NotMovable: encumbered by 3 units", "Fatigued:
+      canonical codes. Examples: "NotMovable: encumbered by 3 units", "Fatigued:
       action cooldown 12 ticks remaining", "PathBlocked: obstacle at (5,3)".
       This field is NOT part of the RejectionReason wire enum — it is a separate
       string payload that does not affect replay determinism.
@@ -521,11 +521,11 @@ rejection_reason:
     NotAuthorized: "MCP-layer only; validation layer uses NotOwner"
 
 # =============================================================================
-# 3. MCP Tools — 46 tools with security columns
+# 3. MCP Tools — generated tool registry with security columns
 # =============================================================================
 mcp_tools:
   description: "All MCP tools available to clients. Grouped by capability profile."
-  total_tools: 57
+  total_tools: generated
   rate_limits:
     query: "50/tick"
     debug: "30/tick"
@@ -563,7 +563,7 @@ mcp_tools:
         terrain: TerrainGrid
         resources: "[Resource]"
         truncated: bool
-        omitted_count: u32
+        omitted_categories: OmittedCategoryBucket
       rate_limit: "1/tick"
       required_scope: "swarm:read"
       subject_source: player_id
@@ -977,12 +977,12 @@ mcp_tools:
       visibility_filter: owner
       rate_limit_key: per_player
 
-    - name: swarm_get_drone_efficiency
+    - name: swarm_get_drone_diligence
       category: Play
       input_schema:
         drone_id: DroneId
       output_schema:
-        efficiency: EfficiencyBps  # u32, 0-10000 = 0%-100%
+        diligence: EfficiencyBps  # u32, 0-10000 = 0%-100%
         factors: "[EfficiencyFactor]"
       rate_limit: "10/tick"
       required_scope: "swarm:read"
@@ -1391,7 +1391,7 @@ mcp_tools:
       rate_limit_key: global
 
     # =========================================================================
-    # Arena (1 active + 3 RFC)
+    # Arena (1 active + 3 extension)
     # =========================================================================
     - name: swarm_get_leaderboard
       category: Arena
@@ -1407,7 +1407,7 @@ mcp_tools:
       replay_class: read_replay_safe
       visibility_filter: arena_only
       rate_limit_key: global
-      notes: "RFC-LEADERBOARD: 排行榜为 Product 扩展项，P0 不实现。返回 ERR_FEATURE_GATED。"
+      notes: "extension-LEADERBOARD: 排行榜为 Product 扩展项，P0 不实现。返回 ERR_FEATURE_GATED。"
 
     - name: swarm_tournament_create
       category: Arena
@@ -1425,7 +1425,7 @@ mcp_tools:
       replay_class: admin_critical
       visibility_filter: admin_scope
       rate_limit_key: per_admin
-      notes: "RFC-TOURNAMENT: Tournament/League 为 P1+ 上层编排，P0 不实现。返回 ERR_FEATURE_GATED。"
+      notes: "extension-TOURNAMENT: Tournament/League 为 P1+ 上层编排，P0 不实现。返回 ERR_FEATURE_GATED。"
 
     - name: swarm_tournament_precommit
       category: Arena
@@ -1443,7 +1443,7 @@ mcp_tools:
       replay_class: idempotent_mutation
       visibility_filter: owner
       rate_limit_key: per_player
-      notes: "RFC-TOURNAMENT"
+      notes: "extension-TOURNAMENT"
 
     - name: swarm_tournament_status
       category: Arena
@@ -1462,7 +1462,7 @@ mcp_tools:
       replay_class: read_replay_safe
       visibility_filter: none
       rate_limit_key: global
-      notes: "RFC-TOURNAMENT"
+      notes: "extension-TOURNAMENT"
 
     - name: swarm_match_result
       category: Arena
@@ -1514,23 +1514,23 @@ mcp_tools:
       rate_limit_key: global
 
   # ---------------------------------------------------------------------------
-  # RFC tools — not in active tool count
+  # extension tools — not in active tool count
   # ---------------------------------------------------------------------------
-  rfc_tools:
-    description: "Tools reserved for RFC publication. Not active and not included in total_tools count."
+  gated_tools:
+    description: "Tools reserved for extension publication. Not active and not included in total_tools count."
     tools:
       - name: swarm_list_market_orders
         category: Play
         rfc_status: rfc
-        rfc_tracking: "RFC-MARKET-001"
+        rfc_tracking: "extension-MARKET-001"
         input_schema:
           room_id: RoomId
         output_schema:
           orders: "[{id, type, resource, amount, price}]"
         notes: >
-          Market subsystem is an RFC feature. This tool is defined for forward
+          Market subsystem is an extension feature. This tool is defined for forward
           compatibility but is NOT active. Do not emit in SDK codegen until
-          RFC-MARKET-001 is accepted and implemented.
+          extension-MARKET-001 is accepted and implemented.
 
   capability_profiles:
     onboarding:
@@ -1554,8 +1554,8 @@ mcp_tools:
 
   websocket_security:
     agent_ws:
-      model: "per-message seq + MAC (ed25519)"
-      description: "Each message carries a monotonically increasing sequence number and MAC. Replay detection: seq must exceed last received value or connection is dropped. MAC covers (seq, tick, payload)."
+      model: "TLS transport + authenticated request session + per-role ACL"
+      description: "Agent writes use the MCP/HTTP authentication path. WebSocket transport carries tick streams and rejects unauthorized subscriptions through Gateway ACL."
     browser_ws:
       model: "read-only"
       description: "Browser WebSocket receives broadcasts only (tick deltas, event streams). Write operations go through MCP/HTTP path."
@@ -1566,14 +1566,14 @@ mcp_tools:
       header: "Swarm-Request-Signature"
       covers: "(method, uri, timestamp, seq, body_hash)"
       seq_rule: "monotonically increasing; server validates and updates last_seq"
-      violation: "seq rollback or MAC mismatch → disconnect + audit log"
+      violation: "invalid request authentication or sequence rollback -> disconnect + audit log"
 
 # =============================================================================
-# 4. Host Functions — all 6 with ABI signatures, budgets, fuel costs, error priority
+# 4. Host Functions — ABI signatures, budgets, fuel costs, error priority
 # =============================================================================
 host_functions:
   description: "WASM modules import these host functions to call engine services."
-  total_functions: 6
+  total_functions: generated
   functions:
     - name: host_get_terrain
       index: 1
@@ -1637,16 +1637,28 @@ host_functions:
 
     - name: host_get_random
       index: 6
-      abi_signature: "(sequence: u32, out_ptr: i32, out_len: i32) -> i32"
+      abi_signature: "(sequence: u64, out_ptr: i32, out_len: i32) -> i32"
       read_only: true
       description: "Deterministic random bytes from engine PRNG"
-      seed: "(tick_seed, player_id, drone_id, sequence)"
+      seed: "derive_rng(domain, world_seed, tick, actor_or_entity_id, sequence)"
       max_output: "256 bytes"
       per_call_fuel:
-        base: 100
-        incremental: "+1/output byte"
+        base: 200
+        incremental: "+10/32 bytes"
       per_call_budget: null
       per_tick_budget: 10
+
+    - name: host_get_fuel_remaining
+      index: 7
+      abi_signature: "() -> u64"
+      read_only: true
+      description: "Remaining WASM fuel budget for the current tick"
+      max_output: "8 bytes"
+      per_call_fuel:
+        base: 20
+        incremental: null
+      per_call_budget: null
+      per_tick_budget: null
 
   total_host_call_budget: "1,000/tick/player"
   host_call_output_limits:
@@ -1656,6 +1668,7 @@ host_functions:
     host_get_world_rules: "16 KB"
     host_get_terrain: "8 KB"
     host_get_random: "256 bytes"
+    host_get_fuel_remaining: "8 bytes"
 
   # ABI error priority table — per api-registry.md §4.5
   # When multiple error conditions are met simultaneously, the first matching
@@ -1812,7 +1825,7 @@ tick_trace_envelope:
 # 7. Direction4 — enum
 # =============================================================================
 direction4:
-  description: "4-direction enum used by Move command. 8-direction (NE/NW/SE/SW) is a RFC, not in current core."
+  description: "4-direction enum used by Move command. 8-direction (NE/NW/SE/SW) is a extension, not in current core."
   type: enum
   values:
     - { name: North, value: 0 }
@@ -1947,7 +1960,7 @@ persistence:
       acknowledgment: "immediate — returns archive_key"
       completion_polling: "use swarm_get_deploy_status to check upload completion"
       failure_mode: "retry with exponential backoff; permanent failure marks archive failed"
-    fdb_manifest:
+    redb_manifest:
       description: >
         redb stores only a small manifest record per blob: {deploy_payload_hash, archive_key,
         size, uploaded_at, status}. This record is part of the deploy_mutation redb

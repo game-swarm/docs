@@ -173,7 +173,7 @@ resource_operation:
         deficit_handling:
           description: >
             If global storage insufficient, deduct to 0 and record UpkeepDeficit.
-            Consecutive 3-tick deficit → drone hunger (-50% efficiency).
+            Consecutive 3-tick deficit → drone hunger (-50% diligence).
             Consecutive 10-tick deficit → forced drone death (age ×10 acceleration).
       authority: "specs/core/resource-ledger.md §Empire Upkeep — authoritative formula"
 
@@ -383,7 +383,7 @@ resource_operation:
         daily_cap: 10000
         daily_cap_unit: resource units
         daily_cap_scope: "per receiver per 24h"
-        new_player_lock: "Receiver must not be within new_player_transfer_lock (500 tick)"
+        rate_limit: "Receiver and sender must satisfy allied cap and transfer rate-limit policy"
       computation:
         sender_deduction:
           formula: "amount"

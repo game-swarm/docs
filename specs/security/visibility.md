@@ -91,7 +91,11 @@ LEADERBOARD: 公开。指标: GCL、房间数、drone 数。
   "leaderboard_snapshot": { "rank": 42, "gcl": 1500000 },
   "snapshot_tick": 4521,        // 快照构建时刻的 tick 编号——与 WASM tick(snapshot) 输入一致
   "truncated": false,           // 是否因 256KB 限制被截断
-  "omitted_count": 0            // 因截断被丢弃的实体数
+  "omitted_categories": {
+    "entities": "0",
+    "resources": "0",
+    "events": "0"
+  }
 }
 ```
 
@@ -304,7 +308,7 @@ fn test_vision_range_boundary() { ... }
 
 ### Arena 模式（比赛）
 
-简化可见性：比赛边界内全信息。双方玩家看到整个竞技场。公平竞技禁用 fog-of-war。计时器和得分对观战者可见。全知回放赛后公开。
+Arena 参与者使用与 World 相同的 drone fog-of-war / drone 感知规则。计时器和得分对观战者可见；观众和赛后 replay 可使用延迟全图 spectator view。全信息 Arena 是 room config 变体选项，不是默认。
 
 ---
 
@@ -374,13 +378,13 @@ spectate_delay = 50
 
 **规则**：`fog_of_war=true` 且 `player_view=full` 的组合在 `world.toml` 验证阶段被拒绝启动。MCP agent 在 competitive world 中永远只能看到与 WASM `tick(snapshot)` 相同的可见范围。
 
-### 10.2 `omitted_count` 脱敏
+### 10.2 `omitted_categories` 脱敏
 
-目标设计：`omitted_count` 告知被截断丢弃的实体精确数量——形成 oracle（攻击者可通过观察 `omitted_count` 变化推断被隐藏的实体数量）。
+目标设计：玩家需要知道快照是否发生截断，但不能通过精确省略数量形成 oracle。
 
-**修正**：`omitted_count` 改为分桶值：
+**规则**：`omitted_categories` 的每个类别值为分桶枚举：
 
-| 实际丢弃数 | 返回的 `omitted_count` |
+| 实际丢弃数 | 玩家可见值 |
 |:--|:--|
 | 0 | `0`（无截断） |
 | 1-10 | `"few"` |
@@ -388,7 +392,7 @@ spectate_delay = 50
 | 51-200 | `"many"` |
 | >200 | `"extreme"` |
 
-`total_visible_count` 同样分桶。`truncated` 布尔值保留——玩家只需知道"是否发生了截断"。
+`total_visible_count` 同样分桶。`truncated` 布尔值保留。精确计数只允许进入 admin/debug 内部 trace，不进入玩家 WASM snapshot、MCP 普通查询或公开 replay。
 
 ### 10.3 dry_run / simulate / explain_last_tick 脱敏
 

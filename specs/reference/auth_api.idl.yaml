@@ -19,7 +19,7 @@ csr_lifecycle_tools:
     protected resources. Application-layer certificates signed by the
     single-layer Server CA are the sole trust root. No bearer tokens, OAuth2,
     TLS/mTLS client certificates.
-  total_tools: 7
+  total_tools: generated
   tools:
     - name: swarm_register_challenge
       index: 1

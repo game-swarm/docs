@@ -74,6 +74,13 @@ python3 -c "import secrets; print(secrets.token_hex(32))"
 # 更新 world.toml 中的 world_seed
 ```
 
+world_seed 必须存放在加密 secrets store 或等价 KMS/HSM 中，不写入公开配置仓库。keyframe 包含 replay 所需 seed epoch，keyframe primary 与 backup 都必须静态加密；解密密钥与 keyframe 文件分离存放。
+
+seed-bump 后：
+- 旧 seed epoch 标记为 compromised 或 superseded，但配置 retention 窗口内的旧 keyframe 继续加密保留，保证历史 replay 可验证。
+- 旧 keyframe 不随 seed-bump 删除；删除只由 `[retention]` 策略驱动。
+- 访问旧 keyframe 需要 admin 审计记录，包含 operator、原因、tick range 和 key id。
+
 ### Server CA 与应用层证书
 
 Swarm 使用单层 Server CA，不分 Root/Intermediate。详见 `design/auth.md`。
@@ -118,6 +125,33 @@ docker compose stop engine
 cp /data/swarm/world.redb /backup/world_$(date +%Y%m%d_%H%M%S).redb
 docker compose up -d engine
 ```
+
+Keyframe 备份要求：
+
+```bash
+swarm keyframe verify --path /data/swarm/world.redb.keyframes
+swarm keyframe backup \
+  --source /data/swarm/world.redb.keyframes \
+  --dest /backup/keyframes \
+  --encrypt-key kms://swarm/keyframe-backup
+```
+
+每个 keyframe 至少保留 primary + backup 两份，分别校验 `header_crc32c` 与 `payload_blake3`。备份目标与 redb 主盘隔离，避免同一磁盘故障同时损坏 redb 与 keyframe。
+
+### Retention 配置
+
+`world.toml` 使用 tick 数配置 replay 与 rich artifact 保留期：
+
+```toml
+[retention]
+deterministic_replay_retention_ticks = 5_184_000
+rich_artifact_retention_ticks = 864_000
+keyframe_backup_copies = 2
+```
+
+`deterministic_replay_retention_ticks` 控制 redb replay-critical core、keyframe 和 delta chain；Arena 默认约 180 天。`rich_artifact_retention_ticks` 控制 RichTraceBlob、可视化 annotation 和调试 artifact，可独立缩短。
+
+恢复目标：RPO ≤ 100 ticks，RTO ≤ 300s。
 
 ### 恢复
 
@@ -171,10 +205,11 @@ watch -n 5 "curl -s localhost:8080/metrics | grep tick_number"
 
 1. 停止引擎: `docker compose stop engine`
 2. 恢复 redb 备份: `cp /backup/world_latest.redb /data/swarm/world.redb`
-3. 验证 state_checksum: `swarm verify --redb /data/swarm/world.redb`
-4. 启动引擎: `docker compose up -d engine`
-5. 监控 100 tick: `watch -n 5 "curl -s localhost:8080/metrics | grep tick_number"`
-6. 验证无玩家数据丢失: 抽样检查 player 资源总量
+3. 恢复 keyframe backup: `swarm keyframe restore --source /backup/keyframes --dest /data/swarm/world.redb.keyframes`
+4. 验证 state_checksum 与 keyframe hash: `swarm verify --redb /data/swarm/world.redb --keyframes /data/swarm/world.redb.keyframes`
+5. 启动引擎: `docker compose up -d engine`
+6. 监控 100 tick: `watch -n 5 "curl -s localhost:8080/metrics | grep tick_number"`
+7. 验证无玩家数据丢失: 抽样检查 player 资源总量
 
 ---
 

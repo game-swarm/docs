@@ -13,7 +13,7 @@
 | 了解 World vs Arena 模式 + PvE | [`design/modes.md`](design/modes.md) |
 | 查看 MCP 接口和 Game API | [`design/interface.md`](design/interface.md) |
 | 查阅技术选型理由 | [`design/tech-choices.md`](design/tech-choices.md) |
-| 查看技术规范 | [`specs/`](specs/) — core / security / gameplay / RFC |
+| 查看技术规范 | [`specs/`](specs/) — core / security / gameplay / reference |
 | 查阅 API 参考 | [`specs/reference/`](specs/reference/) — commands / host functions / MCP tools |
 | 学习贡献约定 | [`AGENTS.md`](AGENTS.md) |
 | 运维部署 | [`RUNBOOK.md`](RUNBOOK.md) |
@@ -25,7 +25,7 @@
 docs/
 ├── design/
 │   ├── README.md           导航入口 — 愿景 + 架构全景 + 域文件索引
-│   ├── engine.md           引擎架构 — Tick/ECS/快照/确定性/扩展路线
+│   ├── engine.md           引擎架构 — Tick/ECS/快照/确定性/扩展能力
 │   ├── gameplay.md         游戏机制 — Vanilla/身体部件/伤害/特殊攻击/经济/模组
 │   ├── modes.md            游戏模式 — World vs Arena + PvE
 │   ├── interface.md        MCP + Game API
@@ -36,15 +36,26 @@ docs/
 │   ├── core/               核心引擎规范 (tick/命令/WASM/世界规则/持久化/快照/ECS)
 │   ├── security/           安全规范 (MCP/可见性/来源/CVE-SLA)
 │   ├── gameplay/           游戏规范 (反馈循环/API IDL)
-│   ├── RFC/             扩展路线 (T2 增量快照/T3 分片)
 │   ├── reference/          API 参考 (commands/host-functions/mcp-tools/codegen)
-│   └── gateway-protocol.md  Gateway 协议
 ├── ROADMAP.md              实施进度追踪（位于主仓库）
 ├── AGENTS.md               AI agent 约定
 ├── RUNBOOK.md              运维手册
 ├── GETTING-STARTED.md      入门指南
 └── README.md               本文件
 ```
+
+## Domain Authority Map
+
+| Domain | Authority |
+|--------|-----------|
+| API tools / RejectionReason / CommandAction / Host Functions | IDL YAML + generated API Registry |
+| Economy parameters / formulas | Resource Ledger + generated economy schema |
+| Body/structure costs | generated cost table from IDL/Registry |
+| Special attacks | `specs/reference/special-attack-table.md` |
+| Tick schedule / ECS R/W | `specs/core/phase2b-system-manifest.md` + mod plugin policy |
+| Snapshot truncation | `specs/core/snapshot-contract.md` + visibility oracle |
+| Persistence/replay retention | `specs/core/persistence-contract.md` + world.toml config |
+| Security transport/authz/rate | security specs + machine-readable Registry fields |
 
 ## 代码仓库
 
