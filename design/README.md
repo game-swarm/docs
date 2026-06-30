@@ -8,8 +8,9 @@
 
 | 域 | 文档 | 内容 |
 |:--|:--|:--|
+| **整体架构** | [`design/architecture.md`](architecture.md) | 两层计算模型（WASM COLLECT + Engine EXECUTE）、redb/NATS 基础设施选型、数据流全景 |
 | **引擎架构** | [`design/engine.md`](engine.md) | Tick 生命周期、ECS 系统链、世界拓扑、快照模型、确定性保证、快照扩展路线、Move-as-action 设计理由 |
-| **游戏机制** | [`design/gameplay.md`](gameplay.md) | Vanilla Ruleset、身体部件、伤害类型、特殊攻击（8 种）、经济模型、Controller/建筑系统 |
+| **游戏机制** | [`design/gameplay.md`](gameplay.md) | Vanilla Ruleset、身体部件、伤害类型、特殊攻击（8 种）、经济模型、Controller/建筑系统；经济平衡表见 [`design/economy-balance-sheet.md`](economy-balance-sheet.md) |
 | **游戏模式** | [`design/modes.md`](modes.md) | World 持久世界 vs Arena 竞技场、PvE 生态层、Arena PvE Challenge |
 | **MCP 与 API** | [`design/interface.md`](interface.md) | MCP 接口架构、Game API command-intent model、SDK |
 | **用户认证** | [`design/auth.md`](auth.md) | 应用层证书、CSR、passkey/email/admin 恢复、联邦跨世界身份、账号生命周期 |
