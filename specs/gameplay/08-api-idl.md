@@ -2,13 +2,13 @@
 
 > 详见 design/interface.md
 >
-> **本文档说明 IDL 的设计理念、代码生成流程和 SDK 分发机制。权威数据类型定义见 [API Registry](../reference/api-registry.md)（由 `game_api.idl.yaml` / `auth_api.idl.yaml` / `economy.idl.yaml` 自动生成）。**
+> **本文档说明 IDL 的设计理念、代码生成流程和 SDK 分发机制。权威数据类型定义见 [API Registry](../reference/api-registry.md)。IDL YAML 文件是实现侧代码生成输入，必须与 Registry 保持一致；Registry 是设计时 canonical schema authority。**
 
 > **目标**: host functions / Command / Validator / SDK / MCP schema 单一真相来源
 
 ## 1. 原则
 
-**一个 IDL 生成所有绑定——不一致即编译错误。**
+**Registry 与 IDL YAML 共同驱动所有绑定——不一致即编译错误。** Registry 是设计时 canonical schema authority；`specs/reference/*.idl.yaml` 是机器可读实现输入。CI 必须逐字段比对两者，禁止任一侧静默分叉。
 
 **Core IDL vs World Action Manifest 边界**：
 
@@ -65,54 +65,56 @@ enums:
   StructureType: [Spawn, Extension, Tower, Storage, Link, Extractor, Lab,
                   Terminal, Nuker, Observer, PowerSpawn, Factory, Depot]
   RejectionReason:
-    # > 权威定义见 [API Registry](../reference/api-registry.md) §2 — 48 变体
+    # > 权威定义见 [API Registry](../reference/api-registry.md) §2 — 48 canonical wire codes
+    - InvalidJson
+    - SchemaViolation
     - ObjectNotFound
     - NotOwner
-    - NotMovable
-    - Fatigued
-    - MissingBodyPart { part: BodyPart }
-    - TileBlocked
-    - InvalidDirection
-    - StillSpawning
-    - OutOfRoom
-    - NoPath
-    - PathTooLong
-    - InsufficientMoveParts
-    - CarryFull
-    - NotSource
-    - SourceEmpty
-    - OutOfRange { distance: u32, max: u32 }
-    - InsufficientResource { resource: ResourceName, required: u32, available: u32 }
-    - TargetFull
-    - TargetEmpty
-    - NotYourRoom
-    - TileOccupied
-    - InvalidTerrain
-    - TooManyConstructionSites
     - NotStructure
     - NotController
-    - AlreadyFullHealth
-    - FriendlyTarget
-    - NotYourSpawn
-    - SpawnOnCooldown
-    - BodyTooLarge
-    - ExceedsRoomCapacity
-    - RoomDroneCapReached
-    - NotFriendly
-    - SourceNotAllowed
-    - AuthContextInvalid
-    - GlobalStorageDisabled
-    - TransferInProgress
-    - UnknownAction { action: String }
-    - AlreadyHacked
-    - InvalidDamageType
-    - AlreadyDebilitated { damage_type: String }
     - NotVisibleOrNotFound
     - TargetNotVisible
+    - SpawnOnCooldown
+    - RoomDroneCapReached
+    - AuthContextInvalid
+    - CooldownActive
+    - InvalidDirection
+    - PositionOccupied
+    - ConstructionLimitReached
+    - SafeModeActive
     - TargetOverloadCooldown
+    - TargetFortifyCooldown
+    - NotEnoughBodyParts
+    - InvalidBodyPart
+    - InvalidStructureType
+    - InvalidResourceType
+    - SourceNotAllowed
+    - UnknownAction
+    - GlobalStorageDisabled
+    - TransferInProgress
+    - MainActionQuotaExceeded
+    - NotEligible
+    - RateLimited
+    - InvalidCertificate
+    - NotAuthorized
+    - FuelExhausted
+    - TimeoutExceeded
+    - SnapshotOverBudget
+    - CommandBufferFull
+    - ServerOverloaded
+    - InternalError
+    - CertExpired
+    - DeviceNotRegistered
+    - SessionLimitReached
+    - RefreshTokenInvalid
+    - ScopeInsufficient
+    - TokenRevoked
+    - MultiDeviceConflict
+    - UnknownCredential
+    - InternalAuthError
 
 commands:
-  # > 权威定义见 [API Registry](../reference/api-registry.md) §1 — 19 指令
+  # > 权威定义见 [API Registry](../reference/api-registry.md) §1 — 10 non-combat base actions + Action dispatch
   Move:
     params: { object_id: ObjectId, direction: Direction }
     validator: [exists, owner, drone, fatigue, body_part(Move), passable, !spawning]
@@ -139,14 +141,14 @@ commands:
     cost: registry.build_cost(structure)
 
   Spawn:
-    params: { spawn_id: ObjectId, body: Vec<BodyPart> }
+    params: { object_id: ObjectId, spawn_id: ObjectId, body_parts: Vec<BodyPart> }
     validator: [exists, owner, is_spawn, cooldown_zero, body_size(50), has_energy(body_cost), room_drone_cap]
-    cost: registry.body_cost(body)
+    cost: registry.body_cost(body_parts)
 
   Recycle:
-    params: { object_id: ObjectId, spawn_id: ObjectId }
-    validator: [exists, owner, drone, is_spawn, in_range(1)]
-    refund: RecycleRefund(body_cost, remaining_lifespan, total_lifespan)  # lifespan-proportional 10%-50% (权威公式见 economy.idl.yaml §RecycleRefund)
+    params: { object_id: ObjectId }
+    validator: [exists, owner, drone_or_structure]
+    refund: RecycleRefund(body_cost, remaining_lifespan, total_lifespan)  # lifespan-proportional 10%-50% (权威公式见 API Registry §10.3 与 Resource Ledger §2.5)
 
   # ═════════════════════════════════════
   # 扩展指令
@@ -188,8 +190,8 @@ host_functions:
   tick:
     # > tick 是 WASM export，非 host function import。Host functions 见 [API Registry](../reference/api-registry.md) §4
     export: true
-    params: [snapshot_ptr: i32, snapshot_len: i32]
-    returns: i32  # 0 = success, pointer to command JSON in WASM memory
+    params: [snapshot_ptr: i32, snapshot_len: i32, result_ptr: i32]
+    returns: i32  # 0 = success; result_ptr points to { ptr: u32, len: u32 } containing CommandIntent[] JSON
 
   # 世界配置查询（只读）
   get_world_config:
@@ -217,20 +219,29 @@ host_functions:
 
 global_storage_commands:
   TransferToGlobal:
+    classification: economy_operation
     params: { resource: ResourceName, amount: ResourceAmount }
     validator: [global_storage_enabled, has_local_resource, under_capacity, transfer_time_remaining(0)]
     cost: registry.transfer_to_global_cost() * amount
     duration: global_deposit_delay  # tick 数，运输期间资源不可用
 
   TransferFromGlobal:
+    classification: economy_operation
     params: { resource: ResourceName, amount: ResourceAmount }
     validator: [global_storage_enabled, has_global_resource, transfer_time_remaining(0)]
     cost: registry.transfer_from_global_cost() * amount
     duration: global_withdraw_delay
 
 refund_policy:
-  contention_lost: 0.5    # SourceEmpty, TileOccupied, TargetFull
-  self_invalid: 0.0       # OutOfRange, Fatigued, MissingBodyPart, etc.
+  resource_refund:
+    spawn_phase2b_creation_failure: 1.0  # refund body_cost to original debit source
+    action_channel_interrupted: registry.action(type).refund_policy
+    recycle: RecycleRefund(body_cost, remaining_lifespan, total_lifespan)
+  fuel_refund:
+    redb_commit_abandoned: 1.0
+    validation_rejected: 0.0
+    wasm_timeout_or_fuel_exhausted: 0.0
+  note: "Resource refunds and WASM fuel refunds are separate ledgers; no generic contention_lost percentage applies."
 ```
 
 ## 3. 代码生成规则
@@ -251,7 +262,7 @@ cargo run -- gen-api        # 从 IDL 生成代码
 git diff --exit-code        # 生成代码与提交代码一致 → 不一致则 CI 失败
 ```
 
-任何对游戏 API 的修改必须从 IDL 开始——修改 `game_api.idl` → 重新生成 → 提交生成的代码。不允许手写 Command 变体或 host function。
+任何对游戏 API 的修改必须同步 Registry 与 `specs/reference/*.idl.yaml`。CI diff gate 执行：Registry 表格 ↔ IDL YAML ↔ 生成代码三方比对；任一方向出现未提交 diff 或字段不一致即失败。不允许手写 Command 变体、RejectionReason 或 host function。
 
 ---
 
@@ -272,7 +283,7 @@ git diff --exit-code        # 生成代码与提交代码一致 → 不一致则
  | `Debilitate` | Work | special_attack | 易伤 ×2，150 tick CD |
  | `Disrupt` | Attack | special_attack | 打断目标动作，50 tick CD |
  | `Fortify` | Tough | special_attack | 护盾 + 净化，300 tick CD |
- | `Leech` | Attack | special_attack | 吸血 50%，Corrosive 15 dmg |
+ | `Leech` | Attack | special_attack | 吸血 50%，Kinetic 15 dmg |
  | `Fabricate` | Work+Carry | special_attack | 转化建筑，500 tick CD |
 
 ### 5.2 注册规则
@@ -291,7 +302,7 @@ git diff --exit-code        # 生成代码与提交代码一致 → 不一致则
   IDL 代码生成器  →  扫描注册表 → 生成所有 target 语言的绑定
   ```
 - `[[body_part_types]]` 定义 body part → action 绑定（如 `Claim` part → `Hack` action）
-- `[[special_effects]]` 定义可复用效果 handler；vanilla special attack 已预注册为 ActionRegistry action，不通过 `[[custom_actions]]` 注册
+- `[[special_effects]]` 定义可复用效果 handler；vanilla special attack 已预注册为 ActionRegistry action，不通过 `[[action_registry]]` 重定义
 - 服主可通过 World Action Manifest/Bevy Plugin 注册 mod action；不得覆盖 vanilla action 名称
 - 需全新 handler 时通过 Bevy Plugin 注册
 - SDK 和 MCP schema 自动包含所有已注册 action

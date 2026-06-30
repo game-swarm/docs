@@ -399,20 +399,20 @@ cost = { Energy = 10 }
 ------|------|------|------|
  `name` | string | ✅ | 唯一标识符 |
  `description` | string | ✅ | 人类可读描述 |
- `action` | string \| string[] | 条件 | 绑定的 CommandAction。`passive` 类型可省略。数组表示支持多种 action |
+ `action` | string \| string[] | 条件 | 绑定的 ActionRegistry action。`passive` 类型可省略。数组表示支持多种 action |
  `passive` | map | 条件 | 被动效果配置。与 action 互斥 |
  `damage_type` | string | 条件 | 攻击类型的伤害类型，引用 `[[damage_types]]` 中的 name |
  `base_damage` | u32 | 条件 | 每 part 的基础伤害值。`damage_type` 存在时必需 |
  `base_heal` | u32 | 条件 | 每 part 的基础治疗量。action=Heal 时必需 |
- | `range` | u32 | ✅ | 生效距离。注：CommandAction 的 `in_range()` 校验可覆盖此值（如 Heal body part range=1 但实际命令有效距离=3） |
+ | `range` | u32 | ✅ | 生效距离。ActionRegistry 的 validator 可覆盖此值（如 body part 默认 range 与 action range 不同） |
  | `age_modifier` | i32 | 否 | 对 drone lifespan 的修正（正=延寿，负=折寿）。TOUGH +100，ATTACK -80 等 |
  | `cost` | `{String: u32}` | ✅ | 生成该 body part 的资源消耗，key 为资源名 |
 
-**Body part → CommandAction 绑定**：
+**Body part → ActionRegistry 绑定**：
 
-- 一个 CommandAction 可被多个 body part 触发（如 `Attack` 可由 `Claw`/`Bite` 触发）
-- 新 body part 绑定到已有 CommandAction 时，只需定义不同的 damage_type/base_damage/cost，引擎复用该 action 的校验和应用逻辑
-- 引入新 CommandAction 时需在引擎中注册变体 + validate/apply handler + IDL 暴露
+- 一个 ActionRegistry action 可被多个 body part 触发（如 `Attack` 可由 `Claw`/`Bite` 触发）
+- 新 body part 绑定到已有 action 时，只需定义不同的 damage_type/base_damage/cost，引擎复用该 action 的校验和应用逻辑
+- 引入新 combat/effect action 时需在 ActionRegistry 注册 schema + validate/apply handler；IDL 继续使用通用 `CommandAction::Action { type, payload }`
 
 **Bevy Plugin 扩展**：
 
@@ -425,8 +425,8 @@ impl Plugin for LeechBodyPartPlugin {
             .resource_mut::<BodyPartRegistry>()
             .register(BodyPartType {
                 name: "Leech".into(),
-                action: CommandActionKind::Custom("Leech".into()),
-                damage_type: Some("Corrosive".into()),
+                action: ActionKind::Registered("Leech".into()),
+                damage_type: Some("Kinetic".into()),
                 base_damage: Some(15),
                 range: 1,
                 cost: resource_cost![Energy => 300],
@@ -438,7 +438,7 @@ impl Plugin for LeechBodyPartPlugin {
 
 ### 7.2 建筑类型 (`[[structure_types]]`)
 
-与身体部件一样，建筑类型可通过 world.toml 定义。默认 13 种基础类型：
+与身体部件一样，建筑类型可通过 world.toml 定义。默认结构类型与建造成本以 [API Registry §10.2 BuildCost](../reference/api-registry.md#102-economy-resource-operations) 为权威：
 
 ```toml
 [[structure_types]]
@@ -447,7 +447,7 @@ description = "出生点——生成 drone"
 category = "core"
 hits = 5000
 rcl_required = 1
-cost = { Energy = 200 }
+cost = { Energy = 300 }
 
 [[structure_types]]
 name = "Extension"
@@ -456,7 +456,40 @@ category = "storage"
 hits = 1000
 rcl_required = 2
 max_per_room = 60
+cost = { Energy = 200 }
+
+[[structure_types]]
+name = "Road"
+description = "道路——降低移动疲劳"
+category = "logistics"
+hits = 500
+rcl_required = 2
+cost = { Energy = 10 }
+
+[[structure_types]]
+name = "Wall"
+description = "墙——阻挡移动"
+category = "defense"
+hits = 10000
+rcl_required = 2
 cost = { Energy = 50 }
+
+[[structure_types]]
+name = "Rampart"
+description = "壁垒——保护己方实体"
+category = "defense"
+hits = 10000
+rcl_required = 2
+cost = { Energy = 100 }
+
+[[structure_types]]
+name = "Container"
+description = "容器——小型本地资源存储"
+category = "storage"
+hits = 2500
+rcl_required = 2
+capacity = 200000
+cost = { Energy = 100 }
 
 [[structure_types]]
 name = "Tower"
@@ -465,7 +498,7 @@ category = "defense"
 hits = 3000
 rcl_required = 3
 attack = { damage = 50, damage_type = "Kinetic", range = 5, cooldown = 10 }
-cost = { Energy = 200 }
+cost = { Energy = 800 }
 
 [[structure_types]]
 name = "Storage"
@@ -482,7 +515,7 @@ description = "链接——短距离能量传输"
 category = "logistics"
 hits = 1000
 rcl_required = 4
-cost = { Energy = 300 }
+cost = { Energy = 400 }
 
 [[structure_types]]
 name = "Extractor"
@@ -490,7 +523,7 @@ description = "萃取器——从资源点采集矿物"
 category = "production"
 hits = 5000
 rcl_required = 6
-cost = { Energy = 800 }
+cost = { Energy = 600 }
 
 [[structure_types]]
 name = "Lab"
@@ -506,7 +539,7 @@ description = "终端——跨世界身份同步与日志交换节点"
 category = "logistics"
 hits = 3000
 rcl_required = 5
-cost = { Energy = 500 }
+cost = { Energy = 1200 }
 
 [[structure_types]]
 name = "Observer"
@@ -515,7 +548,7 @@ category = "intel"
 hits = 500
 rcl_required = 5
 sight_range = 10
-cost = { Energy = 300 }
+cost = { Energy = 500 }
 
 [[structure_types]]
 name = "PowerSpawn"
@@ -523,7 +556,7 @@ description = "强化出生点——处理高等级 drone body"
 category = "core"
 hits = 5000
 rcl_required = 7
-cost = { Energy = 5000 }
+cost = { Energy = 1200 }
 
 [[structure_types]]
 name = "Factory"
@@ -539,7 +572,7 @@ description = "核弹发射井——终极武器"
 category = "defense"
 hits = 10000
 rcl_required = 8
-cost = { Energy = 100000 }
+cost = { Energy = 5000 }
 
 [[structure_types]]
 name = "Depot"
@@ -552,7 +585,7 @@ maintenance = { Energy = 10 }
 repair_capacity = 10
 repair_range = 1
 repair_aging = 5
-cost = { Energy = 5000 }
+cost = { Energy = 600 }
 ```
 
 **字段说明**：
@@ -593,7 +626,7 @@ cost = { Energy = 5000 }
 
 ### 7.4 特殊效果类型定义 (`[[special_effects]]`)
 
-与 body_part_types 和 damage_types 一样，特殊效果可通过 world.toml 定义和扩展。每个条目定义一种可由 `[[custom_actions]]` 引用的效果：
+与 body_part_types 和 damage_types 一样，特殊效果可通过 world.toml 定义和扩展。每个条目定义一种可由 `[[action_registry]]` 引用的效果：
 
 ```toml
 [[special_effects]]
@@ -626,7 +659,7 @@ description = "易伤——指定伤害类型抗性×2，持续 50 tick"
 handler = "debilitate"
 target = "enemy_any"
 duration = 50
-resistance = "Corrosive"
+resistance = "Kinetic"
 
 [[special_effects]]
 name = "disrupt"
@@ -686,7 +719,7 @@ resistance = "Psionic"
 
  字段 | 类型 | 必需 | 说明 |
 ------|------|------|------|
- `name` | string | ✅ | 唯一标识符，被 `[[custom_actions]].special_effect` 引用 |
+ `name` | string | ✅ | 唯一标识符，被 `[[action_registry]].effect_handler` 引用 |
  `description` | string | ✅ | 人类可读描述 |
  `handler` | string | ✅ | 引擎内置处理器。内置：`hack`, `drain`, `overload`, `debilitate`, `disrupt`, `fortify`, `leech`, `fabricate`, `heal_self`, `scramble_commands`, `convert_to_structure` |
  `target` | enum | ✅ | 目标类型：`enemy_drone`, `enemy_structure`, `enemy_player`, `enemy_any`, `self`, `ally`, `self_or_ally`, `any` |
@@ -697,81 +730,29 @@ resistance = "Psionic"
 
 ```
 1. world.toml 声明 [[special_effects]] → 引擎解析注册到 SpecialEffectRegistry
-2. [[custom_actions]] 通过 special_effect = "name" 引用 → 引擎绑定 handler
+2. [[action_registry]] 通过 effect_handler = "name" 引用 → 引擎绑定 handler
 3. 引擎内置所有 handler — 无需额外插件即可使用
-4. 服主新增 [[custom_actions]] 引用已有 [[special_effects]] → 无需改 Rust 代码
+4. 服主新增 [[action_registry]] 引用已有 [[special_effects]] → 无需改 Rust 代码
 5. 需全新 handler 时通过 Bevy Plugin 注册
 ```
 
-### 7.5 自定义 CommandAction (`[[custom_actions]]`)
+### 7.5 ActionRegistry (`[[action_registry]]`)
 
-当新 body part 需要的动作无法映射到已有 CommandAction 时使用。通过 world.toml 声明 `[[custom_actions]]` 条目并引用 `[[special_effects]]` 中定义的效果类型：
+Vanilla `Attack`/`RangedAttack`/`Heal` 与 8 个 special attack 均由 ActionRegistry 预注册，WASM 通过 `CommandAction::Action { type, payload }` dispatch。`world.toml` 的 `[[action_registry]]` 只用于服主覆盖启用状态或注册 mod action；vanilla 参数、消耗、body part 与抗性以 [special-attack-table.md](../reference/special-attack-table.md) 为权威。
 
 ```toml
-# 以下 8 个特殊攻击在所有世界中预注册
-# 服主可禁用（注释/删除）或修改参数
+[vanilla]
+special_attacks_enabled = ["Hack", "Drain", "Overload", "Debilitate", "Disrupt", "Fortify", "Leech", "Fabricate"]
 
-[[custom_actions]]
-name = "Hack"
-description = "夺取 drone——5 tick 控制锁后转为 Neutral"
-special_effect = "hack"
-cooldown = 200
-cost = { Energy = 1000 }
-
-[[custom_actions]]
-name = "Drain"
-description = "从目标建筑窃取资源"
-special_effect = "drain"
-cooldown = 50
-cost = { Energy = 200 }
-
-[[custom_actions]]
-name = "Overload"
-description = "消耗目标 fuel budget 500k"
-special_effect = "overload"
-cooldown = 200
-cost = { Energy = 300 }
-
-[[custom_actions]]
-name = "Debilitate"
-description = "施加易伤——指定伤害类型抗性×2，持续 50 tick"
-special_effect = "debilitate"
-special_param_bps = 20000          # fixed<u32,4>: 2.0
-cooldown = 150
-cost = { Energy = 200 }
-
-[[custom_actions]]
-name = "Disrupt"
-description = "打断目标持续动作"
-special_effect = "disrupt"
-cooldown = 50
-cost = { Energy = 100 }
-
-[[custom_actions]]
-name = "Fortify"
-description = "护盾+净化——所有抗性×0.5，清除负面状态"
-special_effect = "fortify"
-special_param_bps = 5000           # fixed<u32,4>: 0.5
-cooldown = 300
-cost = { Energy = 400 }
-
-[[custom_actions]]
-name = "Leech"
-description = "吸血攻击——伤害 50% 治疗自身，Corrosive 15 dmg"
-damage_type = "Corrosive"
-base_damage = 15
-range = 1
-special_effect = "leech"
-special_param_bps = 5000           # fixed<u32,4>: 0.5
-cost = { Energy = 300 }
-
-[[custom_actions]]
-name = "Fabricate"
-description = "将敌方 drone 转化为己方建筑"
-range = 1
-special_effect = "fabricate"
-cooldown = 500
-cost = { Energy = 2000, Matter = 500 }
+[[action_registry]]
+name = "Scramble"
+category = "mod_action"
+body_parts = ["Work"]
+effect_handler = "scramble_commands"
+range = 3
+cooldown = 100
+cost = { Energy = 250 }
+special_param_bps = 5000
 ```
 
 **字段说明**：
@@ -780,10 +761,11 @@ cost = { Energy = 2000, Matter = 500 }
 ------|------|------|------|
  `name` | string | ✅ | 唯一标识符 |
  `description` | string | ✅ | 人类可读描述 |
+ `body_parts` | string[] | ✅ | 执行该 action 所需 body part |
+ `effect_handler` | string | 否 | 特殊效果 handler，引用 `[[special_effects]]` 或 Bevy Plugin 注册的 handler |
  `damage_type` | string | 否 | 伤害类型，引用 `[[damage_types]]` |
  `base_damage` | u32 | 否 | 基础伤害值 |
  `range` | u32 | ✅ | 生效距离 |
- `special_effect` | string | 否 | 特殊效果标识符，引用 `[[special_effects]]` 中定义的 name |
  | `special_param_bps` / `special_param_ppm` | typed fixed-point | 否 | 特殊效果参数。倍率使用 `special_param_bps`（basis points，10000 = 1.0）；细粒度比例使用 `special_param_ppm`（parts-per-million，1_000_000 = 1.0）。禁止使用 float，避免跨平台舍入差异 |
  `cooldown` | u32 | 否 | 冷却时间（tick） |
  `cost` | `{String: u32}` | 否 | 每次使用消耗（body part spawn 成本在 `[[body_part_types]]` 中独立定义） |
@@ -821,32 +803,32 @@ fn mind_control_handler(
 [[damage_types]]
 name = "Kinetic"
 description = "动能冲击——碰撞、钝击、爆炸"
-default_resistance = 1.0
+default_resistance_bps = 10000
 
 [[damage_types]]
 name = "Thermal"
 description = "热能——火焰、激光、等离子"
-default_resistance = 1.0
+default_resistance_bps = 10000
 
 [[damage_types]]
 name = "EMP"
 description = "电磁脉冲——电击、过载、电子干扰"
-default_resistance = 1.0
+default_resistance_bps = 10000
 
 [[damage_types]]
 name = "Sonic"
 description = "声波——振动、共振、超声波"
-default_resistance = 1.0
+default_resistance_bps = 10000
 
 [[damage_types]]
 name = "Corrosive"
 description = "腐蚀——酸液、纳米分解、生化"
-default_resistance = 1.0
+default_resistance_bps = 10000
 
 [[damage_types]]
 name = "Psionic"
 description = "心灵——精神攻击、认知干扰、AI 劫持"
-default_resistance = 1.0
+default_resistance_bps = 10000
 ```
 
 **字段说明**：
@@ -855,18 +837,18 @@ default_resistance = 1.0
 ------|------|------|------|
  `name` | string | ✅ | 唯一标识符 |
  `description` | string | ✅ | 人类可读描述 |
- `default_resistance` | float | ✅ | 默认抗性倍率（1.0 = 无减免） |
+ `default_resistance_bps` | BasisPoints | ✅ | 默认抗性倍率（10000 = 无减免） |
 
 **抗性机制**：两层叠加——组件抗性 × 属性抗性 = 最终倍率。
 
 ```toml
 [resistances.Tough]
-Kinetic = 0.5     # Tough 对动能减半
-Sonic = 0.5       # 减震
+Kinetic = 5000     # Tough 对动能减半
+Sonic = 5000       # 减震
 
 [resistances.Structure]
-EMP = 2.0         # 建筑弱电磁
-Corrosive = 1.5   # 建筑怕腐蚀
+EMP = 20000        # 建筑弱电磁
+Corrosive = 15000  # 建筑怕腐蚀
 ```
 
 **免疫**：Bevy Plugin 可通过注册系统写入 ECS flag（如 `immune_Thermal`）赋予免疫（倍率 = 0）。该系统必须进入 system manifest 的 R/W matrix 与 TickTrace audit。
@@ -874,8 +856,8 @@ Corrosive = 1.5   # 建筑怕腐蚀
 **模组扩展**：
 
 ```rust
-actions.add_damage_type("Fire", 1.0);
-actions.set_resistance("Tough", "Fire", 0.3);
+actions.add_damage_type("Fire", 10000);
+actions.set_resistance("Tough", "Fire", 3000);
 actions.set_attribute(entity_id, "Flaming", true);
 ```
 
@@ -890,7 +872,7 @@ actions.set_attribute(entity_id, "Flaming", true);
 
 ### 7.8 特殊攻击方式
 
-所有特殊攻击通过 `[[special_effects]]` + `[[custom_actions]]` 可配置注册。
+所有 vanilla combat/effect action 通过 ActionRegistry 注册；权威参数见 `specs/reference/special-attack-table.md`。本文只列名称完整性，避免重复定义数值。
 
  攻击 | body part | 效果 | 冷却 | 消耗 | 抗性 |
 ------|----------|------|------|------|------|
@@ -900,6 +882,8 @@ actions.set_attribute(entity_id, "Flaming", true);
  Debilitate | Work | 指定伤害类型抗性 ×2, 50 tick | 150 tick | 200E | Corrosive |
  Disrupt | Attack | 打断目标动作 | 50 tick | 100E | Sonic |
  Fortify | Tough | 护盾 ×0.5 + 清除负面状态 | 300 tick | 400E | — |
+ Leech | Attack | 吸血攻击 | 100 tick | 300E | Kinetic |
+ Fabricate | Work+Carry | 转化敌方 drone 为己方建筑 | 500 tick | 2000E + 500 Matter | — |
 
 **通用规则**：
 - 特殊攻击与 HP 伤害互斥——同一 body part 同一 tick 只能执行一种

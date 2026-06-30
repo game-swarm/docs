@@ -326,26 +326,25 @@ TickCommitRecord {
 |----------|------|---------|:--------:|
 | `verified` | Blob 完整可用，`Blake3(blob) == content_hash` | 正常读取 + hash 匹配 | ✅ 直接使用 |
 | `audit_gap` | Blob 缺失或部分损坏，但状态可从相邻 tick 重建 | content_hash 不匹配 OR 对象存储 404，但相邻 tick 的 state_checksum 链完整 | ⚠️ 审计记录缺失，游戏状态可重建（从前后 keyframe 插值） |
-| `unreplayable` | Blob 不可读且无法从相邻 tick 重建 | content_hash 不匹配 AND 前后 keyframe 均不可用 | ❌ 该 tick 范围永久不可回放。审计记录不可恢复。 |
-| `reconstructable` | Blob 部分损坏但可恢复（如 bit flip 在非关键段） | 次要字段损坏但关键字段（commands、state_checksum、fuel_ledger）可解析 | 🔧 部分恢复。损坏字段标记为 `reconstructed: true`。 |
+| `unreplayable` | redb replay-critical core 或 keyframe/delta chain 缺失 | TickCommitRecord 10 字段缺失、hash chain 断裂且无可用 keyframe | ❌ 该 tick 范围核心 replay 不可恢复。RichTraceBlob 缺失不得触发此状态。 |
+| `reconstructable` | Rich/debug blob 部分损坏但展示数据可恢复 | 次要 debug 字段损坏但 redb replay-critical core 完整 | 🔧 rich debug replay 部分恢复。损坏字段标记为 `reconstructed: true`。 |
 
 **损坏检测流程**：
 
 ```
-1. 从 redb 读取 tick_manifest → 获取 object_id + content_hash
-2. 从对象存储获取 blob
+1. 从 redb 读取 TickCommitRecord replay-critical core
+   ├─ 10 字段完整且 hash chain 连续 → deterministic replay 可用
+   └─ 缺失或 hash chain 断裂 → terminal_state = unreplayable
+2. 从对象存储获取 RichTraceBlob
 3. 验证 Blake3(blob) == content_hash
-   ├─ 匹配 → terminal_state = verified
+   ├─ 匹配 → rich debug replay 可用；terminal_state = verified
    └─ 不匹配 OR blob 不存在：
-       ├─ 尝试从相邻 keyframe + delta chain 恢复
-       │   ├─ 恢复成功 → terminal_state = audit_gap
-       │   └─ 恢复失败 → terminal_state = unreplayable
-       └─ 尝试部分解析 blob
-           ├─ 关键字段完整 → terminal_state = reconstructable
-           └─ 关键字段损坏 → terminal_state = unreplayable
+       ├─ deterministic replay 继续使用 redb core + keyframe/delta chain
+       ├─ 尝试部分解析 blob；次要 debug 字段可恢复 → terminal_state = reconstructable
+       └─ 无可用 rich debug 数据 → terminal_state = audit_gap
 ```
 
-**与 hash chain 的关系**：RichTraceBlob delta chain 按 tick 递增形成链——`chain[i] = Blake3(chain[i-1] || tick_commit_record_i)`。任一 tick 的 blob 进入 `unreplayable` 状态 → 链断裂 → replay verifier 可检测到损坏起始 tick。损坏 tick 之前的状态仍可验证，之后的需从最近有效 keyframe 重建。
+**与 hash chain 的关系**：deterministic hash chain 只覆盖 redb TickCommitRecord replay-critical core：`chain[i] = Blake3(chain[i-1] || tick_commit_record_i)`。RichTraceBlob 不进入 deterministic hash chain；blob 缺失或损坏只让 rich debug replay 降级为 `audit_gap`，不会让核心 replay 进入 `unreplayable`。
 
 ---
 

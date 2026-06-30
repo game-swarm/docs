@@ -90,8 +90,8 @@ neutral ──Claim──→ reserved ──RCL 1──→ owned ←──→ co
                  │  │ (基于当前 Bevy World)      │     │
                  │  │ Action→PendingDamage/Heal  │     │
                  │  │ intent 不直接改 HP         │     │
-                 │  │ Spawn → 校验+扣费+入队     │     │
-                 │  │ PendingSpawn (S08 消费)    │     │
+                 │  │ Spawn → 校验+扣费+写入     │     │
+                 │  │ PendingEntityCreation      │     │
                  │  └─────────────────────────┘     │
                  │  ┌─────────────────────────┐     │
                  │  │ Phase 2b: ECS Systems     │     │
@@ -207,7 +207,7 @@ tick N 时间线:
 
 ### 2.4 WASM 模块部署
 
-AI 玩家通过 MCP `swarm_deploy` 上传 WASM 模块，引擎在下一 tick 加载新模块：
+AI 玩家通过 MCP `swarm_deploy` 上传 WASM 模块。Deploy 是控制面 mutation，不进入 gameplay RawCommand queue，不参与 Phase 2a 指令排序。服务端在 redb deploy manifest 中记录 `activation_tick >= current_tick + 1`，引擎只在 COLLECT 开始前切换到已到达 activation_tick 的模块：
 ```
 Tick N: 引擎用 WASM 模块 v1 执行玩家代码
 Tick N: AI 调用 swarm_deploy，上传 v2
@@ -359,18 +359,19 @@ Source E1: energy = 5
 排序后指令队列:
   1. Player B: harvest(E1) → 拿走 5，E1 剩余 0
   2. Player A: harvest(E1) → 校验时发现 E1.energy = 0
-     → RejectionReason: SourceEmpty
+     → RejectionReason: InsufficientResource
+     → debug_detail: "SourceEmpty"
      → 记录到 TickCommitRecord
 ```
 
 **应用范围**：
 | 竞争类型 | 处理方式 |
 |---------|---------|
-| 采集同一 Source | 先到先得，耗尽后 `SourceEmpty` |
-| 建造同一坐标 | 先到先得，坐标被占后 `TileOccupied` |
+| 采集同一 Source | 先到先得，耗尽后 `InsufficientResource` + debug_detail `SourceEmpty` |
+| 建造同一坐标 | 先到先得，坐标被占后 `PositionOccupied` |
 | 攻击同一目标 | 全部执行——多个攻击者可以打同一目标 |
-| 治疗同一目标 | 按顺序加血，满血后 `AlreadyFullHealth` |
-| 传输资源到同一目标 | 顺序填充，容量满后 `TargetFull` |
+| 治疗同一目标 | 按顺序加血，满血后 `NotEligible` + debug_detail `AlreadyFullHealth` |
+| 传输资源到同一目标 | 顺序填充，容量满后 `InsufficientResource` + debug_detail `TargetFull` |
 
 **设计意图**：
 - 先到先得简单、确定、可解释
@@ -386,7 +387,7 @@ Source E1: energy = 5
 
 以下规则防止 inline 执行中的时间窗口攻击——所有规则在 `validate_and_apply()` 单一路径中强制执行：
 
-1. **Spawn pending 不可见**：Phase 2a 中 Spawn 命令校验 + 扣费 + 入队 `PendingSpawn`。新 drone 在 Phase 2b spawn_system (S08) 中统一创建。同 tick 后续命令无法看到、操作、或依赖尚未创建的 drone。
+1. **Spawn pending 不可见**：Phase 2a 中 Spawn 命令校验 + 扣费 + 写入 `PendingEntityCreation`。S08 在 tick 末尾 flush 创建实体并预分配/记录 `StableEntityId`，但新实体不加入本 tick 可见/可交互世界索引。同 tick 后续命令无法看到、操作、或依赖尚未创建的 drone。新实体从下一 tick 开始参与快照、命令校验和系统迭代；`SpawningGrace { remaining: 1 }` 在首次可交互 tick 生效。
 2. **Hack 状态下的所有权**：Hack 施加控制锁后，原 owner 的后续 friendly/attack/recycle 命令仍以**原始 owner** 身份校验（Hack 不立即转移所有权）。5 tick 后实际夺取时 handler 切换 owner。
 3. **Per-drone per-tick action quota**：每 drone 每 tick 最多执行 1 个 main action（Move/Attack/Harvest/Build/Heal 及其特殊攻击变体）。Transfer/Withdraw 不计入此配额但受 carry 容量约束。此限制防止 Transfer chain resource amplification。
 4. **fuel/wall-clock 耗尽**：WASM 执行中 fuel 耗尽或 wall-clock timeout → 完整输出丢弃（不读取部分输出），不计 refund。
@@ -396,15 +397,16 @@ Source E1: energy = 5
 
 ### 3.4 ECS 系统执行顺序
 
-> **权威调度见 [Complete Tick Execution Manifest](specs/core/06-phase2b-system-manifest.md)** — 31 systems（R30 B1：Phase 2a inline 6 + Phase 2b deferred 25），serial spine + 2 parallel sets。Phase 2a inline 处理器在命令循环中逐条 inline 应用。Phase 2b 被动系统按 manifest 定义的 serial spine 顺序执行：death_marker → spawn → spawning_grace → regeneration → combat (parallel set A) → special_attack_reducer → damage_application → status buffer production (parallel set B) → status_advance_system (serial unique writer) → aging → decay → death_cleanup → pvp_block → room_state → controller_2b → resource_ledger。
+> **权威调度见 [Complete Tick Execution Manifest](06-phase2b-system-manifest.md)** — 31 systems（R30 B1：Phase 2a inline 6 + Phase 2b deferred 25），serial spine + 2 parallel sets。Phase 2a inline 处理器在命令循环中逐条 inline 应用。Phase 2b 被动系统按 manifest 定义的 serial spine 顺序执行：death_marker → spawn → spawning_grace → regeneration → combat (parallel set A) → special_attack_reducer → damage_application → status buffer production (parallel set B) → status_advance_system (serial unique writer) → aging → decay → death_cleanup → pvp_block → room_state → controller_2b → resource_ledger。
 
-**关键时序修复**（R16 B2）：
+**关键时序合同**：
 - `death_marker` 在 `spawn` 之前：RoomCap 槽位同 tick 释放。
-- `spawning_grace` 在 combat 之前：新生 drone 获得出生 tick 免疫保护。
+- `spawn_system` flush `PendingEntityCreation`，但新实体最早下一 tick 可交互。
+- `spawning_grace` 在 combat 之前：`SpawningGrace { remaining: 1 }` 只在新实体首次可交互 tick 生效。
 - `regeneration` 在 `damage_application` 之前：自然回复先于伤害结算，防止 heal+regen 双倍回复。
 - `special_attack_reducer`：parallel intent 收集 → pending_intents buffer → canonical priority sort → 交付 status_advance_system。
 
-**Component R/W 矩阵**：见 [Complete Tick Execution Manifest §4](specs/core/06-phase2b-system-manifest.md) — 覆盖全部 31 systems 的读写关系、并行安全证明及 RoomCap 中间态保护。
+**Component R/W 矩阵**：见 [Complete Tick Execution Manifest §4](06-phase2b-system-manifest.md) — 覆盖全部 31 systems 的读写关系、并行安全证明及 RoomCap 中间态保护。
 
 ### 3.5 Tick 原子性 — Shadow Write + Atomic Publish
 
@@ -498,6 +500,18 @@ struct GlobalTickCommit {
     manifest_hash: Blake3,                              // 全局 manifest hash
 }
 ```
+
+#### 3.5.6 TickInputEnvelope 与 TickCommitRecord 边界
+
+Tick replay 分三层记录，字段不得混用：
+
+| 层 | 内容 | replay 作用 |
+|----|------|-------------|
+| `TickCommitRecord` replay-critical core | commands、rejections、fuel、deploy_activation_decision、canonical_codec_version、snapshot_hash、commands_hash、state_checksum、manifest_hash、world_config_hash | redb 同一事务原子提交；确定性 replay 的最小必需集合 |
+| Replay identity | collect_id、attempt_id、commit_id、api_version、engine_abi_version、world_action_manifest_hash、seed_epoch | 识别一次 collect/commit 尝试与世界规则版本；用于审计和 hash-chain |
+| `TickInputEnvelope` | module_hash、wasmtime_version、effective_tick、fuel_schedule_version、host_cost_table_version、wasm_status、deploy_events、rollback_events、admin_events、terminal_state | 记录 COLLECT 输入与运行环境；对象存储 rich trace 缺失时仍可由 redb core replay |
+
+Deterministic replay 只依赖 redb replay-critical core + keyframe/delta chain，不依赖 Object Store/RichTraceBlob。Rich debug replay 可读取 RichTraceBlob 补充 per-system metrics、debug detail 和可视化 annotation；RichTraceBlob 缺失只产生 `terminal_state = audit_gap`，不产生 `unreplayable`。
 
 #### 3.5.6 错误恢复
 
@@ -995,7 +1009,7 @@ RNG 流按 namespace 隔离：
 
 ### 9.6 ECS 调度权威顺序
 
-系统执行顺序的唯一权威定义见 [Complete Tick Execution Manifest](specs/core/06-phase2b-system-manifest.md) §1。Phase 2b 串行脊柱（R30 B1 — 31 systems）：
+系统执行顺序的唯一权威定义见 [Complete Tick Execution Manifest](06-phase2b-system-manifest.md) §1。Phase 2b 串行脊柱（R30 B1 — 31 systems）：
 
 ```
 death_marker → spawn → spawning_grace → regeneration →

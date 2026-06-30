@@ -189,7 +189,8 @@ email 恢复为可选模块——服主可在 world.toml 中启用。
 ## 7. Canonical Request Signature
 
 ```
-Swarm-Certificate-Chain: <base64 leaf>
+Swarm-Certificate: <base64 ClientAuthCertificate or CodeSigningCertificate>
+Swarm-Cert-Id: <certificate_id>
 Swarm-Timestamp: <unix_ms>
 Swarm-Nonce: <random 128-bit>
 Swarm-Signature: <ed25519 signature by user private key>

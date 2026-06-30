@@ -6,7 +6,7 @@
 
 MCP 是 AI agent 的「屏幕和鼠标」——与人类玩家的 Web UI 完全同级。
 
-**Schema 完整性要求**：所有 MCP 工具由 `game_api.idl.yaml`（game 工具）、`auth_api.idl.yaml`（auth 工具）和 `economy.idl.yaml`（经济工具）定义，经 CI 生成 `api-registry.md`。详见 [API Registry](specs/reference/api-registry.md) §3。
+**Schema 完整性要求**：所有 MCP 工具由 `game_api.idl.yaml`（game 工具）、`auth_api.idl.yaml`（auth 工具）和 `economy.idl.yaml`（经济工具）定义，经 CI 生成 `api-registry.md`。详见 [API Registry](../specs/reference/api-registry.md) §3。
 
 ```
 人类：Monaco 编辑器 → 编译 WASM → 上传 ─┐
@@ -16,7 +16,7 @@ AI：  MCP 看世界 → 生成 WASM → 部署 ───┘
 
 ### 4.1 MCP 工具分类
 
-> **权威工具清单见 [API Registry](specs/reference/api-registry.md) §3** — Game API `all_declared=57` / `active_only=53` / `rfc_gated=4`，Auth API `all_declared=12` / `active_only=12` / `rfc_gated=0`。
+> **权威工具清单见 [API Registry](../specs/reference/api-registry.md) §3** — Game API `all_declared=57` / `active_only=53` / `rfc_gated=4`，Auth API `all_declared=12` / `active_only=12` / `rfc_gated=0`。
 >
 > 以下为**概念分类概述**，不列完整表。所有工具的 canonical schema、replay_class、rate_limit、security columns 以 Registry 为准。本表仅作方向性说明，不得用于实现引用。
 
@@ -26,14 +26,14 @@ AI：  MCP 看世界 → 生成 WASM → 部署 ───┘
 | **部署** | `swarm_deploy` (deploy_mutation), `swarm_validate_module`, `swarm_list_modules` | WASM 上传与预检 |
 | **调试** | `swarm_explain_last_tick`, `swarm_get_tick_trace`, `swarm_dry_run`, `swarm_simulate` | 开发者诊断与离线模拟 |
 | **经济** | `swarm_get_economy`, `swarm_get_drone_efficiency`, `swarm_get_economy_trend` | 资源流查询 |
-| **认证** | 见 [auth_api.idl.yaml](specs/reference/auth_api.idl.yaml) | 设备注册、证书管理、passkey 恢复等 |
+| **认证** | 见 [auth_api.idl.yaml](../specs/reference/auth_api.idl.yaml) | 设备注册、证书管理、passkey 恢复等 |
 | **锦标赛** | `swarm_tournament_create`, `swarm_tournament_status`, `swarm_match_result` | 竞技赛事管理 |
 
 > ⚠️ **已从 registry 移除的工具**：`swarm_attack`/`swarm_build`/`swarm_move`/`swarm_spawn` → MCP 不做游戏动作；`swarm_rollback` → `swarm_admin_rollback`；`swarm_inspect_entity` → `swarm_get_drone`；`swarm_inspect_room` → `swarm_get_room`；`swarm_get_objects_in_range` → host function（非 MCP 工具）；`swarm_dry_run_commands` → `swarm_dry_run`。旧 OAuth / bearer / refresh-token 工具不在 Registry 中，认证入口为 CSR/certificate lifecycle（见 Registry §3.3）。
 
 ### 4.1a MCP Capability Profiles
 
-MCP 工具按 capability profile 分组。详见 [API Registry](specs/reference/api-registry.md) §3.4。
+MCP 工具按 capability profile 分组。详见 [API Registry](../specs/reference/api-registry.md) §3.4。
 
 | Profile | 包含工具 | 适用场景 |
 |---------|---------|---------|
@@ -83,7 +83,7 @@ fn host_get_world_rules(rule_id_ptr: i32, rule_id_len: i32, out_ptr: i32, out_le
 fn host_get_random(sequence: u64, out_ptr: i32, out_len: i32) -> i32;
 ```
 
-> **注意**: 以下为概念签名。权威定义见 [API Registry](specs/reference/api-registry.md) §4.1
+> **注意**: 以下为概念签名。权威定义见 [API Registry](../specs/reference/api-registry.md) §4.1
 
 全部返回 `i32`：ret >= 0 = bytes_written，ret < 0 = canonical ABI error code（见 API Registry §4.5）。
 `out_ptr`/`out_len`：WASM 分配缓冲区，host 写入结果后再次校验边界。
@@ -112,7 +112,7 @@ fn host_get_random(sequence: u64, out_ptr: i32, out_len: i32) -> i32;
 
 ### 5.4 CommandAction 定义 (单一事实源)
 
-**CommandAction 的唯一权威定义在 [API Registry](specs/reference/api-registry.md) §1**。所有 11 个 CommandAction 变体 + `Action` dispatch 的完整 schema、参数、分类和 actor_id/object_id 语义以 Registry 为准。combat/effect 能力（包括 vanilla `Attack`/`RangedAttack`/`Heal` 与 8 个 special action）通过 ActionRegistry 派发，不作为顶层 CommandAction 变体计数。本文档及其他设计文档不得重新声明 CommandAction 列表或参数；只能引用 Registry。
+**CommandAction 的唯一权威定义在 [API Registry](../specs/reference/api-registry.md) §1**。所有 11 个 CommandAction 变体的完整 schema、参数、分类和 actor_id/object_id 语义以 Registry 为准。combat/effect 能力（包括 vanilla `Attack`/`RangedAttack`/`Heal` 与 8 个 special action）通过 ActionRegistry 派发，不作为顶层 CommandAction 变体计数。本文档及其他设计文档不得重新声明 CommandAction 列表或参数；只能引用 Registry。
 
 Notes:
 - Move: 4方向 (N/S/E/W)。8方向为 Out-of-Scope RFC，不在当前核心定义中。
@@ -122,7 +122,7 @@ Notes:
 
 所有 host function 返回 `i32`（0=成功，负数=错误码）。每函数定义 per-tick 资源约束：
 
-> 参见 [API Registry](specs/reference/api-registry.md) §4 — 统一预算和输出上限
+> 参见 [API Registry](../specs/reference/api-registry.md) §4 — 统一预算和输出上限
 
 Fuel deduction: 1 CPU cost unit = 1 wasmtime fuel unit。host call budget 独立于 WASM compute budget——两者均计入 per-tick 总量。
 
@@ -130,7 +130,7 @@ Pathfinding 确定性要求：固定 neighbor order（NESW 顺时针）、cost t
 
 ### 5.6 SwarmError 错误格式
 
-统一错误格式由 [API Registry](specs/reference/api-registry.md) §8 SwarmError JSON-RPC Envelope 定义，遵循标准 JSON-RPC 2.0 error object：
+统一错误格式由 [API Registry](../specs/reference/api-registry.md) §8 SwarmError JSON-RPC Envelope 定义，遵循标准 JSON-RPC 2.0 error object：
 
 | 字段 | 说明 |
 |------|------|
@@ -151,7 +151,7 @@ Pathfinding 确定性要求：固定 neighbor order（NESW 顺时针）、cost t
 
 ### 5.7 swarm_simulate 与 swarm_deploy
 
-**swarm_simulate**: 给定 snapshot 离线模拟 N tick。不执行其他玩家 WASM——使用 NPC-only world。最大 100 tick，max_entities=1000，资源配额独立于热路径。输出 deterministic replay。参见 [API Registry](specs/reference/api-registry.md) §5。
+**swarm_simulate**: 给定 snapshot 离线模拟 N tick。不执行其他玩家 WASM——使用 NPC-only world。最大 100 tick，max_entities=1000，资源配额独立于热路径。输出 deterministic replay。参见 [API Registry](../specs/reference/api-registry.md) §5。
 
 **swarm_deploy 部署语义**: `replay_class: deploy_mutation` — 依赖 redb `version_counter` 防重放，不依赖易失 nonce/window。同 `module_hash` 重试只扣费一次（idempotency_key = module_hash）。module 保留策略：最近 10 个版本保留，旧版本在无引用后 GC。
 

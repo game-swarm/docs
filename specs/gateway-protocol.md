@@ -20,7 +20,7 @@ Gateway 是无状态服务，可水平扩展。所有 Gateway 实例共享同一
 
 | Transport | 协议 | 端口 | 用途 | 认证方式 |
 |-----------|------|------|------|---------|
-| **Browser** | WebSocket | 8082 | 人类玩家 Web UI | Web session token 或 `Swarm-Certificate-Chain` + signed request |
+| **Browser** | WebSocket | 8082 | 人类玩家 Web UI | Web session token 或 `Swarm-Certificate` + `Swarm-Cert-Id` + signed request |
 | **REST** | HTTP/1.1 | 8082 | CLI / 外部工具 | Application certificate + signed request；Web session token 仅兼容路径 |
 | **Agent** | MCP (HTTP) | 8082 | AI agent MCP 连接；无 Agent-facing subscription | Application certificate + signed request |
 | **Replay Viewer** | HTTP/1.1 | 8082 | 回放查看器（公开） | Application certificate 或匿名（public replay） |
@@ -159,14 +159,14 @@ MCP 工具清单见 `specs/reference/mcp-tools.md`。
 
 | Transport | Auth material | Header | Origin/CSRF | 失败码 |
 |-----------|---------------|--------|-------------|--------|
-| Browser WS | Web session token 或 application certificate | `Sec-WebSocket-Protocol: swarm-cert.<cert_id>` 或 `Swarm-Certificate-Chain` + `X-Swarm-Transport: ws` | Origin check（Web UI domain） | 401 / 403 |
-| REST | Web session token 或 application certificate | Bearer token 或 `Swarm-Certificate-Chain` + `X-Swarm-Transport: rest` | CORS allowed origins | 401 / 403 |
-| MCP Agent | Application certificate + signed request | `Swarm-Certificate-Chain` + `Swarm-Signature` + `X-Swarm-Transport: mcp` | N/A（非浏览器） | 401 / 403 |
+| Browser WS | Web session token 或 application certificate | `Sec-WebSocket-Protocol: swarm-cert.<cert_id>` 或 `Swarm-Certificate` + `Swarm-Cert-Id` + `X-Swarm-Transport: ws` | Origin check（Web UI domain） | 401 / 403 |
+| REST | Web session token 或 application certificate | Bearer token 或 `Swarm-Certificate` + `Swarm-Cert-Id` + `X-Swarm-Transport: rest` | CORS allowed origins | 401 / 403 |
+| MCP Agent | Application certificate + signed request | `Swarm-Certificate` + `Swarm-Cert-Id` + `Swarm-Signature` + `X-Swarm-Transport: mcp` | N/A（非浏览器） | 401 / 403 |
 | Replay Viewer | 无或 application certificate | `X-Swarm-Transport: replay` | 公开回放可匿名 | 401 |
-| Admin | AdminCertificate + signed request | `Swarm-Certificate-Chain` + `Swarm-Signature` + `X-Swarm-Transport: rest` | N/A | 401 / 403 |
+| Admin | ClientAuthCertificate with `admin` scope + signed request | `Swarm-Certificate` + `Swarm-Cert-Id` + `Swarm-Signature` + `X-Swarm-Transport: rest` | N/A | 401 / 403 |
 
 **禁止项**：
 - Browser WS token 通过 `Sec-WebSocket-Protocol` header 传递——**不得**出现在 URL query string 中（nginx access log 会记录）
 - MCP application certificate **不得**用于 Browser/REST transport（audience transport 不匹配）。
 - Swarm CA **不得**安装到系统/浏览器 trust store；它只用于应用层证书链验证。
-- Admin 端点必须使用 `AdminCertificate` + signed request；不以传输层 mTLS 作为默认身份根。
+- Admin 端点必须使用带 `admin` scope 的 `ClientAuthCertificate` + signed request；不以传输层 mTLS 作为默认身份根。

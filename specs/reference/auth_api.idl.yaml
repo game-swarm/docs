@@ -357,7 +357,7 @@ certificate_types:
       ttl: "15 min–180 days"
       renewal: "swarm_renew_certificate"
       description: >
-        Carried in Swarm-Certificate-Chain header. Validated via canonical
+        Carried in Swarm-Certificate header with Swarm-Cert-Id. Validated via canonical
         request signature (SWARM-REQUEST-V1). Used for MCP queries, session
         renewal, and general authenticated requests.
 
@@ -371,24 +371,15 @@ certificate_types:
         time. Expired CodeSigningCertificate does NOT invalidate already-deployed
         modules. Compromised cert revocation may freeze or rollback modules.
 
-    - type: AdminCertificate
-      usage: "admin"
+    - type: ClientAuthCertificate
+      usage: "client_auth"
       audience_scope: "swarm-aud-v1:cli-rest:<server_id>:<world_id>:<admin_id>"
       ttl: "15 min–1h"
       renewal: "manual only (no auto-renew)"
       description: >
-        Administrative operations (cert revocation, CA policy, bans).
-        Hardware key preferred. Sensitive operations require dual-signature.
+        Administrative operations use ClientAuthCertificate with admin scope
+        (cert revocation, CA policy, bans). Hardware key preferred. Sensitive operations require dual-signature.
         Cannot be issued to temporary_device or managed_device profiles.
-
-    - type: FederationCertificate
-      usage: "federation"
-      audience_scope: "swarm-aud-v1:federation:<source_server>:<target_server>:<player_id>"
-      ttl: "24h"
-      renewal: "re-federate per session"
-      description: >
-        Cross-server identity bridge. Subject to federation trust policy
-        between cooperating servers.
 
   per_certificate_metadata:
     - cert_id: string
@@ -413,10 +404,10 @@ canonical_request_signature:
   description: >
     Every authenticated request carries a canonical Ed25519 signature over a
     SWARM-REQUEST-V1 payload. The signature is in the Swarm-Signature header.
-    The certificate chain is in the Swarm-Certificate-Chain header.
+    The application-layer certificate is in the Swarm-Certificate header.
 
   headers:
-    - "Swarm-Certificate-Chain: <base64 leaf + intermediate>"
+    - "Swarm-Certificate: <base64 ClientAuthCertificate or CodeSigningCertificate>"
     - "Swarm-Cert-Id: <certificate_id>"
     - "Swarm-Timestamp: <unix_ms>"
     - "Swarm-Nonce: <random 128-bit>"
@@ -783,7 +774,7 @@ security_columns:
       values:
         - "none — pre-auth (no subject)"
         - "player_id — authenticated player from certificate"
-        - "admin_id — authenticated administrator from AdminCertificate"
+        - "admin_id — authenticated administrator from ClientAuthCertificate with admin scope"
 
     - name: replay_class
       values:

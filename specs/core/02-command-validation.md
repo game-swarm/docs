@@ -508,25 +508,14 @@ refund_pct = max(0.1, 0.5 × (remaining_lifespan / total_lifespan))
 
 ### 10.1 RangedAttack
 
-> **R35 D3**: RangedAttack 已移入 ActionRegistry，不再作为独立 CommandAction variant。以下校验规则适用于 Action `{ type: \"RangedAttack\", ... }` dispatch。
-
-```json
-{ "type": "Action", "action_type": "RangedAttack", "object_id": "d1", "target_id": "e5", "range": 3, "sequence": N }
-```
-
- 校验规则 | 说明 |
----------|------|
- body part | drone 必须有 RangedAttack body part |
- 射程 | target 在 range 范围内 |
- ownership | target 为敌方实体 |
- damage | parts × 25，damage_type = Kinetic |
+`RangedAttack` 是 ActionRegistry vanilla action，不是顶层 `CommandAction`。WASM 输出必须使用 `CommandAction::Action { type: "RangedAttack", payload }`，payload schema、body part、range、damage type、cost、cooldown 与拒绝码映射以 [special-attack-table.md](../reference/special-attack-table.md) 和 [API Registry §1.4](../reference/api-registry.md#14-actionregistry--11-vanilla--mod-extensible-combat-actions) 为准。本文不重列参数表。
 
 ### 10.2 ClaimController
 
 占领 Controller。drone 需 Claim body part。
 
 ```json
-{ "type": "Action", "action_type": "ClaimController", "object_id": "d1", "target_id": "c1", "sequence": N }
+{ "type": "ClaimController", "object_id": "d1", "controller_id": "c1" }
 ```
 
  校验规则 | 说明 |
@@ -540,7 +529,7 @@ refund_pct = max(0.1, 0.5 × (remaining_lifespan / total_lifespan))
 回收 drone，退还资源。
 
 ```json
-{ "type": "Action", "action_type": "Recycle", "object_id": "d1", "sequence": N }
+{ "type": "Recycle", "object_id": "d1" }
 ```
 
  | 规则 | 说明 |
@@ -556,7 +545,7 @@ refund_pct = max(0.1, 0.5 × (remaining_lifespan / total_lifespan))
 #### Disrupt
 
 ```json
-{ "type": "Action", "action_type": "Disrupt", "object_id": "d1", "target_id": "e5", "sequence": N }
+{ "type": "Action", "object_id": "d1", "action_type": "Disrupt", "payload": { "target_id": "e5" } }
 ```
 
  属性 | 值 |

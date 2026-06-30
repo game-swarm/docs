@@ -1,6 +1,6 @@
 # Swarm 技术选型
 
-> 技术选型的落地规范见 [WASM Sandbox](specs/core/04-wasm-sandbox.md)、[Persistence Contract](specs/core/05-persistence-contract.md)、[Snapshot Contract](specs/core/09-snapshot-contract.md)、[Command Source](specs/security/09-command-source.md)。
+> 技术选型的落地规范见 [WASM Sandbox](../specs/core/04-wasm-sandbox.md)、[Persistence Contract](../specs/core/05-persistence-contract.md)、[Snapshot Contract](../specs/core/09-snapshot-contract.md)、[Command Source](../specs/security/09-command-source.md)。
 
 **设计原则：设计即终态。没有"远期方向"、Phase、future、deferred、"以后再说"或版本分期。每一个技术选型必须按当下最佳实践一次性裁定；不得用分期实现、暂缓决定或保留旧方案并存来逃避取舍。实现顺序只记录在 ROADMAP，不进入设计和规范。**
 
@@ -25,7 +25,7 @@
 
 ## 2. 玩家沙箱: WASM + Wasmtime
 
-> 沙箱实现详见 [WASM Sandbox](specs/core/04-wasm-sandbox.md)。
+> 沙箱实现详见 [WASM Sandbox](../specs/core/04-wasm-sandbox.md)。
 
 ### 备选
 
@@ -89,7 +89,7 @@ Deployment: single binary = base engine + selected mods
 
 ## 4. 持久化: redb
 
-> 持久化合同详见 [Persistence Contract](specs/core/05-persistence-contract.md)，快照模型详见 [Snapshot Contract](specs/core/09-snapshot-contract.md)。
+> 持久化合同详见 [Persistence Contract](../specs/core/05-persistence-contract.md)，快照模型详见 [Snapshot Contract](../specs/core/09-snapshot-contract.md)。
 
 ### 备选
 

@@ -19,8 +19,8 @@ curl http://localhost:8080/healthz  # → {"status":"ok"}
 
 | SDK | 语言 | 适合 |
 |-----|------|------|
-| [sdk-ts](../sdk-ts/) | TypeScript | Web 前端开发、快速原型 |
-| [sdk-rust](../sdk-rust/) | Rust | 高性能、编译时安全 |
+| sdk-ts | TypeScript | Web 前端开发、快速原型 |
+| sdk-rust | Rust | 高性能、编译时安全 |
 
 ## 3. 写第一个 Bot（TypeScript）
 

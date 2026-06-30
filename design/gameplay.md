@@ -1,6 +1,6 @@
 # 游戏机制
 
-> 游戏机制域文件。从 design/README.md 拆分。Vanilla Ruleset、身体部件、伤害系统、特殊攻击、经济模型。详见 [World Rules](specs/core/07-world-rules.md)、[Resource Ledger](specs/core/08-resource-ledger.md)、[Feedback Loop](specs/gameplay/06-feedback-loop.md)、[API IDL](specs/gameplay/08-api-idl.md)。
+> 游戏机制域文件。从 design/README.md 拆分。Vanilla Ruleset、身体部件、伤害系统、特殊攻击、经济模型。详见 [World Rules](../specs/core/07-world-rules.md)、[Resource Ledger](../specs/core/08-resource-ledger.md)、[Feedback Loop](../specs/gameplay/06-feedback-loop.md)、[API IDL](../specs/gameplay/08-api-idl.md)。
 
 ## 1. 10 分钟 Golden Path
 
@@ -27,13 +27,13 @@
 
 ## 2. World Rules Engine — 可配置的游戏规则
 
-Swarm 不是「一个游戏」，而是「一个可配置的游戏引擎平台」。每个世界实例可以有不同的规则集。详见 [World Rules](specs/core/07-world-rules.md) 和 [Resource Ledger](specs/core/08-resource-ledger.md)。
+Swarm 不是「一个游戏」，而是「一个可配置的游戏引擎平台」。每个世界实例可以有不同的规则集。详见 [World Rules](../specs/core/07-world-rules.md) 和 [Resource Ledger](../specs/core/08-resource-ledger.md)。
 
 ### 2.1 核心理念
 
 Screeps 的问题是**规则硬编码**——出生点逻辑、代码更新成本、drone 控制权限都是引擎的一部分，社区服主无法修改。Swarm 把这些做成**世界级配置**。
 
-**所有游戏内容都是 world.toml 中默认启用的官方扩展**——身体部件类型、建筑类型、伤害类型、vanilla ActionRegistry action、资源类型，全部通过 `[[body_part_types]]` / `[[structure_types]]` / `[[damage_types]]` / `[action_registry.vanilla.*]` / `[[resource_types]]` 定义。`[[custom_actions]]` 仅用于服主扩展 action。引擎核心只提供 validation + execution pipeline，不硬编码任何游戏内容。服主可禁用、修改、或从头定义自己的世界规则。
+**所有游戏内容都是 world.toml 中默认启用的官方扩展**——身体部件类型、建筑类型、伤害类型、vanilla ActionRegistry action、资源类型，全部通过 `[[body_part_types]]` / `[[structure_types]]` / `[[damage_types]]` / `[action_registry.vanilla.*]` / `[[resource_types]]` 定义。`[[action_registry]]` 用于服主扩展 action。引擎核心只提供 validation + execution pipeline，不硬编码任何游戏内容。服主可禁用、修改、或从头定义自己的世界规则。
 
 ```
 世界配置 (WorldConfig)          ECS Plugin (System 注入)
@@ -675,32 +675,32 @@ swarm sdk publish world_v1        # 部署到目标世界（在线）
 [[damage_types]]
 name = "Kinetic"
 description = "动能冲击——碰撞、钝击、爆炸"
-default_resistance = 1.0
+default_resistance_bps = 10000
 
 [[damage_types]]
 name = "Thermal"
 description = "热能——火焰、激光、等离子"
-default_resistance = 1.0
+default_resistance_bps = 10000
 
 [[damage_types]]
 name = "EMP"
 description = "电磁脉冲——电击、过载、电子干扰"
-default_resistance = 1.0
+default_resistance_bps = 10000
 
 [[damage_types]]
 name = "Sonic"
 description = "声波——振动、共振、超声波"
-default_resistance = 1.0
+default_resistance_bps = 10000
 
 [[damage_types]]
 name = "Corrosive"
 description = "腐蚀——酸液、纳米分解、生化"
-default_resistance = 1.0
+default_resistance_bps = 10000
 
 [[damage_types]]
 name = "Psionic"
 description = "心灵——精神攻击、认知干扰、AI 劫持"
-default_resistance = 1.0
+default_resistance_bps = 10000
 
 # 抗性：按 body part / structure / 属性叠加
 # 抗性倍率相乘: final_multiplier = body_resistance × attribute_resistance
@@ -734,7 +734,7 @@ Corrosive = 1.5        # 建筑怕腐蚀
 
 #### Vanilla Action 方式
 
-> **Canonical 参数表见 [special-attack-table.md](specs/reference/special-attack-table.md)**。所有 body_part、damage_type、resistance、cost、cooldown、range、channel_time、counterplay 以该表为准。以下为概念描述，不得在实现中以本表数值替代 canonical 表。
+> **Canonical 参数表见 [special-attack-table.md](../specs/reference/special-attack-table.md)**。所有 body_part、damage_type、resistance、cost、cooldown、range、channel_time、counterplay 以该表为准。以下为概念描述，不得在实现中以本表数值替代 canonical 表。
 
 Vanilla Ruleset 提供 11 种 action：`Attack`/`RangedAttack`/`Heal` 是基础 combat action，写入 `PendingDamage`/`PendingHeal` intent；以下 8 种 special action 通过 `ActionRegistry` handler 写入 status intent，不作为独立 `CommandAction` variant 存在：
 
@@ -747,7 +747,7 @@ Vanilla Ruleset 提供 11 种 action：`Attack`/`RangedAttack`/`Heal` 是基础 
 | **Disrupt** | Attack | 打断目标当前动作（Drain/Hack 等持续动作立即终止）。不造成 HP 伤害 | 50 tick | 100 Energy | 目标 `Sonic` 抗性 |
 | **Fortify** | Tough | 自身/友方获得护盾（所有抗性 ×0.5）。**同时清除目标所有负面状态**（Debilitate/Drain/Overload/Hack控制锁），持续 100 tick | 300 tick | 400 Energy | 无——增益+净化 |
 | **Leech** | Attack | 吸血攻击：对目标造成 Kinetic 伤害，伤害量的 50% 转化为自身 HP 恢复。受目标 Kinetic 抗性影响 | 150 tick | 300 Energy | 目标 `Kinetic` 抗性 |
-| **Fabricate** | Work | drone→建筑转化：将敌方 drone 转化为己方结构（Tower/Storage/Wall），需持续 channel 5 tick，期间 drone immobile。channel 中断 → 失败退款 50% | 500 tick | 800 Energy | 目标 `EMP` 抗性 |
+| **Fabricate** | Work+Carry | drone→建筑转化：将敌方 drone 转化为己方结构（Tower/Storage/Wall），需持续 channel 5 tick，期间 drone immobile。channel 中断 → 按 ActionRegistry refund_policy 处理 | 500 tick | 2000 Energy + 500 Matter | 见 canonical 表 |
 
 **渐进解锁 (Progressive Unlock)**：特殊攻击依据世界难度层级渐进解锁——
 
@@ -756,7 +756,7 @@ Vanilla Ruleset 提供 11 种 action：`Attack`/`RangedAttack`/`Heal` 是基础 
 | Tutorial | 全部禁用 | 新手引导阶段不需要特殊攻击 |
 | Novice | 全部禁用 | 低强度世界，专注基础经济/物流 |
 | Standard | 全部 11 种 vanilla action 可用（3 basic combat + Hack, Drain, Overload, Debilitate, Disrupt, Fortify, Leech, Fabricate） | 标准体验 |
-| Advanced | 全部 11 种 vanilla action + 服主自定义 `[[custom_actions]]` | 完全开放的模组世界 |
+| Advanced | 全部 11 种 vanilla action + 服主自定义 `[[action_registry]]` | 完全开放的模组世界 |
 
 > 服主可通过 `world.toml` 中的 `vanilla.special_attacks_enabled` 列表覆盖默认解锁策略（如 Standard 世界禁用 Leech 和 Fabricate）。
 
@@ -965,8 +965,8 @@ impl Plugin for LeechBodyPartPlugin {
             .resource_mut::<BodyPartRegistry>()
             .register(BodyPartType {
                 name: "Leech".into(),
-                action: CommandActionKind::Custom("Leech".into()),
-                damage_type: Some("Corrosive".into()),
+                action: ActionKind::Registered("Leech".into()),
+                damage_type: Some("Kinetic".into()),
                 base_damage: Some(15),
                 range: 1,
                 cost: resource_cost![Energy => 300],
@@ -980,14 +980,14 @@ impl Plugin for LeechBodyPartPlugin {
 
 Move、Attack、Harvest 等每个 action 在 snapshot 和 replay 中保留完整溯源链：**command → state diff → code line**。引擎在每 tick 应用 command 后，将 `(command, entity_id, state_diff)` 三元组写入 `TickTrace`。前端和 MCP 调试工具可通过 `swarm_trace_command(entity_id, tick)` 查询该实体在指定 tick 的指令及其导致的全部状态变更，并关联到 WASM 源码行（需编译时嵌入 debug symbol section）。此溯源链对 AI agent 调试特别关键——agent 可通过 MCP 执行「为什么我的 drone 在 tick 542 没有采集？」并得到完整因果链。
 
-#### 自定义 Action（`[[custom_actions]]`）
+#### 自定义 Action（`[[action_registry]]`）
 
 当新 body part 需要的动作无法映射到已有 action type 时，需注册新的 ActionRegistry handler：
 
 ```toml
 # world.toml — 自定义 Action（通过 ActionRegistry 注册）
 
-[[custom_actions]]
+[[action_registry]]
 name = "Scramble"
 description = "扰乱——随机重排目标下一 tick 的指令执行顺序"
 range = 3
@@ -999,7 +999,7 @@ cost = { Energy = 400 }
 **注册流程**：
 
 ```
-1. world.toml 中声明 [[custom_actions]]
+1. world.toml 中声明 [[action_registry]]
    → 引擎启动时解析，动态注册 ActionRegistry entry
 2. 每个 custom action 需提供对应的 validate/apply handler：
    - 已有 special_effect 的（如 heal_self, scramble_commands）引擎内置
@@ -1024,7 +1024,7 @@ cost = { Energy = 400 }
 
 #### 特殊效果类型定义（`[[special_effects]]`）
 
-与 body_part_types 和 damage_types 一样，特殊效果可通过 world.toml 定义和扩展。每个 `[[special_effects]]` 条目定义一个可由 `[[custom_actions]]` 引用的效果类型：
+与 body_part_types 和 damage_types 一样，特殊效果可通过 world.toml 定义和扩展。每个 `[[special_effects]]` 条目定义一个可由 `[[action_registry]]` 引用的效果类型：
 
 ```toml
 # world.toml — 特殊效果类型定义（可扩展）
@@ -1059,7 +1059,7 @@ description = "给目标附加易伤状态——指定伤害类型抗性×2"
 handler = "debilitate"
 target = "enemy_any"
 duration = 50
-resistance = "Corrosive"
+resistance = "Kinetic"
 
 [[special_effects]]
 name = "disrupt"
@@ -1121,7 +1121,7 @@ resistance = "Psionic"
 
 | 字段 | 类型 | 必需 | 说明 |
 |------|------|------|------|
-| `name` | string | ✅ | 唯一标识符，被 `[[custom_actions]].special_effect` 引用 |
+| `name` | string | ✅ | 唯一标识符，被 `[[action_registry]].effect_handler` 引用 |
 | `description` | string | ✅ | 人类可读描述 |
 | `handler` | string | ✅ | 引擎内置处理器名。内置：`hack`, `drain`, `overload`, `debilitate`, `disrupt`, `fortify`, `leech`, `fabricate`, `heal_self`, `scramble_commands`, `convert_to_structure` |
 | `target` | enum | ✅ | 目标类型：`enemy_drone`, `enemy_structure`, `enemy_player`, `enemy_any`, `self`, `ally`, `self_or_ally`, `any` |
@@ -1133,10 +1133,10 @@ resistance = "Psionic"
 ```
 1. world.toml 中声明 [[special_effects]]
    → 引擎启动时解析，注册到 SpecialEffectRegistry
-2. ActionRegistry entry 或 [[custom_actions]] 中通过 special_effect = "name" 引用
+2. ActionRegistry entry 或 [[action_registry]] 中通过 effect_handler = "name" 引用
    → 引擎在 ActionRegistry 注册时自动绑定 handler
 3. 引擎内置所有 handler（hack/drain/overload/…）— 无需额外插件即可使用
-4. 服主只需在 world.toml 中声明扩展 [[custom_actions]] + 引用已有 [[special_effects]]
+4. 服主只需在 world.toml 中声明扩展 [[action_registry]] + 引用已有 [[special_effects]]
    → 自定义特殊攻击只需 TOML 配置，无需改 Rust 代码
 5. 如需全新 handler（TOML 配置无法表达的效果），通过 Bevy Plugin 注册
 ```
@@ -1145,7 +1145,7 @@ resistance = "Psionic"
 
 ```toml
 # 以下 8 个 special action 是 ActionRegistry 的 vanilla action；加上 Attack/RangedAttack/Heal 共 11 种 vanilla action。
-# world.toml 仅通过 vanilla.special_attacks_enabled 启用/禁用；[[custom_actions]] 只用于服主自定义扩展 action。
+# world.toml 仅通过 vanilla.special_attacks_enabled 启用/禁用；[[action_registry]] 只用于服主自定义扩展 action。
 
 [action_registry.vanilla.Hack]
 name = "Hack"
@@ -1193,8 +1193,8 @@ cost = { Energy = 400 }
 
 [action_registry.vanilla.Leech]
 name = "Leech"
-description = "吸血攻击——伤害 50% 治疗自身，Corrosive 15 dmg"
-damage_type = "Corrosive"
+description = "吸血攻击——伤害 50% 治疗自身，Kinetic 15 dmg"
+damage_type = "Kinetic"
 base_damage = 15
 range = 1
 special_effect = "leech"
@@ -1353,7 +1353,7 @@ fn register_rule_systems(app: &mut App, config: &WorldConfig) {
 
 // ResourceRegistry 是运行时的资源类型字典
 struct ResourceRegistry {
-    types: IndexMap<String, ResourceDef>,  // IndexMap 保证迭代顺序确定
+    types: BTreeMap<String, ResourceDef>,  // 资源名按字节序排序，保证跨平台迭代确定性
     action_costs: ActionCosts,       // spawn, build.*, body_part.*, ...
     source_types: Vec<SourceDef>,
 }
@@ -1375,7 +1375,7 @@ struct Resource { energy: u32 }
 
 // 之后（动态）
 struct Resource {
-    amounts: IndexMap<String, u32>,  // IndexMap 保证迭代顺序确定
+    amounts: BTreeMap<String, u32>,  // 资源名按字节序排序，保证跨平台迭代确定性
 }
 struct ResourceDef {
     name: String,
@@ -1599,7 +1599,7 @@ signature = Ed25519_sign(author_privkey, package_hash)
 
 ### 2.8 Determinism Contract — 确定性合同
 
-> 确定性保证的完整合同见 [Tick Protocol §7](specs/core/01-tick-protocol.md#7-确定性保证与反作弊)。
+> 确定性保证的完整合同见 [Tick Protocol §7](../specs/core/01-tick-protocol.md#7-确定性保证与反作弊)。
 
 #### 固定算法
 
@@ -1794,7 +1794,7 @@ Swarm 支持跨世界 identity federation——同一身份可在多个世界中
 
 ### 3.4 玩家经济反馈循环
 
-> 反馈循环的完整设计见 [Feedback Loop](specs/gameplay/06-feedback-loop.md)。
+> 反馈循环的完整设计见 [Feedback Loop](../specs/gameplay/06-feedback-loop.md)。
 
 为人类和 AI 玩家提供经济健康可见性——通过 MCP 和 Web UI 双通道。
 

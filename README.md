@@ -7,7 +7,7 @@
 | 我想… | 看这里 |
 |:--|:--|
 | 了解项目愿景和架构全景 | [`design/README.md`](design/README.md) |
-| 查看实施进度和任务计划 | [`ROADMAP.md`](ROADMAP.md) |
+| 查看实施进度和任务计划 | 主仓库 `ROADMAP.md` |
 | 理解引擎如何工作（Tick/ECS/快照） | [`design/engine.md`](design/engine.md) |
 | 查看游戏机制（身体部件/伤害/特殊攻击） | [`design/gameplay.md`](design/gameplay.md) |
 | 了解 World vs Arena 模式 + PvE | [`design/modes.md`](design/modes.md) |
@@ -39,7 +39,7 @@ docs/
 │   ├── future/             扩展路线 (T2 增量快照/T3 分片)
 │   ├── reference/          API 参考 (commands/host-functions/mcp-tools/codegen)
 │   └── gateway-protocol.md  Gateway 协议
-├── ROADMAP.md              实施进度追踪（Wave 计划 + 依赖图）
+├── ROADMAP.md              实施进度追踪（位于主仓库）
 ├── AGENTS.md               AI agent 约定
 ├── RUNBOOK.md              运维手册
 ├── GETTING-STARTED.md      入门指南

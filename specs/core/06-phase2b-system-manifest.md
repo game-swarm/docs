@@ -38,7 +38,7 @@ Serial Spine:
     │       [S04] recycle_system (inline)                  │
     │     Transfer/Withdraw →                              │
     │       [S05] transfer_system (inline)                 │
-    │     Spawn (validate only) →                          │
+    │     Spawn (validate + debit + pending) →             │
     │       [S06] spawn_validator (inline)                 │
     └─────────────────────────────────────────────────────┘
   ├─────────────────────────────────────────────────────┤
@@ -105,7 +105,7 @@ Serial Spine:
 - **Phase**: 2a inline
 - **Handled Commands**: `Move`, `Harvest`, `Transfer`, `Withdraw`, `Build`, `Spawn`, `Recycle`, `ClaimController`, `TransferToGlobal`, `TransferFromGlobal`
 - **Reads**: CommandQueue, WorldConfig, PlayerState, Drone, Room, Entity (owner, position)
-- **Writes**: Drone (position, fatigue), ResourceAmount, EventLog, PendingSpawn buffer, DeathMark component, ResourceLedger
+- **Writes**: Drone (position, fatigue), ResourceAmount, EventLog, PendingEntityCreation buffer, DeathMark component, ResourceLedger
 - **Must run before**: S02
 - **Iteration key**: `command.sort_key` (priority_class, shuffle_index, source_rank, sequence, command_hash)
 - **Note**: Per-drone per-tick action quota enforced inline: max 1 main action per drone. Transfer/Withdraw 不计入但受 carry 容量约束。S01 不再处理 `Attack`/`RangedAttack`/`Heal` 或任何 special action，不写 `HitPoints`/`Entity(hits)`；combat 类 action 只能通过 A01 handler 写 `PendingDamage`/`PendingHeal` intent 到 combat buffer，实际 HP 修改由 S15 统一执行。
@@ -159,8 +159,8 @@ Serial Spine:
 - **Phase**: 2a inline
 - **Handled Commands**: `Spawn`
 - **Reads**: Spawn, DroneTemplate, Room, ResourceAmount, PlayerState
-- **Writes**: Spawn (cooldown), ResourceAmount (body_cost deduction), PendingSpawn buffer
-- **Note**: Phase 2a 仅校验 + 扣费 + 入队 `PendingSpawn`。实际 drone 创建由 Phase 2b S08 spawn_system 执行。同 tick 后续命令不可见待创建 drone。
+- **Writes**: Spawn (cooldown), ResourceAmount (body_cost deduction), PendingEntityCreation buffer
+- **Note**: Phase 2a 校验 + 扣费 + 写入 `PendingEntityCreation`。实际 drone 创建由 Phase 2b S08 spawn_system flush。新 drone 的 `StableEntityId` 可写入 trace，但实体数据不进入本 tick 可见/可交互索引；下一 tick 才参与快照、命令校验和系统迭代。
 
 ---
 
@@ -177,7 +177,7 @@ Serial Spine:
 ### S08: spawn_system
 - **ID**: `spawn`
 - **R16 B2 fix**: 移至 death_marker 之后，使用已释放的 RoomCap 槽位。
-- **Reads**: PendingSpawn buffer (from S06), DroneTemplate, Room, RoomCap
+- **Reads**: PendingEntityCreation buffer (from S06), DroneTemplate, Room, RoomCap
 - **Writes**: PendingEntityCreation buffer, ResourceAmount (finalize)
 - **Entity creation**: ✅ — 新 Drone 写入 `PendingEntityCreation`
 - **Note**: RoomCap 在 S07 释放后立即可用，同 tick spawn 可完成准入与扣费，但创建结果本 tick 不可交互。
