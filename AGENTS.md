@@ -77,7 +77,7 @@ ROADMAP.md                 实现追踪（gap → checklist → Wave）
 ## 规范管理
 
 - `specs/` 按域分子目录：`core/` `security/` `gameplay/`
-- `specs/gateway-protocol.md` 为跨域 Gateway 协议（汇聚 specs/core/01 §4 + specs/security/03 §2 等）
+- `specs/security/gateway-protocol.md` 为跨域 Gateway 协议（汇聚 specs/core/01 §4 + specs/security/03 §2 等）
 - **历史版本由 git 管理**——`git log specs/` 可追溯所有变更
 - 需要 checkpoint 时用 `git tag v0.N` 标记，不需要复制目录
 - `design/README.md` 是导航入口；域细节在各 `design/<domain>.md`
