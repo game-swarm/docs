@@ -247,6 +247,8 @@ Swarm 不追求与 Screeps API 兼容。设计哲学不同：
 | `CommandIntent` | WASM tick() 的原始输出——仅含 sequence + action。不可信，不含任何服务端字段。 | 内存（COLLECT 阶段） |
 | `ValidatedCommand` | RawCommand 通过预校验后的形式——携带解析后的目标引用、距离、成本缓存。 | 内存 → 应用阶段 |
 | `DeployPayload` | 客户端提交的部署包：WASM binary + manifest + code-signing certificate + signature。 | Blob Store |
+| `PendingEntityCreation` | Phase 2a 校验后写入的待创建实体记录。spawn_system 在 Phase 2b flush 创建实体，新实体下 tick 才可见/可交互。 | 内存 → redb |
+| `TickInputEnvelope` | 每 tick COLLECT 输入封套：module_hash、wasmtime_version、fuel_schedule_version、snapshot_hash、commands_hash、deploy/rollback/admin events、world_config_hash、mods_lock_hash、terminal_state。确保回放输入完整性。 | redb |
 | `redb_version_counter` | Deploy/state 操作的 redb 原子递增计数器——保证跨节点一致性和防重放。与 `version_counter`（manifest 内字段）语义相同但存储位置不同。 | redb |
 
 所有文档中的 `TickTrace` 统称指向以上三种记录的集合——具体指向哪一层取决于上下文（replay-critical → TickCommitRecord，debug → RichTraceBlob，回放 → ReplayArtifact）。
