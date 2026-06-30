@@ -2,7 +2,7 @@
 
 > 技术选型的落地规范见 [WASM Sandbox](specs/core/04-wasm-sandbox.md)、[Persistence Contract](specs/core/05-persistence-contract.md)、[Snapshot Contract](specs/core/09-snapshot-contract.md)、[Command Source](specs/security/09-command-source.md)。
 
-**设计原则：设计即终态。没有"远期方向"、"阶段"、"future"、"以后再说"。每一个技术选型按最佳实践当下裁定。**
+**设计原则：设计即终态。没有"远期方向"、Phase、future、deferred、"以后再说"或版本分期。每一个技术选型必须按当下最佳实践一次性裁定；不得用分期实现、暂缓决定或保留旧方案并存来逃避取舍。实现顺序只记录在 ROADMAP，不进入设计和规范。**
 
 ## 1. 引擎框架: Rust + Bevy ECS
 

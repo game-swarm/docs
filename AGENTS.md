@@ -10,6 +10,7 @@
 | 实现注释 (`锚定 design/README.md §X`) | 文档自足，不需要"锚定"声明 |
 | 变更标记 (`新增`/`删除`/`v0.2`) | git diff 负责历史，文档不回溯 |
 | Phase/版本号 (`P0-N`/`Phase 0`) | 无阶段概念，无版本标记 |
+| 设计延期词 (`future`/`deferred`/`以后`/`远期`) | 设计即终态，不允许用延期词回避当下裁决 |
 | 最后更新日期 | git blame 负责归属 |
 | 版本分期设计 (`v1 先 X，v1.1 再 Y`) | 设计按最佳实践一次性完整描述，不做"当前凑合、以后升级"的分期妥协。无阶段概念——设计即完整目标，实现顺序是 ROADMAP 的职责 |
 
@@ -75,12 +76,13 @@ ROADMAP.md                 实现追踪（gap → checklist → Wave）
 
 ## 规范管理
 
-- `specs/` 按域分子目录：`core/` `security/` `gameplay/` `future/`
+- `specs/` 按域分子目录：`core/` `security/` `gameplay/`
 - `specs/gateway-protocol.md` 为跨域 Gateway 协议（汇聚 specs/core/01 §4 + specs/security/03 §2 等）
 - **历史版本由 git 管理**——`git log specs/` 可追溯所有变更
 - 需要 checkpoint 时用 `git tag v0.N` 标记，不需要复制目录
 - `design/README.md` 是导航入口；域细节在各 `design/<domain>.md`
 - 所有文档引用规范时使用 `specs/<dir>/<NN>-<name>.md` 格式
+- 建议在提交前运行 markdown-link-check 或等价脚本检查跨文档链接；spec 链接统一从 docs 仓库根路径书写，不加 `docs/` 前缀
 
 ## 工作流
 
