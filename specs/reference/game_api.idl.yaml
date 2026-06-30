@@ -217,8 +217,8 @@ command_action:
     description: "All combat and effect actions. 11 vanilla actions built-in (immutable). World mods register additional actions without touching CommandAction enum."
     total_vanilla: 11
     registration:
-      description: "World mods register new actions via world.toml [[action_registry]] or Rhai mod ActionManifest."
-      authority: "World Action Manifest (world.toml [[action_registry]]) + Rhai action_def()"
+      description: "World mods register new actions via world.toml [[action_registry]] and Bevy Plugin ActionRegistry installers."
+      authority: "World Action Manifest (world.toml [[action_registry]]) + Bevy Plugin registration"
       conflict_resolution: "Vanilla names are reserved and cannot be overridden by mods."
 
     vanilla_actions:
@@ -732,6 +732,8 @@ mcp_tools:
         challenge_id: string
         challenge: string
         difficulty_bits: u32
+        difficulty_bits_min: u32
+        difficulty_bits_max: u32
         expires_at: u64
       rate_limit: "10/min"
       required_scope: "none"
@@ -1110,7 +1112,7 @@ mcp_tools:
       category: Deploy
       input_schema: {}
       output_schema:
-        rules: "[RuleModule]"
+        rules: "[WorldRulePlugin]"
         mods: "[ModInfo]"
         limits: Limits
         tick_rate: u32
@@ -1125,7 +1127,7 @@ mcp_tools:
       category: Deploy
       input_schema: {}
       output_schema:
-        rule_modules: "[RuleModule]"
+        rule_plugins: "[WorldRulePlugin]"
         parameters: Parameters
         version: string
       rate_limit: "10/tick"

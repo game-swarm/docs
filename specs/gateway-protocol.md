@@ -140,7 +140,7 @@ MCP 工具清单见 `specs/reference/mcp-tools.md`。
 |------|-------------|-----------|
 | NATS 不可达 | `/healthz` 返回 `503`；delta 推送暂停 | 客户端检测 gap → REST fetch |
 | Engine 不可达 | `/healthz` 返回 `503`；所有请求返回 `502` | 客户端重连等待 |
-| Dragonfly 不可达 | 不影响 Gateway——Gateway 不直接访问缓存 | 无 |
+| Engine Moka Cache miss | 不影响 Gateway——Gateway 不直接访问缓存 | 请求由 Engine 回退到 redb |
 | Gateway 进程重启 | WebSocket 断开；客户端重连 | gap fetch 恢复 |
 
 ## 8. 安全

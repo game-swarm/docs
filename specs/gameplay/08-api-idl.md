@@ -292,8 +292,8 @@ git diff --exit-code        # 生成代码与提交代码一致 → 不一致则
   ```
 - `[[body_part_types]]` 定义 body part → action 绑定（如 `Claim` part → `Hack` action）
 - `[[special_effects]]` 定义可复用效果 handler；vanilla special attack 已预注册为 ActionRegistry action，不通过 `[[custom_actions]]` 注册
-- 服主可通过 World Action Manifest/Rhai 模组注册 mod action；不得覆盖 vanilla action 名称
-- 需全新 handler 时通过 Rhai 模组注册
+- 服主可通过 World Action Manifest/Bevy Plugin 注册 mod action；不得覆盖 vanilla action 名称
+- 需全新 handler 时通过 Bevy Plugin 注册
 - SDK 和 MCP schema 自动包含所有已注册 action
 
 ## 6. SDK 生成与分发

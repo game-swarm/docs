@@ -54,12 +54,12 @@ docs/
 |------|------|
 | [swarm/engine](https://git.kagurazakalan.com/swarm/engine) | Rust 游戏引擎 (Bevy ECS) |
 | [swarm/sandbox](https://git.kagurazakalan.com/swarm/sandbox) | WASM 沙箱运行时 (Wasmtime) |
-| [swarm/gateway](https://git.kagurazakalan.com/swarm/gateway) | Go API 网关 |
+| [swarm/gateway](https://git.kagurazakalan.com/swarm/gateway) | Rust API 网关 |
 | [swarm/frontend](https://git.kagurazakalan.com/swarm/frontend) | Web 客户端 (Monaco + PixiJS) |
 
 ### 官方模组（Vanilla Mods）
 
-每个模组 = 独立 git 仓库（`mod.toml` + Rhai 脚本），engine 通过 git submodule 引用。
+每个模组 = 独立 Rust crate 仓库（`Cargo.toml` + `mod.toml`），engine 通过 git submodule 引用并静态编译为 Bevy Plugin。
 模组开发模板：[swarm/mod-template](https://git.kagurazakalan.com/swarm/mod-template)。
 
 | 模组 | 默认 | 说明 |

@@ -32,14 +32,13 @@ fdb ──→ nats ──→ engine ──→ gateway ──→ frontend
   │                │
   └──→ compiler ───┘  (compiler 可与 engine 并行启动)
   │
-  └──→ dragonfly     (缓存独立，可与 FDB 并行)
+  └──→ moka cache    (Engine 进程内读缓存)
 ```
 
 | 服务 | 依赖 | 启动超时 | 就绪信号 |
 |------|------|---------|---------|
 | FDB | 无 | 30s | `fdbcli --exec status` 返回 `available` |
 | NATS | 无 | 10s | `nats server check connection` |
-| Dragonfly | 无 | 10s | `redis-cli PING` → `PONG` |
 | Compiler | FDB | 15s | `/healthz` → 200 |
 | Engine | FDB + NATS | 60s | `/healthz` → 200，`tick_ok: true` |
 | Gateway | Engine + NATS | 15s | `/healthz` → 200 |
@@ -48,20 +47,20 @@ fdb ──→ nats ──→ engine ──→ gateway ──→ frontend
 ### 1.3 降级启动
 
 ```bash
-# 仅引擎 (无 FDB/NATS/Dragonfly) — 开发/测试
+# 仅引擎 (无 FDB/NATS) — 开发/测试
 docker compose up engine
 
 # 引擎 + FDB (无 NATS) — 单节点持久化
 docker compose up fdb engine
 
-# 引擎 + NATS + Dragonfly (无 FDB) — 无持久化，仅广播
-docker compose up nats dragonfly engine
+# 引擎 + NATS (无 FDB) — 无持久化，仅广播
+docker compose up nats engine
 ```
 
 降级模式下引擎自动检测依赖缺失：
 - 无 FDB → 状态仅内存，tick 继续运行，`/healthz` 返回 `503 degraded`
 - 无 NATS → delta 推送暂停，客户端 REST fetch 同步
-- 无 Dragonfly → 所有读取回退 FDB 直读
+- Moka Cache miss → 所有读取回退 FDB 直读
 
 ### 1.4 启动后验证
 
@@ -144,7 +143,7 @@ swarm snapshot restore --input /backup/snapshot_20260614.json
 |------|------|------|------|
 | **无 FDB** | FDB 连接丢失 >3s | 状态仅内存，`/healthz 503` | FDB 恢复后自动重连 |
 | **无 NATS** | NATS 连接丢失 | delta 推送暂停，客户端 REST fetch | NATS 恢复后自动重连 |
-| **无 Dragonfly** | Dragonfly 连接丢失 | 读取回退 FDB 直读，性能下降 | Dragonfly 恢复后自动重建缓存 |
+| **Moka Cache miss** | Engine 进程内缓存未命中或过期 | 读取回退 FDB 直读，性能下降 | Engine 异步重建缓存 |
 | **引擎 OOM** | cgroup OOM killer | 进程重启，当前 tick 丢失（snapshot 恢复） | systemd auto-restart |
 | **FDB commit 连续失败** | ≥3 次/tick | tick 放弃，引擎降级 | 运维介入检查 FDB 集群 |
 

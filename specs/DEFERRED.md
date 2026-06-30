@@ -16,25 +16,25 @@
 
 ---
 
-### ML6: Dragonfly nonce post-crash replay 窗口
+### ML6: redb nonce post-crash replay 窗口
 
 - **来源**: rev-dsv4-architect D5, rev-dsv4-security M4
-- **问题**: Dragonfly 崩溃后 nonce TTL 窗口内可重放。高价值操作（admin）需要更强的防重放
+- **问题**: nonce 若只保存在易失热路径中，进程崩溃后 TTL 窗口内可重放。高价值操作（admin）需要更强的防重放
 - **触发时机**: Auth Service 实现完成后，进行 crash-recovery 集成测试
 - **决策**: 
-  - 是否将 admin 操作 nonce 从 Dragonfly 迁移到 redb（牺牲热路径延迟换取崩溃安全）
-  - 或接受 Dragonfly 崩溃窗口风险（300s TTL），仅对 admin 操作额外加 challenge-response
-- **当前默认**: Admin 使用 challenge-response（不依赖 Dragonfly nonce 持久化），普通 MCP 查询使用 Dragonfly nonce
+  - 是否将 admin 操作 nonce 持久化到 redb（牺牲热路径延迟换取崩溃安全）
+  - 或接受普通查询的易失 nonce 窗口风险，仅对 admin 操作额外加 challenge-response
+- **当前默认**: Admin 使用 challenge-response + redb 持久化 nonce；普通 MCP 查询使用 Gateway 进程内 TTL nonce cache
 
 ---
 
-### ML9: Rhai re-sign tooling
+### ML9: Code signing re-sign tooling
 
 - **来源**: rev-gpt-security H4, rev-dsv4-security M3
-- **问题**: CodeSigningCertificate 批量重签（key rotation / compromise recovery）需要 Rhai 工具链支持
+- **问题**: CodeSigningCertificate 批量重签（key rotation / compromise recovery）需要工具链支持
 - **触发时机**: CodeSigningCertificate 体系实现 + 首次私钥轮换测试
 - **决策**:
-  - batch re-sign 的 Rhai 脚本接口设计
+  - batch re-sign 的 CLI/API 接口设计
   - dry-run 模式（预览重签范围，不实际提交）
   - 重签期间的部署窗口策略（暂停部署 vs 允许旧签名模块继续运行）
 - **当前默认**: 旧签名模块在证书到期前继续有效（code signing 验证的是 deploy 时刻的证书有效性，非运行时刻）

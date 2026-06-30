@@ -488,7 +488,7 @@ deploy_canonical_signature:
     mechanism: "redb version_counter + deploy_id uniqueness"
     description: >
       Deploy replay protection uses redb atomic version_counter increment,
-      not Dragonfly nonce. The predicted counter is signed into the deploy
+      not volatile nonce cache. The predicted counter is signed into the deploy
       payload; server validates counter prediction, atomically bumps redb
       counter, and accepts only if prediction matches. Combined with
       deploy_id uniqueness, this guarantees idempotent single-accept

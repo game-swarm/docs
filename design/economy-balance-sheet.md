@@ -24,7 +24,7 @@ upkeep = base_upkeep × rooms × (1 + rooms / room_soft_cap)
 | 1 | 55 | 82,500 | 新手轻松 |
 | 5 | 375 | 562,500 | 可承受 |
 | 20 | 3,000 | 4,500,000 | 需要高效经济 |
-| 50 | 15,000 | 22,500,000 | 硬上限逼近 |
+| 50 | 15,000 | 22,500,000 | 强递减区间 |
 
 维护费随房间数呈 **超线性增长**（O(n²) 趋势）。50 房间的维护费是 5 房间的 40 倍（而非 10 倍线性）。
 
@@ -220,6 +220,8 @@ upkeep = base_upkeep × rooms × (1 + rooms / room_soft_cap)
 | `controller_repair_cost` | 0 | 0 | 0 |
 | `controller_repair_limit` | range/capacity/queue | range/capacity/queue | range/capacity/queue |
 | `depot_repair_cost` | local depot resources | local depot resources | local depot resources |
+
+Controller/Depot age repair 的权威模型见 `specs/core/08-resource-ledger.md` §2.4：无全局 repair cap，Controller 免费，Depot 消耗本地资源，维修吞吐只受物理范围、每设施容量和队列约束。
 
 > **存储税权威源**：tier 定义见 `design/gameplay.md` §8「累进存储税」和 `specs/core/08-resource-ledger.md` §StorageTax。Tutorial 全免，Vanilla/Standard 使用相同 tier 结构（税率由 `storage_tax_tiers` 配置）。
 >

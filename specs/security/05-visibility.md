@@ -213,7 +213,7 @@ GET /specs/reference/v1/world/rooms/:id/map → 仅地形（公开）
 | MCP `swarm_explain_last_tick` | N-1 | 仅自身 | 解释上一 tick 的执行结果 |
 | MCP `swarm_get_replay` | N | `is_visible_to(player, tick)` | 每帧按该 tick 的视野重建 |
 | WebSocket delta | N | `is_visible_to(subscriber, N)` | 仅推送变更实体 |
-| REST `/specs/reference/v1/world/rooms/:id` | N | `is_visible_to(requester, N)` | 快照缓存读取 |
+| REST `/specs/reference/v1/world/rooms/:id` | N | `is_visible_to(requester, N)` | Engine Moka Cache 读取，miss 时回退 redb |
 | Replay (自身) | 历史 tick | `is_visible_to(player, tick)` | 逐 tick 重建视野 |
 | Replay (Arena 赛后公开) | 历史 tick + ≥100 延迟 | 全知（无过滤） | 仅赛后可用 |
 | Spectator WebSocket | N - spectate_delay | 无过滤（全地图） | 仅 `public_spectate=true` 时可用 |

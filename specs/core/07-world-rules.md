@@ -4,15 +4,15 @@
 
 ## 1. 定位
 
-Swarm 不是「一个游戏」，是「游戏引擎平台」。规则模组是**可安装的 Rhai 脚本 + 声明式配置**——轻量、确定、可组合。
+Swarm 不是「一个游戏」，是「游戏引擎平台」。规则模组是**Bevy Plugin 静态编译 + 声明式配置**——确定、可审计、可组合。
 
 ```
 玩家代码:  WASM → 控制 drone     (不可信 → sandbox)
-规则模组:  Rhai → 修改世界规则    (服主声明 → 引擎嵌入)
+规则模组:  Bevy Plugin → 修改世界规则 (编译进 Engine → 服主声明启用)
 引擎核心:  Rust → 确定性模拟      (不可变)
 ```
 
-每个世界通过 `world.toml` 启用一组模组，每模组有独立的参数配置。模组通过 `actions` 请求引擎操作——不能绕过 Command Validation Pipeline。
+每个世界通过 `world.toml` 启用一组已编译进 Engine 的模组，每模组有独立的参数配置。模组通过 Bevy ECS systems、World Action Manifest 和 ActionRegistry 接入引擎——不能绕过 Command Validation Pipeline。
 
 ## 2. 配置 Schema
 
@@ -309,273 +309,9 @@ if (cfg.drone.memory_upkeep_cost.Energy > 0) {
 }
 ```
 
-## 5.1 Rhai 事务性执行模型
+## 5.1 Bevy Plugin 静态规则模型
 
-规则模组的 Rhai 脚本在每 tick 的规则注入阶段执行。所有 `actions.*` 调用（如 `actions.deduct`、`actions.award`、`actions.emit_event`）**不直接修改世界状态**，而是遵循事务性语义：
-
-```
-Rhai 脚本执行
-    │
-    ▼
-┌─────────────────────────────────┐
-│  RhaiActionBuffer (内存缓存)     │  ← 所有 actions.* 调用写入此 buffer
-│  - deducts: Vec<DeductAction>   │
-│  - awards:  Vec<AwardAction>    │
-│  - events:  Vec<GameEvent>      │
-│  - effects: Vec<WorldEffect>    │
-└────────────┬────────────────────┘
-             │ 脚本执行完毕
-             ▼
-┌─────────────────────────────────┐
-│  钩子执行完毕检查                 │  ← 所有注册的 Rhai 钩子均已返回
-│  (on_tick / on_command / etc.)  │
-└────────────┬────────────────────┘
-             │ 全部成功
-             ▼
-┌─────────────────────────────────┐
-│  统一 Apply                      │  ← 按顺序将 buffer 内容写入世界状态
-│  1. deduct（扣资源）              │     redb WriteTransaction 内 atomic commit
-│  2. award（发资源）               │
-│  3. emit_event（发事件）          │
-│  4. effect（世界效果）            │
-└────────────┬────────────────────┘
-             │
-             ▼
-       世界状态已更新
-```
-
-**超时回滚**：若任一 Rhai 脚本超过确定性节点预算（默认 100,000 AST 节点），整个 `RhaiActionBuffer` 丢弃，世界状态不变。AST 节点是确定性度量——同一输入在任何硬件上终止于相同节点，保证回放/重模拟一致性。墙钟仅用于运维告警（如单模组 >2s 触发告警），不作为状态决定因素。隔离脚本副作用——一个脚本超限不影响其他脚本或核心引擎。
-
-**部分失败处理**：
-- 单个 `actions.*` 调用失败（如 deduct 资源不足）→ 该 action 被跳过，不影响 buffer 中其他 action
-- 脚本 panic / 语法错误 → 该脚本的全部 buffer 丢弃，其他脚本 buffer 保留
-- 所有脚本执行完毕后，buffer 中有效的 action 一次性 apply
-
-**隔离保证**：
-- Rhai 脚本**不能**绕过 Command Validation Pipeline（见 specs/core/02-command-validation §1）
-- Rhai 脚本**默认不能**直接写入 ECS 组件——仅能通过 `actions.*` API（声明式 action buffer）
-- **可选 capability-gated direct ECS writer**：模组可在 `mod.toml` 中声明 `direct_ecs_writer` capability，经服主在 `world.toml` 中显式授权后，获得对特定 ECS 组件的直接写入能力。每个 direct writer capability 必须声明 `engine_version`、`abi_version`、`affected_components`、`affected_resources`。详见 §5.1g Direct ECS Writer 能力模型。
-- Rhai 脚本**不能**访问其他玩家的私有数据
-- Buffer apply 阶段由引擎核心在 redb WriteTransaction 中执行，保证确定性
-
-**RuleMod 角色声明**：RuleMod 是**世界规则系统**——通过声明式钩子（`on_tick`、`on_command`、`on_event`）修改世界参数和行为，不是玩家命令旁路。RuleMod 不能：(a) 为特定玩家创建或销毁实体；(b) 绕过 Command Validation Pipeline 注入 RawCommand；(c) 直接修改玩家私有数据（如 WASM 内存、部署历史）。RuleMod 的生效范围是**世界级**（全局资源税率、事件触发、环境效果），不得降级为**玩家级作弊通道**。
-
-**能力命名空间**：`actions.*` API 是 RuleMod 修改世界状态的唯一渠道。每个能力有明确的读写范围和审计要求：
-
-| API | 能力 | 允许范围 | 禁止项 | 审计字段 |
-|-----|------|---------|--------|---------|
-| `actions.deduct(resource, amount, reason)` | 扣除全局资源 | 全局资源池（Energy、Crystal 等） | 禁止扣到负数；禁止扣除玩家私有资源 | `mod_id, tick, resource, amount, reason` |
-| `actions.award(resource, amount, reason)` | 发放全局资源 | 全局资源池 | 禁止超过 `world.toml` 中 `max_award_per_tick` 上限 | `mod_id, tick, resource, amount, reason` |
-| `actions.emit_event(event_type, data)` | 发射世界事件 | 预定义事件类型（`ResourceCrisis`, `Invasion`, `WeatherChange` 等） | 禁止伪造玩家命令事件；禁止包含玩家私有数据 | `mod_id, tick, event_type` |
-| `actions.set_world_param(key, value)` | 修改世界参数 | `world.toml` 中标记 `mutable = true` 的参数 | 禁止修改 `mutable = false` 的参数（如 tick_interval_ms） | `mod_id, tick, key, old_value, new_value` |
-| `actions.set_entity_flag(entity_id, flag, value)` | 设置实体 flag | 仅全局实体（Source、Controller）；flag 必须在 `allowed_flags` 白名单中 | 禁止设置玩家 drone 的 flag；禁止 `immune_*` 以外的 combat 修改 | `mod_id, tick, entity_id, flag, value` |
-
-能力扩展（如 `actions.spawn_npc`）需通过 `mod.toml` 声明 `required_capabilities = ["spawn_npc"]`，服主在 `world.toml` 中显式授权。
-
-**信任链**：模组的完整生命周期受以下信任链约束：
-
-| 阶段 | 机制 | 说明 |
-|------|------|------|
-| **签名** | Ed25519 签名（blake3 摘要，整个 `.swarm-mod` 包） | `.swarm-mod` 归档附带 `.swarm-mod-signature`；签名无效 → 拒绝加载 |
-| **作者身份** | `mod.toml` 中 `[meta] author_pubkey` | 模组作者自行声明公钥。服主通过选择信任的 `.swarm-mod` 来源表达信任——下载即信任 |
-| **版本锁定** | `mod.toml` 声明 `version = "1.2.3"` + `engine = ">=0.8"` | 引擎检查版本兼容性；不兼容版本拒绝加载 |
-| **吊销 (CRL)** | `.swarm-mod` 签名通过 `author_pubkey` 验证 | 若作者密钥泄露，作者发布新版本模组（新 pubkey）+ 社区公告。无中心化 CRL——去中心化信任模型 |
-| **Operator Override** | `swarm mod disable <mod_id> --world <world>` | 运行时禁用指定模组（不卸载，仅暂停执行）。下次 tick 不再调用该模组钩子 |
-| **回滚策略** | 模组禁用后，其历史 effects 不回滚（已持久化到 redb） | 世界状态不可逆——effects 一旦 apply 即永久生效。服主需通过新模组或手动修复纠正 |
-
-**进程内模式**（唯一生产运行模式）：Rhai engine 在核心引擎进程内执行。安全边界由 Ed25519 数字签名验证保证——所有模组必须签名，不存在"允许未签名"的宽松模式。
-
-- 签名验证在引擎启动时一次性完成，运行时无额外开销
-- 信任决策由服主在安装 `.swarm-mod` 时做出（选择从哪个 URL 下载）——签名验证的是"代码确实来自声明的作者"，而非"作者是否在白名单中"。消除了中心化信任列表的维护负担
-- 模组超时（确定性 AST 节点预算超限）仅丢弃该模组本 tick 的 actions，不影响核心引擎或其他模组。AST 节点预算是确定性度量，同一输入在任何硬件上终止于相同节点，保证回放/重模拟一致性
-- 墙钟仅用于运维告警（如单模组 >2s 触发告警），不作为状态决定因素
-- RuleMod **禁止** inprocess 模式之外的其他执行模式——不存在 `[rhai] isolation` 切换选项
-
-**模组签名机制**：整个模组作为一个 `.swarm-mod` tar.gz 归档分发，附带单个 Ed25519 签名。引擎安装时验签，启动时再次验签：
-
-```
-empire-upkeep-1.2.0.swarm-mod        # tar.gz 归档，标准命名: {name}-{version}.swarm-mod
-├── mod.toml                          # 含 author_pubkey 字段
-├── init.rhai
-├── tick_start.rhai                   # 可选
-└── tick_end.rhai                     # 可选
-
-empire-upkeep-1.2.0.swarm-mod-signature  # Ed25519 签名文件（与归档并行分发）
-```
-
-- 签名算法：`blake3(tar.gz归档)` → `Ed25519_sign(author_privkey, package_hash)`
-- `author_pubkey` 在 `mod.toml` 的 `[meta]` 中声明——**由模组作者自行声明，而非服主配置白名单**。服主通过选择信任哪个 `.swarm-mod` 来源来表达信任
-- 签名由模组开发者使用 `swarm mod pack` 生成，与打包一步完成
-- `.swarm-mod-signature` 与 `.swarm-mod` 归档并行分发（同一目录或 HTTP `Link` 头指向签名 URL）
-- 引擎安装时验签两次：`swarm mod add` 下载后立即验签 + 引擎启动时再次验签。任一失败 → `ModIntegrityError`，拒绝加载
-
-#### 模组签名
-
-模组签名确保模组代码来自声明的作者且未被篡改。签名流程：
-
-```
-开发者侧:
-  1. 编写模组（.rhai 文件 + mod.toml，含 author_pubkey）
-  2. swarm mod pack --key ~/.swarm/keys/author.ed25519
-     → 产出 {name}-{version}.swarm-mod + {name}-{version}.swarm-mod-signature
-  3. 上传两个文件到 GitHub Releases / CDN
-
-服主侧:
-  1. 安装模组: swarm mod add https://releases.example.com/mods/empire-upkeep-1.2.0.swarm-mod
-     → 自动下载 .swarm-mod + .swarm-mod-signature → 验证签名 → 解包到 ~/.swarm/mods/
-  2. world.toml 中引用（source = .swarm-mod URL, version = semver）
-  3. 引擎启动时再次验签（防止安装后文件被篡改）——验证失败拒绝启动
-```
-
-**签名验证流程**（引擎侧）：
-
-1. 引擎启动时读取 `mods.lock`，获取每个模组的 `author_pubkey`、`package_hash`、`signature`
-2. 对 `~/.swarm/mods/{name}/` 下的文件重新打包为 tar.gz → 计算 `blake3`
-3. 校验 `blake3 == mods.lock 中的 package_hash` — 不匹配 → 文件已被篡改 → `ModIntegrityError`
-4. 校验 `Ed25519_verify(author_pubkey, package_hash, signature)` — 不匹配 → 签名无效 → `ModIntegrityError`
-5. 验证通过 → 正常加载
-
-> **设计理由**：签名绑定到作者身份而非服主白名单（`trusted_keys`）。服主的信任决策体现在选择从哪个 URL 下载 `.swarm-mod`——若信任该作者，下载其发布的包；若不信任，不安装。这消除了中心化信任列表的维护负担，且与"无中心化市场"的设计一致。
-
-### 5.1a 国际化
-
-模组的 `description` 和配置参数的 `description` 字段支持多语言。每个 `[[mods]]` 条目可在 `[mods.i18n]` 下按语言代码提供本地化描述：
-
-```toml
-[[mods]]
-name = "empire-upkeep"
-description = "Empire upkeep — drones and rooms cost energy per tick"
-[mods.i18n.zh]
-description = "帝国维护费——drone 和房间每 tick 消耗能量"
-[mods.i18n.ja]
-description = "帝国維持費——ドローンと部屋が毎tickエネルギーを消費"
-```
-
-引擎根据请求的 `Accept-Language` 头或 MCP 客户端的 `locale` 参数返回对应语言。缺少翻译时回退到 `en`，再回退到顶层 `description` 字段。
-
-### 5.1b Hook 表面（R27 CX3）
-
-Rhai 模组通过声明式钩子接入引擎生命周期。**完整 Hook 清单、生命周期调度、helper API、capability 白名单、错误降级和版本合同见权威合同 [Rhai RuleMod ABI](../reference/rhai-mod-abi.md)**。
-
-本节仅保留完整性约束——Hook 执行调度、超时回滚、部分失败处理、隔离保证和信任链已在 ABI 合同中完整定义，此处不重复。
-
-### 5.1c Helper API（R27 CX3）
-
-Rhai 脚本通过 `query.*` 命名空间读取世界状态（只读），通过 `actions.*` 写入。**完整 Helper 签名、Actions API 清单和性能约束见 [Rhai RuleMod ABI §3](../reference/rhai-mod-abi.md)**。
-
-### 5.1d Capability 白名单（R27 CX3） → [Rhai RuleMod ABI §4](../reference/rhai-mod-abi.md)
-
-### 5.1e 错误传播与降级（R27 CX3） → [Rhai RuleMod ABI §5](../reference/rhai-mod-abi.md)
-
-**错误层次**：
-
-| 错误类别 | 触发条件 | 本 tick 行为 | 后续 |
-|---------|---------|------------|------|
-| Action 失败 | 单个 `actions.*` 返回错误 | 跳过该 action，buffer 保留其余 | 无影响 |
-| Script 超时 | AST > 100,000 或墙钟 > 2s | 该脚本 buffer 全部丢弃 | 记录 ModTimeout |
-| Script panic | Rhai 运行时错误 | 该脚本 buffer 全部丢弃 | 记录 ModPanic |
-| 连续失败 | 同模组连续 3 tick panic/timeout | 本 tick buffer 丢弃 | **自动降级**：禁用 1000 tick |
-| 安全违规 | 绕过 sandbox | buffer 丢弃 + WARN | **永久禁用**，需服主手动恢复 |
-| 完整性失败 | 签名验证失败 | 模组拒绝加载 | ModIntegrityError，启动中止 |
-
-**降级通知**：
-
-```
-自动降级 → WARN 日志 + ModDegraded 事件
-  { mod_id, event: "degraded", reason: "consecutive_failures", until_tick: N+1000 }
-服主可通过 swarm mod enable 提前恢复（需确认修复）
-```
-
-降级期间模组 hooks 不调用（零 CPU），`mod.state` 保持不变。恢复时从上次 state 继续。
-
-### 5.1f 版本策略与兼容性（R27 CX3） → [Rhai RuleMod ABI §6](../reference/rhai-mod-abi.md)
-
-**Semver 语义**：
-
-| 版本变更 | 含义 | 兼容性 |
-|---------|------|:-----:|
-| MAJOR (X.0.0) | Breaking: hook 签名变更、actions API 移除/重命名、capability 语义变更 | ❌ 需服主手动迁移 |
-| MINOR (0.X.0) | 新增: 新 hook、新 helper、新 capability、新 param | ✅ 向后兼容 |
-| PATCH (0.0.X) | 修复: bug fix、性能优化、文档更新 | ✅ 完全兼容 |
-
-**Engine 兼容约束**（`mod.toml`）：
-
-```toml
-[mod]
-engine = ">=0.8, <1.0"
-```
-
-引擎加载时检查约束——不匹配 → `ModEngineVersionMismatch`，拒绝加载。
-
-**弃用窗口**：
-
-- API 弃用需在 `mod.toml` 声明 `deprecations = [{api, since, removal, migration_guide}]`
-- 弃用→移除 ≥ 2 个 MINOR 版本
-- 弃用期间：WARN 日志（不阻止执行）
-- 移除后：调用 → Script panic（正常错误路径）
-
-**迁移指南**：模组 `MIGRATION.md` 中说明跨 MAJOR 升级步骤。
-
-| 阶段 | 行为 |
-|------|------|
-| 模组更新 | `swarm mod upgrade` → 下一 tick 新版本 hook 生效 |
-| 回滚 | `swarm mod downgrade` → 旧版本立即恢复 |
-
-### 5.1g Direct ECS Writer 能力模型（D8 B+）
-
-RuleMod 的状态修改路径分为两层：
-
-1. **声明式 action buffer（默认，所有模组均可用）**：通过 `actions.*` API（`actions.deduct`、`actions.award`、`actions.emit_event`、`actions.set_world_param`、`actions.set_entity_flag`）写入 `RhaiActionBuffer`，由引擎在全部 hook 执行完毕后统一 apply。此路径受 Command Validation Pipeline 保护，无需额外 capability 声明。
-
-2. **Direct ECS writer（可选，需 capability gate）**：模组可在 `mod.toml` 中声明特定的 `direct_ecs_writer` capability，经服主在 `world.toml` 中显式授权后，获得对特定 ECS 组件的直接写入能力。直接写入绕过 `RhaiActionBuffer`，进入 ECS system manifest 的 R/W matrix 和 TickTrace audit。
-
-#### Direct ECS Writer Capability 声明要求
-
-每个 `direct_ecs_writer` capability 必须在 `mod.toml` 中声明以下字段：
-
-```toml
-# mod.toml — direct_ecs_writer capability 声明
-[[capabilities]]
-name = "direct_ecs_writer"
-engine_version = ">=0.9, <1.0"     # 引擎版本兼容范围（必填）
-abi_version = 1                      # Direct ECS writer ABI 版本（必填）
-affected_components = [              # 可写入的 ECS 组件白名单（必填，至少一个）
-    "HitPoints",
-    "Position",
-]
-affected_resources = [               # 可修改的资源类型（必填，至少一个）
-    "Energy",
-]
-manifest_hash = "sha256:..."         # 组件/资源集合的完整性 hash（CI 自动生成）
-```
-
-#### 授权语法（world.toml）
-
-```toml
-# world.toml — 服主显式授权 direct_ecs_writer
-[[mods]]
-name = "custom-combat-mod"
-version = "2.0.0"
-capabilities = ["direct_ecs_writer"]
-[mods.capability_config.direct_ecs_writer]
-allow_components = ["HitPoints"]      # 服主可进一步限制组件范围
-allow_resources = ["Energy"]          # 服主可进一步限制资源范围
-max_writes_per_tick = 100             # 每 tick 最大写入次数
-```
-
-#### 约束与审计
-
-| 约束 | 说明 |
-|------|------|
-| R/W matrix 注册 | Direct writer 必须进入 `06-phase2b-system-manifest.md` 的 system R/W matrix，标注 `source=RuleMod:<mod_id>` |
-| CI unique writer gate | CI 检查 direct writer 的 `affected_components` 不与核心 engine system 冲突（同一组件不得有多个 unique writer） |
-| TickTrace 审计 | 每次 direct write 记录 `(mod_id, tick, component, entity_id, field, old_value, new_value)` |
-| Manifest hash | `affected_components` 和 `affected_resources` 集合的 hash 纳入 `world_action_manifest_hash` 和 `TickInputEnvelope` |
-| 版本兼容 | `engine_version` 不匹配 → 模组拒绝加载（`ModEngineVersionMismatch`） |
-| ABI 版本 | `abi_version` 变更 → 模组 MAJOR 版本升级，需服主手动迁移 |
-| 降级行为 | Direct writer 模组连续 3 tick panic/timeout → 自动降级（禁用 1000 tick），与普通模组降级规则一致 |
-
-> **设计理由**：Direct ECS writer 为高级模组开发提供性能关键路径（如自定义 combat system），但必须在 manifest、CI、audit 三重约束下运行。默认所有模组只能使用声明式 action buffer。服主需在充分理解风险后显式授权 direct writer capability。
+World rules are defined via Bevy Plugins, statically compiled into the Engine binary. See design/engine.md §3 and design/tech-choices.md §3.
 
 ## 6. World vs Arena 默认值
 
@@ -678,17 +414,26 @@ cost = { Energy = 10 }
 - 新 body part 绑定到已有 CommandAction 时，只需定义不同的 damage_type/base_damage/cost，引擎复用该 action 的校验和应用逻辑
 - 引入新 CommandAction 时需在引擎中注册变体 + validate/apply handler + IDL 暴露
 
-**Rhai 模组扩展**：
+**Bevy Plugin 扩展**：
 
 ```rust
-actions.add_body_part_type("Leech", #{
-    action: "Leech",
-    damage_type: "Corrosive",
-    base_damage: 15,
-    range: 1,
-    cost: #{ Energy: 300 },
-    special: "heal_self_50pct"
-});
+pub struct LeechBodyPartPlugin;
+
+impl Plugin for LeechBodyPartPlugin {
+    fn build(&self, app: &mut App) {
+        app.world_mut()
+            .resource_mut::<BodyPartRegistry>()
+            .register(BodyPartType {
+                name: "Leech".into(),
+                action: CommandActionKind::Custom("Leech".into()),
+                damage_type: Some("Corrosive".into()),
+                base_damage: Some(15),
+                range: 1,
+                cost: resource_cost![Energy => 300],
+                special_effect: Some("heal_self_50pct".into()),
+            });
+    }
+}
 ```
 
 ### 7.2 建筑类型 (`[[structure_types]]`)
@@ -844,7 +589,7 @@ cost = { Energy = 5000 }
 
  **降级**: Controller 失去 owner 超过 `downgrade_timer`（默认 5000 tick）后降一级，progress 重置。
 
- **维修硬上限**: 多个 Controller 的总 age 回退量不超过每 tick 自然增长的 50%（`max(0, age + 1 - min(0.5, controller_count × 0.5))`），不可完全抵消寿命流逝。
+ **维修约束**: age repair 不存在额外全局 cap；维修能力只受物理范围、每设施容量、队列和 Depot 本地资源约束。权威模型见 design/engine.md §3.4.5 与 specs/core/08-resource-ledger.md §2.4。
 
 ### 7.4 特殊效果类型定义 (`[[special_effects]]`)
 
@@ -953,9 +698,9 @@ resistance = "Psionic"
 ```
 1. world.toml 声明 [[special_effects]] → 引擎解析注册到 SpecialEffectRegistry
 2. [[custom_actions]] 通过 special_effect = "name" 引用 → 引擎绑定 handler
-3. 引擎内置所有 handler — 无需 Rhai 即可使用
+3. 引擎内置所有 handler — 无需额外插件即可使用
 4. 服主新增 [[custom_actions]] 引用已有 [[special_effects]] → 无需改 Rust 代码
-5. 需全新 handler 时通过 Rhai 模组注册
+5. 需全新 handler 时通过 Bevy Plugin 注册
 ```
 
 ### 7.5 自定义 CommandAction (`[[custom_actions]]`)
@@ -1043,13 +788,29 @@ cost = { Energy = 2000, Matter = 500 }
  `cooldown` | u32 | 否 | 冷却时间（tick） |
  `cost` | `{String: u32}` | 否 | 每次使用消耗（body part spawn 成本在 `[[body_part_types]]` 中独立定义） |
 
-**Rhai handler 注册**（全新效果，TOML 无法表达时）：
+**Bevy Plugin handler 注册**（全新效果，TOML 无法表达时）：
 
 ```rust
-actions.register_action_handler("MindControl", |entity, target, params| {
-    actions.set_entity_flag(target, "mind_controlled", true);
-    actions.schedule_flag_removal(target, "mind_controlled", 50);
-});
+pub struct MindControlPlugin;
+
+impl Plugin for MindControlPlugin {
+    fn build(&self, app: &mut App) {
+        app.world_mut()
+            .resource_mut::<ActionRegistry>()
+            .register_handler("MindControl", mind_control_handler);
+    }
+}
+
+fn mind_control_handler(
+    mut flags: Query<&mut EntityFlags>,
+    mut scheduled: ResMut<ScheduledEffects>,
+    action: Res<ValidatedAction>,
+) -> Result<(), ActionError> {
+    let mut target_flags = flags.get_mut(action.target)?;
+    target_flags.insert("mind_controlled");
+    scheduled.remove_flag_after(action.target, "mind_controlled", 50);
+    Ok(())
+}
 ```
 
 ### 7.6 伤害类型 (`[[damage_types]]`)
@@ -1108,7 +869,7 @@ EMP = 2.0         # 建筑弱电磁
 Corrosive = 1.5   # 建筑怕腐蚀
 ```
 
-**免疫**：Rhai 模组通过 `actions.set_entity_flag(id, "immune_Thermal", true)` 赋予免疫（倍率 = 0）。
+**免疫**：Bevy Plugin 可通过注册系统写入 ECS flag（如 `immune_Thermal`）赋予免疫（倍率 = 0）。该系统必须进入 system manifest 的 R/W matrix 与 TickTrace audit。
 
 **模组扩展**：
 
@@ -1163,7 +924,6 @@ license = "MIT"
 
 # 依赖声明：依赖解析在引擎启动时完成
 [dependencies]
-"rhai-std" = ">=0.4, <1.0"          # Rhai 标准库
 "base-economy" = ">=1.0, <2.0"      # 需要基础经济模组
 
 # 兼容性声明
@@ -1174,7 +934,7 @@ swarm_abi = 1                        # 最低 ABI 版本
 # 冲突声明
 conflicts = ["no-upkeep"]            # 与此模组互斥
 
-# 可配置参数——每项在脚本中作为全局变量可用
+# 可配置参数——每项在插件配置资源中可用
 [config]
 drone_cost = { type = "u32", default = 2, min = 0, max = 100, description = "每 drone 每 tick 维护费" }
 room_base = { type = "u32", default = 10, min = 0, max = 1000, description = "每房间基础维护费" }
@@ -1232,7 +992,7 @@ onshortfall = { type = "enum", default = "degrade", values = ["degrade", "damage
 | `values` | string[] | enum 时必需 | 枚举可选值 |
 | `description` | string | ✅ | 人类可读描述 |
 
-服主在 world.toml 的 `[[mods]].config` 中覆盖这些值。引擎启动时将配置注入 Rhai 脚本的全局变量。
+服主在 world.toml 的 `[[mods]].config` 中覆盖这些值。引擎启动时校验配置并注入对应 Bevy Plugin 的配置资源。
 
 ### 8.3 多语言描述
 
