@@ -4,7 +4,7 @@
 
 > **本文档为 API Registry 的派生展示**。权威定义见 [API Registry](api-registry.md)。本文档提供使用示例和上下文说明。
 >
-> 详见 `specs/gameplay/08-api-idl.md`、`specs/core/02-command-validation.md`
+> 详见 `specs/gameplay/api-idl.md`、`specs/core/command-validation.md`
 
 WASM 模块通过 `tick(snapshot) → CommandIntent[]` JSON 返回指令。
 
@@ -17,7 +17,7 @@ WASM 模块通过 `tick(snapshot) → CommandIntent[]` JSON 返回指令。
 | `sequence` | u32 | 玩家内序列号（每 tick 单调递增） |
 | `action` | Action | 指令类型 + 参数，见下方逐指令定义 |
 
-`player_id`、`source`、`tick` 由服务端 Source Gate 注入后形成 RawCommand（见 `specs/core/02-command-validation` §2）。
+`player_id`、`source`、`tick` 由服务端 Source Gate 注入后形成 RawCommand（见 `specs/core/command-validation` §2）。
 
 ## 指令列表 — 11 Core + Action dispatch（11 vanilla + mod）— 见 [API Registry](api-registry.md) §1
 

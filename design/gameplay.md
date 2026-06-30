@@ -1,6 +1,6 @@
 # 游戏机制
 
-> 游戏机制域文件。从 design/README.md 拆分。Vanilla Ruleset、身体部件、伤害系统、特殊攻击、经济模型。详见 [World Rules](../specs/core/07-world-rules.md)、[Resource Ledger](../specs/core/08-resource-ledger.md)、[Feedback Loop](../specs/gameplay/06-feedback-loop.md)、[API IDL](../specs/gameplay/08-api-idl.md)。
+> 游戏机制域文件。从 design/README.md 拆分。Vanilla Ruleset、身体部件、伤害系统、特殊攻击、经济模型。详见 [World Rules](../specs/core/world-rules.md)、[Resource Ledger](../specs/core/resource-ledger.md)、[Feedback Loop](../specs/gameplay/feedback-loop.md)、[API IDL](../specs/gameplay/api-idl.md)。
 
 ## 1. 10 分钟 Golden Path
 
@@ -27,7 +27,7 @@
 
 ## 2. World Rules Engine — 可配置的游戏规则
 
-Swarm 不是「一个游戏」，而是「一个可配置的游戏引擎平台」。每个世界实例可以有不同的规则集。详见 [World Rules](../specs/core/07-world-rules.md) 和 [Resource Ledger](../specs/core/08-resource-ledger.md)。
+Swarm 不是「一个游戏」，而是「一个可配置的游戏引擎平台」。每个世界实例可以有不同的规则集。详见 [World Rules](../specs/core/world-rules.md) 和 [Resource Ledger](../specs/core/resource-ledger.md)。
 
 ### 2.1 核心理念
 
@@ -337,7 +337,7 @@ drone age 维护由两层设施构成：
 
 **1. 累进存储税（Progressive Storage Tax）**
 
-> **权威源**：存储税 tier 定义见 `specs/core/08-resource-ledger.md` §2 统一参数表。以下为概念性描述——精确 tier 数值（阈值、税率 bp）以 Resource Ledger 为准。Arena 模式默认免税（竞技公平）。
+> **权威源**：存储税 tier 定义见 `specs/core/resource-ledger.md` §2 统一参数表。以下为概念性描述——精确 tier 数值（阈值、税率 bp）以 Resource Ledger 为准。Arena 模式默认免税（竞技公平）。
 
 **2. 本地存储隐匿性（Stealth Advantage）**
 
@@ -1599,7 +1599,7 @@ signature = Ed25519_sign(author_privkey, package_hash)
 
 ### 2.8 Determinism Contract — 确定性合同
 
-> 确定性保证的完整合同见 [Tick Protocol §7](../specs/core/01-tick-protocol.md#7-确定性保证与反作弊)。
+> 确定性保证的完整合同见 [Tick Protocol §7](../specs/core/tick-protocol.md#7-确定性保证与反作弊)。
 
 #### 固定算法
 
@@ -1611,7 +1611,7 @@ signature = Ed25519_sign(author_privkey, package_hash)
 | 种子洗牌 | `Blake3("shuffle" \\|\\| world_seed \\|\\| tick.to_le_bytes())` | 每 tick 确定但不可预测的玩家顺序。shuffle 后 TickTrace 记录 seed epoch + 活跃玩家集快照以支持回放。域名分离前缀 `"shuffle"` 防止与其他 Blake3 用途碰撞 |
 | ECS 顺序 | `.chain()` + `.before()/.after()` | 有数据依赖的串行（death→spawn→combat→death_cleanup），无依赖的并行（regeneration, decay）。Bevy 依赖图保证偏序不变，确定性不依赖并行度 |
 | 数值 | 整数 + 定点数 | 禁浮点（f64 跨平台/编译器非确定）。所有游戏引擎数值使用定点整数类型（ResourceRate_i64, BasisPoints, EfficiencyBps, ConfidenceBps, MilliUnits 等，见 game_api.idl.yaml §type_registry 和 economy.idl.yaml §type_registry）。所有模组参数必须声明为 `u32`/`i64`/`fixed<u32,N>` 等定点类型；Plugin system 不得引入浮点状态转移。 |
-| 排序 | `(priority_class, shuffle_index, sequence, source)` | 分层排序键——相同 seed + 相同玩家集 + 相同指令 → 相同顺序。详见 `01-tick-protocol.md` §9.1 |
+| 排序 | `(priority_class, shuffle_index, sequence, source)` | 分层排序键——相同 seed + 相同玩家集 + 相同指令 → 相同顺序。详见 `tick-protocol.md` §9.1 |
 | HashMap 顺序 | `BTreeMap` | 不用 std::HashMap（迭代顺序非确定） |
 
 #### 回放保证
@@ -1794,7 +1794,7 @@ Swarm 支持跨世界 identity federation——同一身份可在多个世界中
 
 ### 3.4 玩家经济反馈循环
 
-> 反馈循环的完整设计见 [Feedback Loop](../specs/gameplay/06-feedback-loop.md)。
+> 反馈循环的完整设计见 [Feedback Loop](../specs/gameplay/feedback-loop.md)。
 
 为人类和 AI 玩家提供经济健康可见性——通过 MCP 和 Web UI 双通道。
 

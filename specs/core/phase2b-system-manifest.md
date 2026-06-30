@@ -2,7 +2,7 @@
 
 > 详见 design/engine.md
 >
-> **R16 B2 修复**。本文档是 Swarm 引擎**全部 tick 系统执行顺序的唯一权威定义**——覆盖 Phase 2a inline 命令处理器与 Phase 2b 被动系统。所有其他文档（engine.md、01-tick-protocol.md、02-command-validation.md）引用此处，不得重新声明可冲突的系统列表或顺序。
+> **R16 B2 修复**。本文档是 Swarm 引擎**全部 tick 系统执行顺序的唯一权威定义**——覆盖 Phase 2a inline 命令处理器与 Phase 2b 被动系统。所有其他文档（engine.md、tick-protocol.md、command-validation.md）引用此处，不得重新声明可冲突的系统列表或顺序。
 >
 > **R35 D3 修复**：Status Effects 拆分为「并行 buffer 生产」(S16-S21) + 「串行唯一 committer」(S22)。S22 移出 Parallel Set B。combat 与特殊攻击不再由 S01 直接处理：Attack/RangedAttack/Heal 经 Action dispatch 进入 combat intent buffer，special actions 经 ActionRegistry handler 进入 status intent buffer。
 
@@ -151,7 +151,7 @@ Serial Spine:
 - **Handled Commands**: `Transfer`, `Withdraw`, `TransferToGlobal`, `TransferFromGlobal`
 - **Reads**: ResourceAmount, Room, WorldConfig, ResourceLedger
 - **Writes**: ResourceAmount (source → target), ResourceLedger
-- **Linked to**: specs/core/08-resource-ledger.md
+- **Linked to**: specs/core/resource-ledger.md
 - **Note**: TransferToGlobal/FromGlobal 路由至 ResourceLedger GlobalDeposit/GlobalWithdraw 操作，分别受 `global_deposit_delay`(10 tick) 和 `global_withdraw_delay`(100 tick) 约束。local Transfer/Withdraw 不受 global delay 影响。
 
 ### S06: spawn_validator
@@ -384,7 +384,7 @@ for each active StatusState:
 - **Reads**: All ResourceAmount changes from S01-S28
 - **Writes**: ResourceLedger (operations log, balance_delta, ledger_checksum)
 - **Must run last**: ✅
-- **Linked to**: specs/core/08-resource-ledger.md
+- **Linked to**: specs/core/resource-ledger.md
 
 ---
 

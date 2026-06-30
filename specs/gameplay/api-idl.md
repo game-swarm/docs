@@ -25,7 +25,7 @@ game_api.idl  (单一真相)
     └──→ Test:   property-based test generators
 ```
 
-**IDL 定义的指令类型是 CommandIntent**——即 WASM 模块 `tick()` 的可信输出格式。CommandIntent 仅包含 `sequence` + `action` 两个字段。`player_id`、`source`、`tick` 等身份/时序字段由服务端 Source Gate 注入后形成 RawCommand（见 specs/core/02-command-validation §2）。IDL 不定义 RawCommand 的 envelope 字段——那些是引擎内部结构。所有校验规则（`validator` 数组）定义在 CommandIntent 的 `action` 字段上。
+**IDL 定义的指令类型是 CommandIntent**——即 WASM 模块 `tick()` 的可信输出格式。CommandIntent 仅包含 `sequence` + `action` 两个字段。`player_id`、`source`、`tick` 等身份/时序字段由服务端 Source Gate 注入后形成 RawCommand（见 specs/core/command-validation §2）。IDL 不定义 RawCommand 的 envelope 字段——那些是引擎内部结构。所有校验规则（`validator` 数组）定义在 CommandIntent 的 `action` 字段上。
 
 **Schema 不可扩展性**：所有 JSON schema（CommandIntent、每个 Command action、MCP tool input/output、REST API response）默认设置 `additionalProperties: false`——拒绝未知字段。唯一例外需在本文件中显式声明。此规则防止字段注入攻击和实现分叉：不同实现者看到同一 schema 不会因未知字段处理策略不同而产生分歧。
 

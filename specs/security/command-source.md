@@ -158,7 +158,7 @@ RawCommand (携带 auth context)
 └────────┬────────┘
          │
          ▼
-   ──→ 进入 Command Validation Pipeline (specs/core/02-command-validation)
+   ──→ 进入 Command Validation Pipeline (specs/core/command-validation)
 ```
 
 ## 5. Replay 与审计

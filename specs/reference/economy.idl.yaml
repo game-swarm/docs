@@ -100,7 +100,7 @@ resource_operation:
       description: >
         Per-tick tax assessed on resources held in global storage. Tax rate
         depends on storage utilization as a percentage of capacity (percentage-based
-        tiers, per specs/core/08-resource-ledger.md §2.2).
+        tiers, per specs/core/resource-ledger.md §2.2).
         Assessed before any other per-tick deductions.
       trigger: "every tick, per player"
       parameters:
@@ -142,7 +142,7 @@ resource_operation:
           output_type: u64
       minimum_deduction:
         description: "If applicable_rate_bp > 0 and stored_total > 0, min deduction is 1 unit"
-      authority: "specs/core/08-resource-ledger.md §2.2 — authoritative tiered formula"
+      authority: "specs/core/resource-ledger.md §2.2 — authoritative tiered formula"
 
     # -------------------------------------------------------------------------
     # 2.3 UpkeepDeduction — per-tick empire maintenance cost
@@ -151,7 +151,7 @@ resource_operation:
       category: maintenance
       description: >
         Per-tick empire-wide upkeep cost deducted from player global storage.
-        Uses superlinear empire upkeep formula (per specs/core/08-resource-ledger.md
+        Uses superlinear empire upkeep formula (per specs/core/resource-ledger.md
         §Empire Upkeep). Deducted before StorageTax in Resource Ledger order.
       trigger: "every tick, per player"
       parameters:
@@ -175,7 +175,7 @@ resource_operation:
             If global storage insufficient, deduct to 0 and record UpkeepDeficit.
             Consecutive 3-tick deficit → drone hunger (-50% efficiency).
             Consecutive 10-tick deficit → forced drone death (age ×10 acceleration).
-      authority: "specs/core/08-resource-ledger.md §Empire Upkeep — authoritative formula"
+      authority: "specs/core/resource-ledger.md §Empire Upkeep — authoritative formula"
 
     # -------------------------------------------------------------------------
     # 2.4 PvEAward — resource grant for defeating NPC entities
@@ -353,7 +353,7 @@ resource_operation:
       category: transfer
       description: >
         Resource transfer between allied players via global storage.
-        Subject to fee, cooldown, and daily cap (per specs/core/08-resource-ledger.md §2.1).
+        Subject to fee, cooldown, and daily cap (per specs/core/resource-ledger.md §2.1).
         Both sender and receiver must have an active alliance ≥ 100 tick.
       trigger: "TransferToGlobal + TransferFromGlobal (allied only)"
       parameters:
@@ -397,7 +397,7 @@ resource_operation:
           formula: "(amount * 200) / 10000"
           description: "2.00% fee on transferred amount, deducted separately from sender"
           output_type: u64
-      authority: "specs/core/08-resource-ledger.md §2.1 — authoritative fee schedule"
+      authority: "specs/core/resource-ledger.md §2.1 — authoritative fee schedule"
 
 # =============================================================================
 # 3. Formulas — canonical computation references
@@ -517,7 +517,7 @@ changelog:
       - "R22 B2: StorageTax changed to percentage-based tiers (30/60/85/100% capacity) per resource-ledger.md §2.2"
       - "R22 B2: UpkeepDeduction changed to superlinear empire upkeep formula per resource-ledger.md §Empire Upkeep"
       - "R22 B2: AlliedTransfer added 200bp fee, 200 tick delay, 500 tick cooldown, 10000 daily cap"
-      - "R22 B2: Added authority annotations referencing specs/core/08-resource-ledger.md"
+      - "R22 B2: Added authority annotations referencing specs/core/resource-ledger.md"
   - version: "0.1.0"
     date: "2026-06-18"
     changes:

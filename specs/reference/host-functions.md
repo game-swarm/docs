@@ -4,7 +4,7 @@
 
 > **权威定义见 [API Registry](api-registry.md) §4**。本文档提供实现指南。
 >
-> 详见 `specs/core/04-wasm-sandbox.md`
+> 详见 `specs/core/wasm-sandbox.md`
 
 ## 允许的 Import
 

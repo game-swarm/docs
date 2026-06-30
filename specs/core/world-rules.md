@@ -622,7 +622,7 @@ cost = { Energy = 600 }
 
  **降级**: Controller 失去 owner 超过 `downgrade_timer`（默认 5000 tick）后降一级，progress 重置。
 
- **维修约束**: age repair 不存在额外全局 cap；维修能力只受物理范围、每设施容量、队列和 Depot 本地资源约束。权威模型见 design/engine.md §3.4.5 与 specs/core/08-resource-ledger.md §2.4。
+ **维修约束**: age repair 不存在额外全局 cap；维修能力只受物理范围、每设施容量、队列和 Depot 本地资源约束。权威模型见 design/engine.md §3.4.5 与 specs/core/resource-ledger.md §2.4。
 
 ### 7.4 特殊效果类型定义 (`[[special_effects]]`)
 

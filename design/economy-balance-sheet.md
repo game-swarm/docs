@@ -1,12 +1,12 @@
 # Economy Balance Sheet — Vanilla / Tutorial / Standard
 
-> **R15 B7 + B6/D3/D4 修复**。本文档证明 Vanilla/Standard 世界的 maintenance curve 与 anti-snowball 目标一致性，并提供 1/5/20/50 房间的数值闭环验证。**所有费率、公式以 `specs/core/08-resource-ledger.md` §2 统一参数表为唯一权威源。**
+> **R15 B7 + B6/D3/D4 修复**。本文档证明 Vanilla/Standard 世界的 maintenance curve 与 anti-snowball 目标一致性，并提供 1/5/20/50 房间的数值闭环验证。**所有费率、公式以 `specs/core/resource-ledger.md` §2 统一参数表为唯一权威源。**
 >
 > **Canonical target curve 初始参数化**：以下具体参数为目标经济曲线的示意性估算（illustrative estimates），用于表达 2–10 房间自维持、20 房后递减、50 房软上限的目标状态。后续 playtest 仅用于校准参数，不改变本文定义的目标曲线语义。
 
 ## 1. Maintenance Curve
 
-维护费公式由 `specs/core/08-resource-ledger.md` §Empire Upkeep 权威定义。经济报表引用此公式，不重新声明。
+维护费公式由 `specs/core/resource-ledger.md` §Empire Upkeep 权威定义。经济报表引用此公式，不重新声明。
 
 ```
 upkeep = base_upkeep × rooms × (1 + rooms / room_soft_cap)
@@ -28,7 +28,7 @@ upkeep = base_upkeep × rooms × (1 + rooms / room_soft_cap)
 
 维护费随房间数呈 **超线性增长**（O(n²) 趋势）。50 房间的维护费是 5 房间的 40 倍（而非 10 倍线性）。
 
-存储税使用 Resource Ledger §2.2 tiered 公式（权威 tier 定义见 `specs/core/08-resource-ledger.md` §2 统一参数表），以下场景中的存储税数值均由此公式导出。
+存储税使用 Resource Ledger §2.2 tiered 公式（权威 tier 定义见 `specs/core/resource-ledger.md` §2 统一参数表），以下场景中的存储税数值均由此公式导出。
 
 ## 2. 收支平衡表
 
@@ -223,9 +223,9 @@ upkeep = base_upkeep × rooms × (1 + rooms / room_soft_cap)
 | `controller_repair_limit` | range/capacity/queue | range/capacity/queue | range/capacity/queue |
 | `depot_repair_cost` | local depot resources | local depot resources | local depot resources |
 
-Controller/Depot age repair 的权威模型见 `specs/core/08-resource-ledger.md` §2.4：无全局 repair cap，Controller 免费，Depot 消耗本地资源，维修吞吐只受物理范围、每设施容量和队列约束。
+Controller/Depot age repair 的权威模型见 `specs/core/resource-ledger.md` §2.4：无全局 repair cap，Controller 免费，Depot 消耗本地资源，维修吞吐只受物理范围、每设施容量和队列约束。
 
-> **存储税权威源**：tier 定义见 `design/gameplay.md` §8「累进存储税」和 `specs/core/08-resource-ledger.md` §StorageTax。Tutorial 全免，Vanilla/Standard 使用相同 tier 结构（税率由 `storage_tax_tiers` 配置）。
+> **存储税权威源**：tier 定义见 `design/gameplay.md` §8「累进存储税」和 `specs/core/resource-ledger.md` §StorageTax。Tutorial 全免，Vanilla/Standard 使用相同 tier 结构（税率由 `storage_tax_tiers` 配置）。
 >
 > **Allied Transfer 模式差异**：Standard 默认启用 Restricted Allied Transfer（fee=200bp, delay=200 tick, cooldown=500 tick, daily_cap=10000, intercept enabled）。Novice/Tutorial 可通过 world.toml 禁用 (`allied_transfer_enabled = false`)。Arena 模式禁用 Allied Transfer（竞技公平）。
 
@@ -242,7 +242,7 @@ Tutorial 模式弱维护费 + 长保护期，适合新手学习。Vanilla 模式
 
 ## 5. 与 Resource Ledger 的关系
 
-**Resource Ledger (`specs/core/08-resource-ledger.md`) 为所有收支计算的单一权威源。** 本文档只做数值验证和模式对比，不重新定义费率或公式。
+**Resource Ledger (`specs/core/resource-ledger.md`) 为所有收支计算的单一权威源。** 本文档只做数值验证和模式对比，不重新定义费率或公式。
 
 | 经济概念 | 权威定义位置 | 本表角色 |
 |---------|------------|---------|
@@ -253,4 +253,4 @@ Tutorial 模式弱维护费 + 长保护期，适合新手学习。Vanilla 模式
 
 ## 6. 存储税均衡证明 (Storage Tax Equilibrium Proof)
 
-存储税使用 Resource Ledger §2.2 tiered 公式（权威 tier 定义见 `specs/core/08-resource-ledger.md` §2 统一参数表），以下场景中的存储税数值均由此公式导出。
+存储税使用 Resource Ledger §2.2 tiered 公式（权威 tier 定义见 `specs/core/resource-ledger.md` §2 统一参数表），以下场景中的存储税数值均由此公式导出。

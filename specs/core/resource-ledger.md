@@ -317,5 +317,5 @@ room_soft_cap = 10 (Standard) / 15 (Vanilla) / 20 (Tutorial)
 ## 8. 与现有文档的关系
 
 - `design/gameplay.md` §8 (经济系统): 本文档为权威实现合同。
-- `specs/gameplay/08-api-idl.md` §TransferToGlobal/FromGlobal: 使用本文档费率。
+- `specs/gameplay/api-idl.md` §TransferToGlobal/FromGlobal: 使用本文档费率。
 - `design/engine.md` §3.4.2 (容量合同): 本文档补充资源维度。

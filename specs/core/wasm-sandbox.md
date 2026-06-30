@@ -431,7 +431,7 @@ TickTrace 中存储的审计日志受以下大小限制，防止磁盘 DoS：
 
 ## 8. Query Host Function 单次调用成本表
 
-以下仅列出 §3.2 允许的**查询类 host function**。Mutating 操作的 cost 定义在 specs/gameplay/08-api-idl 各 command 的 `cost` 字段中。
+以下仅列出 §3.2 允许的**查询类 host function**。Mutating 操作的 cost 定义在 specs/gameplay/api-idl 各 command 的 `cost` 字段中。
 
 | 函数 | fuel 成本 | 响应大小上限 | 说明 |
 |------|----------|------------|------|

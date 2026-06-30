@@ -1,7 +1,7 @@
 # Vanilla Action Canonical Table
 
 > **权威源**：本文档是 11 个 vanilla `ActionRegistry` action 的 canonical 参数表。所有 design/spec/IDL 文档必须引用此表，不得重新声明可冲突的参数。
-> IDL 定义见 [game_api.idl.yaml](game_api.idl.yaml) §1 `command_action.action_registry`。校验矩阵见 [02-command-validation.md](../core/02-command-validation.md) §3。IDL indices 14–24 为唯一 vanilla action 行集。
+> IDL 定义见 [game_api.idl.yaml](game_api.idl.yaml) §1 `command_action.action_registry`。校验矩阵见 [command-validation.md](../core/command-validation.md) §3。IDL indices 14–24 为唯一 vanilla action 行集。
 
 ## 概述
 
@@ -13,17 +13,17 @@ Standard/Arena 模式全量启用。Tutorial/Novice 模式可通过 `world.toml`
 
 | # | Action | IDL Index | Category | Body Part | Damage Type | Resistance | Cost | Cooldown (ticks) | Range | Channel Time | Counterplay | Validation Schema |
 |---|--------|-----------|----------|-----------|-------------|------------|------|------------------|-------|-------------|-------------|-------------------|
-| 1 | **Attack** | 14 | `basic_combat` | `Attack` | Kinetic | Target `Kinetic` 抗性 | — | fatigue gate | 1 | 瞬发 | Fortify 抗性减伤 | `02-command-validation.md` §3 — 近战攻击目标 |
-| 2 | **RangedAttack** | 15 | `basic_combat` | `RangedAttack` | Kinetic | Target `Kinetic` 抗性 | — | fatigue gate | 3 | 瞬发 | Fortify 抗性减伤 | `02-command-validation.md` §3 — 远程攻击目标 |
-| 3 | **Heal** | 16 | `basic_combat` | `Heal` | — | — | — | fatigue gate | 3 | 瞬发 | Disrupt 不可打断瞬发治疗 | `02-command-validation.md` §3 — 治疗或修复目标 |
-| 4 | **Hack** | 17 | `special_attack` | `Claim` | Psionic | Target `Psionic` 抗性 | 1000 Energy | 200 (global) | 1 | 5 ticks (持续施法) | ✅ Disrupt 打断 / Fortify 清除 | `02-command-validation.md` §3 — 5-stage 控制夺取 |
-| 5 | **Drain** | 18 | `special_attack` | `Work` + `Carry` | EMP | Target `EMP` 抗性 | 200 Energy/tick | 50 (per drone) | 1 | 持续 (移动/Disrupt 中断) | ✅ Disrupt 打断 / Fortify 清除 | `02-command-validation.md` §3 — 从目标建筑/存储窃取资源 |
-| 6 | **Overload** | 19 | `special_attack` | `RangedAttack` | EMP | Target `EMP` 抗性 | 300 Energy | 200 (per drone) | 5 (LOS required) | 瞬发 | ✅ Disrupt 打断恢复 / Fortify 清除 | `02-command-validation.md` §3 — 目标为 PlayerId，燃料预算压制 |
-| 7 | **Debilitate** | 20 | `special_attack` | `Work` | Corrosive | Target `Corrosive` 抗性 | 200 Energy | 150 (per drone) | 3 | 瞬发 | ❌ 不可反制（Debilitate 非持续性） / ✅ Fortify 清除易伤 | `02-command-validation.md` §3 — 目标指定 damage_type 抗性 ×2 |
-| 8 | **Disrupt** | 21 | `special_attack` | `Attack` | Sonic | Target `Sonic` 抗性 | 100 Energy | 50 (per drone) | 1 | 瞬发 | ❌ 不可反制（打断已发生） | `02-command-validation.md` §3 — 打断目标当前持续动作 |
-| 9 | **Fortify** | 22 | `special_attack` | `Tough` | — | — | 400 Energy | 300 (per drone) | 1 (self/ally) | 瞬发 | ✅ 不可被 Disrupt 打断（瞬发增益） | `02-command-validation.md` §3 — 护盾+净化，per-target 300 tick 冷却 |
-| 10 | **Leech** | 23 | `special_attack` | `Attack` | Kinetic | Target `Kinetic` 抗性 | 300 Energy | 100 (per drone) | 1 | 瞬发 | ❌ 不可反制（瞬发吸血） | `02-command-validation.md` §3 — 伤害目标并自愈 50% |
-| 11 | **Fabricate** | 24 | `special_attack` | `Work` + `Carry` | — | — | 2000 Energy + 500 Matter | 500 (per drone) | 1 | 5 ticks (可被打断) | ✅ Disrupt 打断施法 | `02-command-validation.md` §3 — 转换敌方 drone 为己方结构 |
+| 1 | **Attack** | 14 | `basic_combat` | `Attack` | Kinetic | Target `Kinetic` 抗性 | — | fatigue gate | 1 | 瞬发 | Fortify 抗性减伤 | `command-validation.md` §3 — 近战攻击目标 |
+| 2 | **RangedAttack** | 15 | `basic_combat` | `RangedAttack` | Kinetic | Target `Kinetic` 抗性 | — | fatigue gate | 3 | 瞬发 | Fortify 抗性减伤 | `command-validation.md` §3 — 远程攻击目标 |
+| 3 | **Heal** | 16 | `basic_combat` | `Heal` | — | — | — | fatigue gate | 3 | 瞬发 | Disrupt 不可打断瞬发治疗 | `command-validation.md` §3 — 治疗或修复目标 |
+| 4 | **Hack** | 17 | `special_attack` | `Claim` | Psionic | Target `Psionic` 抗性 | 1000 Energy | 200 (global) | 1 | 5 ticks (持续施法) | ✅ Disrupt 打断 / Fortify 清除 | `command-validation.md` §3 — 5-stage 控制夺取 |
+| 5 | **Drain** | 18 | `special_attack` | `Work` + `Carry` | EMP | Target `EMP` 抗性 | 200 Energy/tick | 50 (per drone) | 1 | 持续 (移动/Disrupt 中断) | ✅ Disrupt 打断 / Fortify 清除 | `command-validation.md` §3 — 从目标建筑/存储窃取资源 |
+| 6 | **Overload** | 19 | `special_attack` | `RangedAttack` | EMP | Target `EMP` 抗性 | 300 Energy | 200 (per drone) | 5 (LOS required) | 瞬发 | ✅ Disrupt 打断恢复 / Fortify 清除 | `command-validation.md` §3 — 目标为 PlayerId，燃料预算压制 |
+| 7 | **Debilitate** | 20 | `special_attack` | `Work` | Corrosive | Target `Corrosive` 抗性 | 200 Energy | 150 (per drone) | 3 | 瞬发 | ❌ 不可反制（Debilitate 非持续性） / ✅ Fortify 清除易伤 | `command-validation.md` §3 — 目标指定 damage_type 抗性 ×2 |
+| 8 | **Disrupt** | 21 | `special_attack` | `Attack` | Sonic | Target `Sonic` 抗性 | 100 Energy | 50 (per drone) | 1 | 瞬发 | ❌ 不可反制（打断已发生） | `command-validation.md` §3 — 打断目标当前持续动作 |
+| 9 | **Fortify** | 22 | `special_attack` | `Tough` | — | — | 400 Energy | 300 (per drone) | 1 (self/ally) | 瞬发 | ✅ 不可被 Disrupt 打断（瞬发增益） | `command-validation.md` §3 — 护盾+净化，per-target 300 tick 冷却 |
+| 10 | **Leech** | 23 | `special_attack` | `Attack` | Kinetic | Target `Kinetic` 抗性 | 300 Energy | 100 (per drone) | 1 | 瞬发 | ❌ 不可反制（瞬发吸血） | `command-validation.md` §3 — 伤害目标并自愈 50% |
+| 11 | **Fabricate** | 24 | `special_attack` | `Work` + `Carry` | — | — | 2000 Energy + 500 Matter | 500 (per drone) | 1 | 5 ticks (可被打断) | ✅ Disrupt 打断施法 | `command-validation.md` §3 — 转换敌方 drone 为己方结构 |
 
 ### 字段说明
 
@@ -45,9 +45,9 @@ Standard/Arena 模式全量启用。Tutorial/Novice 模式可通过 `world.toml`
 
 - **IDL**: [game_api.idl.yaml](game_api.idl.yaml) §1 `command_action.action_registry`（11 个 vanilla `ActionRegistry` action，indices 14–24）
 - **Registry**: [api-registry.md](api-registry.md) §1（Action dispatch 与 vanilla action 分类）
-- **Validation**: [02-command-validation.md](../core/02-command-validation.md) §3（逐 action 校验矩阵）
+- **Validation**: [command-validation.md](../core/command-validation.md) §3（逐 action 校验矩阵）
 - **Gameplay**: [design/gameplay.md](../../design/gameplay.md)（Combat 与 action 描述引用）
-- **World Rules**: [07-world-rules.md](../core/07-world-rules.md)（`world.toml` action registry 配置）
+- **World Rules**: [world-rules.md](../core/world-rules.md)（`world.toml` action registry 配置）
 
 ## 与 ActionRegistry 的映射
 

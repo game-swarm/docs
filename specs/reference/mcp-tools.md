@@ -6,7 +6,7 @@
 >
 > MCP 是 AI agent 的操作界面——与人类玩家的 Web UI 完全同级。
 > MCP **不做游戏动作**。AI agent 必须编写 WASM 代码来操作世界。
-> 详见 `specs/security/03-mcp-security.md`。
+> 详见 `specs/security/mcp-security.md`。
 
 ## 使用模式
 

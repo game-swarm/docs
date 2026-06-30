@@ -18,7 +18,7 @@
 
 ## 1. Snapshot Truncation Contract（快照截断合同）— H3
 
-> **与 Execution Rollback Snapshot 的边界**：本文档定义 per-player **感知快照（perception snapshot）** 的截断规则——即 COLLECT 阶段交付给 WASM `tick()` 和 MCP `swarm_get_snapshot` 的可见世界视图。**执行回滚快照（execution rollback snapshot）** 是引擎内 Bevy World 深拷贝，用于 redb commit 失败时恢复世界状态，其规则定义在 `01-tick-protocol.md` §Bevy World 快照范围清单。两者是独立概念，不可混用。
+> **与 Execution Rollback Snapshot 的边界**：本文档定义 per-player **感知快照（perception snapshot）** 的截断规则——即 COLLECT 阶段交付给 WASM `tick()` 和 MCP `swarm_get_snapshot` 的可见世界视图。**执行回滚快照（execution rollback snapshot）** 是引擎内 Bevy World 深拷贝，用于 redb commit 失败时恢复世界状态，其规则定义在 `tick-protocol.md` §Bevy World 快照范围清单。两者是独立概念，不可混用。
 
 ### 1.1 触发条件
 

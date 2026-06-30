@@ -252,7 +252,7 @@ attacker 视角:
 
 target 视角:
   - 可见: 自身 entity 上存在 `Hacked { by: player_id, remaining: 5 }` 状态（MCP `swarm_get_drone`）
-  - 可见: 被 Hack 的 entity 无法执行部分命令（拒绝码见 specs/core/02-command-validation）
+  - 可见: 被 Hack 的 entity 无法执行部分命令（拒绝码见 specs/core/command-validation）
   - 不可见: attacker 的后续意图（夺取后如何使用）
 ```
 

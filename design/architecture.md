@@ -1,10 +1,10 @@
 # Swarm 架构总览
 
 > 本文是 Swarm 的架构入口：说明系统边界、tick 热路径、分片模型与关键组件职责。详细规则见
-> [Engine](engine.md)、[Tech Choices](tech-choices.md)、[Tick Protocol](../specs/core/01-tick-protocol.md)、
-> [WASM Sandbox](../specs/core/04-wasm-sandbox.md)、[Persistence Contract](../specs/core/05-persistence-contract.md)、
-> [Complete Tick Execution Manifest](../specs/core/06-phase2b-system-manifest.md)、
-> [Distributed Sandbox](../specs/core/12-distributed-sandbox.md)。
+> [Engine](engine.md)、[Tech Choices](tech-choices.md)、[Tick Protocol](../specs/core/tick-protocol.md)、
+> [WASM Sandbox](../specs/core/wasm-sandbox.md)、[Persistence Contract](../specs/core/persistence-contract.md)、
+> [Complete Tick Execution Manifest](../specs/core/phase2b-system-manifest.md)、
+> [Distributed Sandbox](../specs/core/distributed-sandbox.md)。
 
 **设计原则：设计即终态。没有"远期方向"、"阶段"、"future"、"以后再说"。每一个架构决策必须在当下裁定最佳实践，不允许 defer。**
 
@@ -165,7 +165,7 @@ EXECUTE 推进权威世界：
 - 相同输入必须得到相同世界状态。
 - 在线执行和 replay 必须共享同一确定性语义。
 - ECS 系统注册顺序固定。
-- 权威调度见 [Complete Tick Execution Manifest](../specs/core/06-phase2b-system-manifest.md)：31 systems per tick。
+- 权威调度见 [Complete Tick Execution Manifest](../specs/core/phase2b-system-manifest.md)：31 systems per tick。
 
 真实瓶颈：
 
@@ -216,7 +216,7 @@ redb 是 Swarm 的权威持久化层：
 
 redb 不做分布式事务、不做共识协议、不做高频读缓存（进程内 Moka cache 覆盖）。
 
-持久化合同见 [Persistence Contract](../specs/core/05-persistence-contract.md)。
+持久化合同见 [Persistence Contract](../specs/core/persistence-contract.md)。
 
 ---
 

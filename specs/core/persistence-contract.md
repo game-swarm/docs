@@ -29,7 +29,7 @@
 
 ## 2. Replay-Critical Subset（权威声明）
 
-> **R22 B1**: 明确哪些 Field 必须在 redb WriteTransaction 中原子提交（replay-critical），哪些可以异步写入对象存储（debug/rich）。此声明是 `05-persistence-contract.md` 的最权威条款——所有其他文档引用 persistence 合同时以此为准。
+> **R22 B1**: 明确哪些 Field 必须在 redb WriteTransaction 中原子提交（replay-critical），哪些可以异步写入对象存储（debug/rich）。此声明是 `persistence-contract.md` 的最权威条款——所有其他文档引用 persistence 合同时以此为准。
 
 ### 2.1 TickCommitRecord Fields（redb 原子提交 — 不可降级）
 
@@ -352,7 +352,7 @@ TickCommitRecord {
 
 > **R23 D6/B 裁决**：redb room-partition transaction 纳入核心合同。单事务模式仅支持小规模验证（≤ 50 active players, ≤ 100 rooms）；500/1000-player 场景必须使用 room-level partition（Shadow Write）。
 
-> **R32 B1**：模型从「per-room 独立 redb commit + 全局回滚」升级为「shadow write + atomic publish」。Per-room 写入目标为 `/staging/{tick}/{room}`——staging 行不是已提交状态。GlobalTickCommit 是唯一的 publish 点，将 staging 行原子提升为 `/committed/` 路径。所有下游读取仅走 `/committed/`。Staging 孤立行由 GC 清理（< 15s）。详见 `specs/core/01-tick-protocol.md` §3.5。
+> **R32 B1**：模型从「per-room 独立 redb commit + 全局回滚」升级为「shadow write + atomic publish」。Per-room 写入目标为 `/staging/{tick}/{room}`——staging 行不是已提交状态。GlobalTickCommit 是唯一的 publish 点，将 staging 行原子提升为 `/committed/` 路径。所有下游读取仅走 `/committed/`。Staging 孤立行由 GC 清理（< 15s）。详见 `specs/core/tick-protocol.md` §3.5。
 
 ### 8.1 分区策略
 
@@ -411,8 +411,8 @@ Gate 失败 → 对应容量声明不可信，需降级规模或优化实现。
 ## 9. 与现有文档的关系
 
 - `design/engine.md` §3.3 (TickInputEnvelope)、§3.4.2 (容量合同)、§3.4.7 (keyframe)：本文件为权威持久化合同。engine.md 描述架构意图，本文档定义实现合同。
-- `specs/core/01-tick-protocol.md` §2.3 (快照)、§9.4 (TickCommitRecord 完整性)：本文件补充持久化层面。
-- `specs/core/02-command-validation.md`：apply 阶段在本文件的 "Phase A" 中执行。
+- `specs/core/tick-protocol.md` §2.3 (快照)、§9.4 (TickCommitRecord 完整性)：本文件补充持久化层面。
+- `specs/core/command-validation.md`：apply 阶段在本文件的 "Phase A" 中执行。
 
 ---
 

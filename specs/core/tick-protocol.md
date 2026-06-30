@@ -171,7 +171,7 @@ fn stitch_player_snapshot(world_snapshot, player_id) -> Snapshot:
 ```
 
 - 快照按房间分片序列化一次，再为玩家 stitch 可见 shard——不是对 `all_entities` 做 per-player 全量过滤。
-- 超限时的截断策略见 [Snapshot Contract §4](../core/09-snapshot-contract.md) —— **snapshot-contract 是 snapshot truncation 的唯一权威源**。tick-protocol 不定义独立截断算法，只引用该权威源。
+- 超限时的截断策略见 [Snapshot Contract §4](../core/snapshot-contract.md) —— **snapshot-contract 是 snapshot truncation 的唯一权威源**。tick-protocol 不定义独立截断算法，只引用该权威源。
   - 截断算法（距离桶 + entity_id 字典序 + farthest-first + critical 不可截断）全部由 snapshot-contract 定义。
   - `truncated=true` 时 WASM 模块收到标记，应降级策略。
   - `host_get_objects_in_range` 返回格式见 snapshot-contract。
@@ -397,7 +397,7 @@ Source E1: energy = 5
 
 ### 3.4 ECS 系统执行顺序
 
-> **权威调度见 [Complete Tick Execution Manifest](06-phase2b-system-manifest.md)** — 31 systems（R30 B1：Phase 2a inline 6 + Phase 2b deferred 25），serial spine + 2 parallel sets。Phase 2a inline 处理器在命令循环中逐条 inline 应用。Phase 2b 被动系统按 manifest 定义的 serial spine 顺序执行：death_marker → spawn → spawning_grace → regeneration → combat (parallel set A) → special_attack_reducer → damage_application → status buffer production (parallel set B) → status_advance_system (serial unique writer) → aging → decay → death_cleanup → pvp_block → room_state → controller_2b → resource_ledger。
+> **权威调度见 [Complete Tick Execution Manifest](phase2b-system-manifest.md)** — 31 systems（R30 B1：Phase 2a inline 6 + Phase 2b deferred 25），serial spine + 2 parallel sets。Phase 2a inline 处理器在命令循环中逐条 inline 应用。Phase 2b 被动系统按 manifest 定义的 serial spine 顺序执行：death_marker → spawn → spawning_grace → regeneration → combat (parallel set A) → special_attack_reducer → damage_application → status buffer production (parallel set B) → status_advance_system (serial unique writer) → aging → decay → death_cleanup → pvp_block → room_state → controller_2b → resource_ledger。
 
 **关键时序合同**：
 - `death_marker` 在 `spawn` 之前：RoomCap 槽位同 tick 释放。
@@ -406,7 +406,7 @@ Source E1: energy = 5
 - `regeneration` 在 `damage_application` 之前：自然回复先于伤害结算，防止 heal+regen 双倍回复。
 - `special_attack_reducer`：parallel intent 收集 → pending_intents buffer → canonical priority sort → 交付 status_advance_system。
 
-**Component R/W 矩阵**：见 [Complete Tick Execution Manifest §4](06-phase2b-system-manifest.md) — 覆盖全部 31 systems 的读写关系、并行安全证明及 RoomCap 中间态保护。
+**Component R/W 矩阵**：见 [Complete Tick Execution Manifest §4](phase2b-system-manifest.md) — 覆盖全部 31 systems 的读写关系、并行安全证明及 RoomCap 中间态保护。
 
 ### 3.5 Tick 原子性 — Shadow Write + Atomic Publish
 
@@ -776,7 +776,7 @@ COLLECT 阶段从 Bevy World 内存读取权威状态，不访问 redb/Moka Cach
 - 排序：`(priority_class, shuffle_index, source_rank, sequence, command_hash)` — 相同 seed + 相同玩家集 + 相同指令 → 相同顺序。详见 §9.1。
 - ECS：`.chain()` 严格串行，`.before()/.after()` 部分并行
 - 数值：整数 + 定点数，禁用 `f64`（跨平台/编译器非确定）。禁止 IEEE 754 浮点数——所有数值计算使用 `u64`/`i64` 定点整数（basis points, ×10000 精度），禁止任何浮点类型出现在游戏状态中。定点数 JSON 序列化使用整数表示（非小数），避免 JSON 数字解析的跨语言精度差异。
-- **canonical JSON**：`canonical_serialize()` 遵循 **[RFC 8785 JSON Canonicalization Scheme (JCS)](https://www.rfc-editor.org/rfc/rfc8785)**。禁止 IEEE 754 浮点数编码（JCS §3.2.2 定义的数字格式仅限整数，引擎侧不使用 `f64`/`f32`，输出端无浮点 JSON 数字）。对象键按 JCS 规则排序，字符串转义按 JCS §3.2.2.2/§3.2.3 输出；禁止多余空白字符。除 JCS 规定外，canonical codec **不额外执行 Unicode NFC normalization**。`canonical_codec_version` 与 `serde_swarm`/`swarm-codec-go` 双实现 hash fixture 见 `specs/core/05-persistence-contract.md` §2.1。
+- **canonical JSON**：`canonical_serialize()` 遵循 **[RFC 8785 JSON Canonicalization Scheme (JCS)](https://www.rfc-editor.org/rfc/rfc8785)**。禁止 IEEE 754 浮点数编码（JCS §3.2.2 定义的数字格式仅限整数，引擎侧不使用 `f64`/`f32`，输出端无浮点 JSON 数字）。对象键按 JCS 规则排序，字符串转义按 JCS §3.2.2.2/§3.2.3 输出；禁止多余空白字符。除 JCS 规定外，canonical codec **不额外执行 Unicode NFC normalization**。`canonical_codec_version` 与 `serde_swarm`/`swarm-codec-go` 双实现 hash fixture 见 `specs/core/persistence-contract.md` §2.1。
 - HashMap/Dictionary：`BTreeMap`，不用 `std::HashMap`（迭代顺序非确定）
 
 ### 7.2 回放验证
@@ -922,7 +922,7 @@ sort_key = (priority_class, shuffle_index, source_rank, sequence, command_hash)
 
 ### 9.2 部署生效时序
 
-`swarm_deploy` 的生效时序（详见 `specs/core/05-persistence-contract.md` §2.3 Deploy 完整状态机）：
+`swarm_deploy` 的生效时序（详见 `specs/core/persistence-contract.md` §2.3 Deploy 完整状态机）：
 
 ```
 tick N:    swarm_deploy 调用 → 编译/签名 → redb manifest commit (deploy_mutation replay class)
@@ -1009,7 +1009,7 @@ RNG 流按 namespace 隔离：
 
 ### 9.6 ECS 调度权威顺序
 
-系统执行顺序的唯一权威定义见 [Complete Tick Execution Manifest](06-phase2b-system-manifest.md) §1。Phase 2b 串行脊柱（R30 B1 — 31 systems）：
+系统执行顺序的唯一权威定义见 [Complete Tick Execution Manifest](phase2b-system-manifest.md) §1。Phase 2b 串行脊柱（R30 B1 — 31 systems）：
 
 ```
 death_marker → spawn → spawning_grace → regeneration →
