@@ -515,7 +515,7 @@ refund_pct = max(0.1, 0.5 × (remaining_lifespan / total_lifespan))
 占领 Controller。drone 需 Claim body part。
 
 ```json
-{ "type": "ClaimController", "object_id": "d1", "controller_id": "c1" }
+{ "type": "ClaimController", "object_id": "d1", "target_id": "c1" }
 ```
 
  校验规则 | 说明 |

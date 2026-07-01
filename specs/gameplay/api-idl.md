@@ -179,7 +179,7 @@ commands:
   # ═════════════════════════════════════
 
   ClaimController:
-    params: { object_id: ObjectId, controller_id: ObjectId }
+    params: { object_id: ObjectId, target_id: ObjectId }
     validator: [exists, owner, drone, body_part(Claim), is_controller, in_range(1)]
     cost: {}
 

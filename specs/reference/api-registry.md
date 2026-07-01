@@ -57,6 +57,9 @@ Core CommandAction 是 WASM tick() 输出的 CommandIntent 中的 action type。
 | 9 | `Spawn` | `body_parts: [BodyPart], spawn_id: SpawnId` | core | Spawn a drone with given body parts |
 | 10 | `Recycle` | `object_id: EntityId` (self-action) | core | Recycle self (drone or structure) |
 | 11 | `ClaimController` | `target_id: EntityId` | core | Claim a room controller |
+| 12 | `Repair` | `target_id: EntityId` | core | Repair a target structure |
+| 13 | `UpgradeController` | `target_id: EntityId` | core | Upgrade a room controller |
+| 14 | `AlliedTransfer` | `target_player: PlayerId, resource: ResourceType, amount: u32` | economy_operation | Transfer resources to an allied player |
 
 ### 1.2 Economy Operation 指令 (2)
 

@@ -144,6 +144,9 @@ command_action:
       index: 9
       category: core
       parameters:
+        - name: object_id
+          type: ObjectId
+          required: true
         - name: body_parts
           type: "[BodyPart]"
           required: true

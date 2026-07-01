@@ -85,11 +85,13 @@ u64 host_get_fuel_remaining() -> u64
 - **总计**: 1000 次/tick
 - `host_path_find`: 10 次
 - `host_get_objects_in_range`: 5 次
+- `host_get_world_config`: 5 次
+- `host_get_world_rules`: 1 次
 - `host_get_random`: 10 次
 - `host_get_fuel_remaining`: 无单独次数上限
 - 其他: 共享剩余配额
 
-超出预算 → 返回 canonical ABI error code `-4 ERR_BUDGET_EXHAUSTED`（per-call）或 `-5 ERR_PLAYER_BUDGET`（per-player）。权威错误码优先级见 [API Registry](api-registry.md) §4.5。
+超出预算 → 返回 canonical ABI error code `-4 ERR_BUDGET_EXHAUSTED`。权威错误码优先级见 [API Registry](api-registry.md) §4.5。
 
 ## 输出上限
 
