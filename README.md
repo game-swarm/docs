@@ -71,7 +71,7 @@ docs/
 ### 官方模组（Vanilla Mods）
 
 每个模组 = 独立 Rust crate 仓库（`Cargo.toml` + `mod.toml`），engine 通过 git submodule 引用并静态编译为 Bevy Plugin。
-模组开发模板：[swarm/mod-template](https://git.kagurazakalan.com/swarm/mod-template)。
+模组开发参考已合并至[引擎文档](design/engine.md)。
 
 | 模组 | 默认 | 说明 |
 |------|:----:|------|
@@ -81,8 +81,6 @@ docs/
 | [mod-pve-spawning](https://git.kagurazakalan.com/swarm/mod-pve-spawning) | ✅ on | NPC 出生 + PvE 难度梯度 |
 | [mod-combat-core](https://git.kagurazakalan.com/swarm/mod-combat-core) | ✅ on | 战斗 + 死亡 + 再生 |
 | [mod-special-attacks](https://git.kagurazakalan.com/swarm/mod-special-attacks) | ✅ on | Hack/Drain/Overload/Debilitate/Disrupt/Fortify |
-| [mod-depot-storage](https://git.kagurazakalan.com/swarm/mod-depot-storage) | ✅ on | Depot 维修 + 全局存储 + 物流 |
+| [mod-depot-storage](https://git.kagurazakalan.com/swarm/mod-depot-storage) | ✅ on | Depot 维持 + 全局存储 + 物流 |
 
-## 许可证
-
-MIT
+## 服务架构
