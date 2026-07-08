@@ -63,24 +63,24 @@ docs/
 
 | 仓库 | 说明 |
 |------|------|
-| [swarm/engine](https://git.kagurazakalan.com/swarm/engine) | Rust 游戏引擎 (Bevy ECS) |
-| [swarm/sandbox](https://git.kagurazakalan.com/swarm/sandbox) | WASM 沙箱运行时 (Wasmtime) |
-| [swarm/gateway](https://git.kagurazakalan.com/swarm/gateway) | Rust API 网关 |
-| [swarm/frontend](https://git.kagurazakalan.com/swarm/frontend) | Web 客户端 (Monaco + PixiJS) |
+| [game-swarm/engine](https://github.com/game-swarm/engine) | Rust 游戏引擎 (Bevy ECS) |
+| [game-swarm/sandbox](https://github.com/game-swarm/sandbox) | WASM 沙箱运行时 (Wasmtime) |
+| [game-swarm/gateway](https://github.com/game-swarm/gateway) | Rust API 网关 |
+| [game-swarm/frontend](https://github.com/game-swarm/frontend) | Web 客户端 (Monaco + PixiJS) |
 
 ### 官方模组（Vanilla Mods）
 
-每个模组 = 独立 Rust crate 仓库（`Cargo.toml` + `mod.toml`），engine 通过 git submodule 引用并静态编译为 Bevy Plugin。
+模组是 engine 仓库内的普通 Rust crate（位于 `engine/mods/`），通过 workspace 成员引入。每个模组 = 独立 Rust crate（`Cargo.toml` + `mod.toml`），作为 Bevy Plugin 静态编译进引擎。
 模组开发参考已合并至[引擎文档](design/engine.md)。
 
 | 模组 | 默认 | 说明 |
 |------|:----:|------|
-| [mod-empire-upkeep](https://git.kagurazakalan.com/swarm/mod-empire-upkeep) | ✅ on | 帝国维护费 + Controller Repair + Recycle |
-| [mod-fog-of-war](https://git.kagurazakalan.com/swarm/mod-fog-of-war) | ✅ on | 可见性 + 感知 + Oracle 防线 |
-| [mod-resource-decay](https://git.kagurazakalan.com/swarm/mod-resource-decay) | ❌ off | 存储资源自然衰减 |
-| [mod-pve-spawning](https://git.kagurazakalan.com/swarm/mod-pve-spawning) | ✅ on | NPC 出生 + PvE 难度梯度 |
-| [mod-combat-core](https://git.kagurazakalan.com/swarm/mod-combat-core) | ✅ on | 战斗 + 死亡 + 再生 |
-| [mod-special-attacks](https://git.kagurazakalan.com/swarm/mod-special-attacks) | ✅ on | Hack/Drain/Overload/Debilitate/Disrupt/Fortify |
-| [mod-depot-storage](https://git.kagurazakalan.com/swarm/mod-depot-storage) | ✅ on | Depot 维持 + 全局存储 + 物流 |
+| mod-empire-upkeep | ✅ on | 帝国维护费 + Controller Repair + Recycle |
+| mod-fog-of-war | ✅ on | 可见性 + 感知 + Oracle 防线 |
+| mod-resource-decay | ❌ off | 存储资源自然衰减 |
+| mod-pve-spawning | ✅ on | NPC 出生 + PvE 难度梯度 |
+| mod-combat-core | ✅ on | 战斗 + 死亡 + 再生 |
+| mod-special-attacks | ✅ on | Hack/Drain/Overload/Debilitate/Disrupt/Fortify |
+| mod-depot-storage | ✅ on | Depot 维持 + 全局存储 + 物流 |
 
 ## 服务架构

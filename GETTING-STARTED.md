@@ -5,7 +5,7 @@
 ## 1. 启动开发环境
 
 ```bash
-git clone git@git.kagurazakalan.com:swarm/infra.git swarm
+git clone https://github.com/game-swarm/swarm.git
 cd swarm
 docker compose up --build
 ```
