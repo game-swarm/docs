@@ -1,6 +1,6 @@
 # Swarm Docs — AI Agent Guide
 
-This file governs how AI agents work with the docs repository. See the root `AGENTS.md` for project-wide conventions.
+This file governs how AI agents work with the docs repository. Each Swarm repository is self-contained and may define its own local agent instructions.
 
 ## Repository
 
@@ -13,7 +13,6 @@ docs/
 │   ├── gameplay/     Gameplay specs (feedback loops, API IDL)
 │   └── reference/    API reference (commands, host functions, MCP tools, codegen)
 ├── reviews/          Design review archives (R44 parliament, etc.)
-├── ROADMAP.md        Implementation tracking (pending gaps only)
 ├── RUNBOOK.md        Operations manual
 ├── GETTING-STARTED.md Quick-start guide
 ├── AGENTS.md         This file
@@ -27,14 +26,14 @@ design/*.md          Pure target state — never annotate "status: implemented" 
      ↓
 specs/               Technical specs — must track design; update when design changes
      ↓
-ROADMAP.md           Gap-based checklist — pending items only, completed removed
+ROADMAP.md           Optional per-repository gap checklist, when present
 ```
 
 - **design/** is aspirational. It describes what the system should look like, not what's currently built.
 - **specs/** is the implementable contract. Every spec must trace to a design decision.
-- **ROADMAP.md** is the action plan. It contains only gaps (critical/high/moderate) grouped into waves.
+- **ROADMAP.md** is optional and repository-local. When present, it contains only gaps (critical/high/moderate) grouped into waves.
 
-## ROADMAP Rules (same as root AGENTS.md)
+## ROADMAP Rules
 
 - `[ ]` entries only, checkable.
 - No time estimates, difficulty ratings, or descriptive wave labels.
@@ -61,15 +60,15 @@ ROADMAP.md           Gap-based checklist — pending items only, completed remov
 2. **Specs must agree with design** — if design changes, update the corresponding specs.
 3. **ROADMAP gaps come from spec audits** — discover gaps by comparing specs to code.
 4. **Never mark design items as "done"** — only ROADMAP items can be completed/removed.
-5. **When fixing a gap, update both code and ROADMAP** — close the gap entry after merging.
+5. **When fixing a tracked gap, update the affected code repository and its local ROADMAP if one exists** — close the gap entry after merging.
 
 ## Audit Workflow
 
 When asked "does code match docs?":
 
-1. Run the MCP tool set-difference check from root AGENTS.md.
-2. Audit in parallel: Core Engine group vs Infra+Design group.
-3. Write findings directly into ROADMAP.md, not a separate file.
+1. Identify the affected self-contained repositories: docs, engine, sandbox, gateway, frontend, or mod repositories.
+2. Audit in parallel: the relevant code repository against the docs/specs that govern it.
+3. Write findings into that repository's local ROADMAP if present; otherwise report them in the review output.
 4. Use `grep -rn` or ripgrep for searches.
 
 ## Commit Conventions
