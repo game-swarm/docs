@@ -4,11 +4,16 @@
 
 ## 1. 启动开发环境
 
+Swarm 由多个自包含仓库组成。按需要分别 clone 对应仓库；没有 `game-swarm/swarm` 主仓库或统一 `docker compose` 入口。
+
 ```bash
-git clone https://github.com/game-swarm/swarm.git
-cd swarm
-docker compose up --build
+git clone https://github.com/game-swarm/engine.git
+git clone https://github.com/game-swarm/sandbox.git
+git clone https://github.com/game-swarm/gateway.git
+git clone https://github.com/game-swarm/frontend.git
 ```
+
+基础启动顺序为：先启动 NATS，再启动 `sandbox` worker、`engine`、`gateway`，最后启动 `frontend`。每个仓库的 README 负责说明本仓库的本地启动命令。
 
 确认服务就绪：
 ```bash
@@ -97,7 +102,7 @@ AI agent 通过 MCP 部署 WASM，与人类玩家走相同的证书路径：
 
 - **Web UI**: 点击回放按钮查看历史 tick
 - **MCP**: 调用 `swarm_explain_last_tick` 查看上 tick 结果
-- **日志**: `docker compose logs engine`
+- **日志**: 查看对应进程或服务管理器日志；各仓库不依赖统一 compose 项目
 
 ## 下一步
 

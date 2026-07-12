@@ -4,20 +4,26 @@
 
 ### 1.1 完整栈启动 (生产)
 
+Swarm 没有单一主仓库。生产部署应把 `engine`、`sandbox`、`gateway`、`frontend` 作为独立制品发布；NATS 是外部基础设施服务。
+
 ```bash
-# 1. 基础设施 (仅 NATS 是外部 daemon)
-docker compose up -d nats
+# 1. 基础设施
+systemctl start nats
 
 # 2. 等待 NATS 就绪
-docker compose exec nats nats server check connection
+nats server check connection
 
-# 3. 引擎 (redb + Moka Cache 均为进程内，无需额外 daemon)
-docker compose up -d engine
+# 3. Sandbox workers
+systemctl start swarm-sandbox
 
-# 4. Gateway
-docker compose up -d gateway
+# 4. 引擎 (redb + Moka Cache 均为进程内，无需额外 daemon)
+systemctl start swarm-engine
 
-# 5. 健康检查
+# 5. Gateway 与 Frontend
+systemctl start swarm-gateway
+systemctl start swarm-frontend
+
+# 6. 健康检查
 curl -f http://localhost:8080/healthz          # 引擎
 curl -f http://localhost:8082/healthz          # gateway
 ```
@@ -25,13 +31,14 @@ curl -f http://localhost:8082/healthz          # gateway
 ### 1.2 启动顺序约束
 
 ```
-nats ──→ engine ──→ gateway ──→ frontend
+nats ──→ sandbox workers ──→ engine ──→ gateway ──→ frontend
 ```
 
 | 服务 | 依赖 | 启动超时 | 就绪信号 |
 |------|------|---------|---------|
 | NATS | 无 | 10s | `nats server check connection` |
-| Engine | NATS | 60s | `/healthz` → 200，`tick_ok: true` |
+| Sandbox | NATS | 30s | NATS worker subscriptions active |
+| Engine | NATS + Sandbox | 60s | `/healthz` → 200，`tick_ok: true` |
 | Gateway | Engine + NATS | 15s | `/healthz` → 200 |
 | Frontend | Gateway | 10s | HTTP 200 on `/` |
 
@@ -39,10 +46,10 @@ nats ──→ engine ──→ gateway ──→ frontend
 
 ```bash
 # 仅引擎 (无 NATS) — 单节点开发/测试
-docker compose up engine
+cd engine && cargo run
 
 # 引擎 + NATS — 标准生产
-docker compose up nats engine gateway
+systemctl start nats swarm-sandbox swarm-engine swarm-gateway
 ```
 
 降级模式下引擎自动检测依赖缺失：
@@ -121,9 +128,9 @@ redb 是嵌入式单文件存储。备份只需复制 `.redb` 文件（引擎停
 swarm backup create --output /backup/swarm_$(date +%Y%m%d_%H%M%S).redb
 
 # 或直接复制（需停止引擎）
-docker compose stop engine
+systemctl stop swarm-engine
 cp /data/swarm/world.redb /backup/world_$(date +%Y%m%d_%H%M%S).redb
-docker compose up -d engine
+systemctl start swarm-engine
 ```
 
 Keyframe 备份要求：
@@ -157,7 +164,7 @@ keyframe_backup_copies = 2
 
 ```bash
 # 停止引擎
-docker compose stop engine
+systemctl stop swarm-engine
 
 # 替换 redb 文件
 cp /backup/world_latest.redb /data/swarm/world.redb
@@ -166,7 +173,7 @@ cp /backup/world_latest.redb /data/swarm/world.redb
 swarm verify --redb /data/swarm/world.redb
 
 # 启动引擎
-docker compose up -d engine
+systemctl start swarm-engine
 
 # 监控 100 tick
 watch -n 5 "curl -s localhost:8080/metrics | grep tick_number"
@@ -203,11 +210,11 @@ watch -n 5 "curl -s localhost:8080/metrics | grep tick_number"
 
 ## 6. 灾难恢复
 
-1. 停止引擎: `docker compose stop engine`
+1. 停止引擎: `systemctl stop swarm-engine`
 2. 恢复 redb 备份: `cp /backup/world_latest.redb /data/swarm/world.redb`
 3. 恢复 keyframe backup: `swarm keyframe restore --source /backup/keyframes --dest /data/swarm/world.redb.keyframes`
 4. 验证 state_checksum 与 keyframe hash: `swarm verify --redb /data/swarm/world.redb --keyframes /data/swarm/world.redb.keyframes`
-5. 启动引擎: `docker compose up -d engine`
+5. 启动引擎: `systemctl start swarm-engine`
 6. 监控 100 tick: `watch -n 5 "curl -s localhost:8080/metrics | grep tick_number"`
 7. 验证无玩家数据丢失: 抽样检查 player 资源总量
 
@@ -219,7 +226,7 @@ watch -n 5 "curl -s localhost:8080/metrics | grep tick_number"
 |------|------|---------|
 | **redb** | Engine 进程内嵌入式 KV | 无需独立 daemon，每 shard 一个 `.redb` 文件 |
 | **Moka Cache** | Engine 进程内读缓存 | 无需独立 daemon，随 Engine 生命周期 |
-| **NATS** | 外部 daemon | Docker Compose，单节点部署即为单节点 cluster |
-| **Gateway** | Rust 独立进程 | Docker Compose，无状态可水平扩展 |
-| **Sandbox Containers** | WASM 执行 worker pool | Docker Compose + NATS queue-group 负载均衡 |
-| **Frontend** | Nginx 静态文件服务 | Docker Compose |
+| **NATS** | 外部 daemon | 独立服务，单节点部署即为单节点 cluster |
+| **Gateway** | Rust 独立进程 | 独立制品发布，无状态可水平扩展 |
+| **Sandbox Workers** | WASM 执行 worker pool | 独立制品发布，通过 NATS queue-group 负载均衡 |
+| **Frontend** | 静态 Web 制品 | 独立构建后由任意静态文件服务托管 |
