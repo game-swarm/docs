@@ -7,7 +7,7 @@
 | 我想… | 看这里 |
 |:--|:--|
 | 了解项目愿景和架构全景 | [`design/README.md`](design/README.md) |
-| 查看实施进度和任务计划 | 主仓库 `ROADMAP.md` |
+| 查看实施进度和任务计划 | 各代码仓库自己的 `ROADMAP.md`（如存在） |
 | 理解引擎如何工作（Tick/ECS/快照） | [`design/engine.md`](design/engine.md) |
 | 查看游戏机制（身体部件/伤害/特殊攻击） | [`design/gameplay.md`](design/gameplay.md) |
 | 了解 World vs Arena 模式 + PvE | [`design/modes.md`](design/modes.md) |
@@ -37,7 +37,6 @@ docs/
 │   ├── security/           安全规范 (MCP/可见性/来源/CVE-SLA)
 │   ├── gameplay/           游戏规范 (反馈循环/API IDL)
 │   ├── reference/          API 参考 (commands/host-functions/mcp-tools/codegen)
-├── ROADMAP.md              实施进度追踪（位于主仓库）
 ├── AGENTS.md               AI agent 约定
 ├── RUNBOOK.md              运维手册
 ├── GETTING-STARTED.md      入门指南
@@ -59,6 +58,8 @@ docs/
 
 ## 代码仓库
 
+Swarm 没有单一主仓库。每个代码仓库自包含自己的源码、构建配置、README、测试和发布流程；本文档仓库只描述跨组件协议与目标架构。
+
 ### 核心
 
 | 仓库 | 说明 |
@@ -70,7 +71,7 @@ docs/
 
 ### 官方模组（Vanilla Mods）
 
-模组是 engine 仓库内的普通 Rust crate（位于 `engine/mods/`），通过 workspace 成员引入。每个模组 = 独立 Rust crate（`Cargo.toml` + `mod.toml`），作为 Bevy Plugin 静态编译进引擎。
+模组是独立 Rust crate（`Cargo.toml` + `mod.toml`）。Engine 可在本地把模组检出到 `mods/` 并通过 workspace 成员引入，作为 Bevy Plugin 静态编译进引擎。
 模组开发参考已合并至[引擎文档](design/engine.md)。
 
 | 模组 | 默认 | 说明 |
