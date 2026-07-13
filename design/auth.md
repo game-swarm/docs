@@ -153,7 +153,7 @@ PoW challenge TTL 5min，一次性消费。难度自适应调整（`difficulty_b
 人类 → 浏览器 → LoginButton.tsx
   → 浏览器生成 Ed25519 keypair
   → 前端自动请求 PoW challenge → Web Worker 求解 nonce
-  → POST /auth/csr/submit → {username, csr, challenge_id, nonce, csr_signature}
+  → POST /mcp swarm_submit_csr → {username, csr, certificate_profile, challenge_id, nonce, csr_signature}
   → 获得 ClientAuthCertificate + CodeSigningCertificate
 ```
 
@@ -164,7 +164,7 @@ AI agent → MCP session
   → 选择或生成 Ed25519 私钥
   → swarm_register_challenge() 获取 challenge
   → 本地求解 PoW
-  → swarm_submit_csr(username, csr, challenge_id, nonce, csr_signature)
+  → swarm_submit_csr(username, csr, certificate_profile, challenge_id, nonce, csr_signature)
   → 获得 ClientAuthCertificate + CodeSigningCertificate
 ```
 
@@ -196,19 +196,20 @@ Swarm-Nonce: <random 128-bit>
 Swarm-Signature: <ed25519 signature by user private key>
 ```
 
-签名 payload：
+签名 payload（UTF-8，LF 分隔）：
 
 ```
-SWARM-REQUEST-V1
-method: <http method or mcp method>
-path: <http path or mcp tool name>
-body_hash: <blake3 canonical body hash>
-timestamp: <unix_ms>
-nonce: <nonce>
-certificate_id: <certificate_id>
-player_id: <player_id>
-audience: "swarm-aud-v1:<transport>:<server_id>:<world_id>:<player_id>"
+METHOD
+PATH
+TIMESTAMP
+NONCE
+CERTIFICATE_ID
+PLAYER_ID
+TICK
+BLAKE3(stable_json(body))
 ```
+
+`stable_json` 递归按对象 key 排序，数组保持顺序；客户端对该稳定 JSON 字节串计算 BLAKE3，并将十六进制 hash 放入 canonical payload。
 
 ---
 

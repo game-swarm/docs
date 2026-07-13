@@ -119,12 +119,9 @@ LEADERBOARD: 公开。指标: GCL、房间数、drone 数。
 每 tick 推送增量: 仅包含变更 且 is_visible_to(subscriber) 为 true 的实体。
 ```
 
-### 3.4 REST API
+### 3.4 Gateway 查询接口
 
-```
-GET /specs/reference/v1/world/rooms/:id  → 实体列表经 is_visible_to(请求者) 过滤
-GET /specs/reference/v1/world/rooms/:id/map → 仅地形（公开）
-```
+Gateway 当前不暴露独立的 room/map REST 路由。房间、实体与地形查询通过 MCP 工具进入 Engine，并执行本节定义的 `is_visible_to` 与 terrain 可见性规则。
 
 ### 3.5 旁观者视图 (Spectator View)
 
@@ -213,11 +210,10 @@ GET /specs/reference/v1/world/rooms/:id/map → 仅地形（公开）
 |--------|:--:|---------|------|
 | WASM `tick(snapshot)` | N | `is_visible_to(player, N)` | snapshot.tick == N |
 | MCP `swarm_get_snapshot` | N | `is_visible_to(player, N)` | 与 WASM tick 同一份快照 |
-| MCP `swarm_get_objects_in_range` | N | `is_visible_to(player, N)` | 同一快照的子集查询 |
+| WASM `host_get_objects_in_range` | N | `is_visible_to(player, N)` | 同一快照的子集查询 |
 | MCP `swarm_explain_last_tick` | N-1 | 仅自身 | 解释上一 tick 的执行结果 |
 | MCP `swarm_get_replay` | N | `is_visible_to(player, tick)` | 每帧按该 tick 的视野重建 |
 | WebSocket delta | N | `is_visible_to(subscriber, N)` | 仅推送变更实体 |
-| REST `/specs/reference/v1/world/rooms/:id` | N | `is_visible_to(requester, N)` | Engine Moka Cache 读取，miss 时回退 redb |
 | Replay (自身) | 历史 tick | `is_visible_to(player, tick)` | 逐 tick 重建视野 |
 | Replay (Arena 赛后公开) | 历史 tick + ≥100 延迟 | 全知（无过滤） | 仅赛后可用 |
 | Spectator WebSocket | N - spectate_delay | 无过滤（全地图） | 仅 `public_spectate=true` 时可用 |

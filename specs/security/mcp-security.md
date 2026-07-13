@@ -48,12 +48,12 @@ Web UI (Monaco + PixiJS)          MCP Interface
   - public_key: Ed25519
   - usage: client_auth | code_signing
   - scopes: string[]
-  - audience: "swarm-aud-v1:<transport>:<server_id>:<world_id>:<player_id>"
+  - transport binding: signed `cert_id`, `player_id`, and `X-Swarm-Transport`
   - issued_at / expires_at
   - issuer: Server CA fingerprint
 
 部署 WASM:
-  1. 客户端附带 CodeSigningCertificate + 私钥签名 `SWARM-DEPLOY-V1`（`wasm_module_hash + metadata_hash + identity + slot/version/audience`）
+  1. 客户端附带 CodeSigningCertificate + 私钥签名 `SWARM-DEPLOY-V1`（`wasm_module_hash + metadata_hash + identity + slot/version/transport_binding`）
   2. 服务端验证证书链、usage=code_signing、scope、提交时未过期、未撤销、签名匹配
   3. player_id 从证书提取，不可自报
   4. `compiled_artifact_hash` 由服务端编译后派生，不进入客户端签名 payload；deploy manifest 同时记录 `signed_payload_hash` 与 `compiled_artifact_hash`
@@ -80,12 +80,12 @@ Browser (Web UI)
          ▼
 ┌──────────────────┐
 │  Gateway/MCP      │  ← SSE 推送（text/event-stream）
-│  (仅 HTTP/SSE)    │     Token audience: swarm-aud-v1:browser-http:<server_id>:<world_id>:<player_id>
+│  (仅 HTTP/SSE)    │     Token binding: browser origin + world + player
 └──────────────────┘
 ```
 
 **Browser 特有安全要求**：
-- Browser endpoint 使用 `swarm-aud-v1:browser-http:<server_id>:<world_id>:<player_id>` audience；不得接受 `agent-mcp` 或 `cli-rest` audience
+- Browser endpoint 绑定 browser origin、world 与 player；不得接受 agent MCP 或 CLI REST transport
 - MCP endpoint 仅接受来自允许 origin 的请求（`Origin` header 白名单）
 - `Host` header 严格匹配 gateway hostname
 - CSRF token 必需（`X-CSRF-Token` header），cookie `SameSite=Strict`
@@ -108,13 +108,13 @@ AI Agent / CLI
          ▼
 ┌──────────────────┐
 │  Gateway/MCP      │  ← Agent endpoint（独立端口或路径）
-│  (app-cert signed)│     Certificate audience: swarm-aud-v1:agent-mcp:<server_id>:<world_id>:<player_id>
+│  (app-cert signed)│     Certificate binding: cert_id + player_id + X-Swarm-Transport
 └──────────────────┘
 ```
 
 **Agent/CLI 特有安全要求**：
 - Agent 端点必须验证 `Swarm-Certificate`、`Swarm-Cert-Id` 与 canonical request signature，不依赖 Origin header
-- Certificate `audience` 绑定实际入口 transport：MCP JSON-RPC 为 `swarm-aud-v1:agent-mcp:<server_id>:<world_id>:<player_id>`，CLI REST 为 `swarm-aud-v1:cli-rest:<server_id>:<world_id>:<player_id>`，Authenticated WS 为 `swarm-aud-v1:agent-ws:<server_id>:<world_id>:<player_id>`
+- Certificate binding 覆盖实际入口 transport：MCP JSON-RPC、CLI REST 与 authenticated WS 不可互换
 - Swarm CA 只用于应用层证书，不得安装到系统/浏览器 trust store
 - HTTP 不安全传输可用于身份认证和完整性校验；首次访问需人工确认并 pin Server CA fingerprint，pin 后服务器身份不依赖外部 TLS
 - 拒绝任何携带 browser-style Origin/CSRF header 的 agent 端点请求（防跨协议混淆）
@@ -130,7 +130,7 @@ AI Agent / CLI
 | `app_cert_required` | Browser + Agent/CLI | 必须验证 `ClientAuthCertificate`/`CodeSigningCertificate` 与 canonical request/deploy 签名 |
 | `admin_scope_required` | Browser + Agent/CLI | 必须验证 `ClientAuthCertificate` 的 `admin` scope，并执行双签/冷却/审计 |
 
-`swarm_deploy`、证书吊销、恢复确认、profile/security settings 与所有 `swarm_admin_*` 工具不得用纯 Web session 放行；Browser endpoint 对这些工具同样要求 application certificate signature。`browser-http`、`agent-mcp`、`cli-rest` audience 不可互换。
+`swarm_deploy`、证书吊销、恢复确认、profile/security settings 不得用纯 Web session 放行；Browser endpoint 对这些工具同样要求 application certificate signature。browser、MCP 与 REST transport 不可互换。
 
 ### 2.3 DNS Rebinding 防御
 
@@ -172,17 +172,17 @@ AI Agent / CLI
 WebSocket 连接按客户端类型分为两条安全路径：
 
 **A. 已认证 Agent 会话（Authenticated WS）**：
-连接建立时通过 `SWARM-WS-HANDSHAKE-V1` WebSocket 证书握手完成身份绑定。握手签名 payload 固定为 `SWARM-WS-HANDSHAKE-V1\n<transport>\n<server_id>\n<world_id>\n<cert_id>\n<timestamp>\n<nonce>\n<audience>`，其中 `transport = agent-ws`，`audience = swarm-aud-v1:agent-ws:<server_id>:<world_id>:<player_id>`。会话建立后使用 TLS 传输、已认证 session 与 per-role ACL；客户端写操作仍走 canonical request signature。具体要求：
+连接建立时通过 WebSocket ticket 完成身份绑定。握手签名 payload 固定为 `<sessionId>:<certId>:<room>:<expires>`，并通过 query 字段 `room`、`sessionId`、`certId`、`expires`、`signature` 发送。会话建立后使用 TLS 传输、已认证 session 与 per-role ACL；客户端写操作仍走 canonical request signature。具体要求：
 
 - `seq`: 单调递增序号（从 1 开始），接收方严格检查 `seq == last_seq + 1`
-- `mac`: 对 `SWARM-WS-MSG-V1\n<transport>\n<direction>\n<session_id>\n<seq>\n<tick>\n<body_hash>\n<audience>` 的 Ed25519 签名，使用握手绑定的用户私钥
+- `mac`: 对 `SWARM-WS-MSG-V1\n<transport>\n<direction>\n<session_id>\n<seq>\n<tick>\n<body_hash>` 的 Ed25519 签名，使用握手绑定的用户私钥
 - 签名验证通过后消息才能被处理；seq 跳跃视为安全事件 → 断开连接 + 审计日志
 - 服务端回复也必须附 seq（独立计数器）+ 服务端签名
 
 **B. 浏览器/公开观众（Read-Only Spectator）**：
 浏览器 WebSocket 连接**仅允许只读订阅**——接收 SSE 风格的推送事件流，不得发送任何写操作或认证消息。具体约束：
 
-- 公开 spectator WS 端点不接受 `Swarm-Certificate` 头部，不执行证书握手；仅允许 `X-Swarm-Transport: spectator-ws`，audience 固定为 `swarm-aud-v1:spectator-ws:<server_id>:<world_id>:public`
+- 公开 spectator WS 端点不接受 `Swarm-Certificate` 头部，不执行证书握手；仅允许只读 spectator transport
 - 只读事件流仅包含公开世界状态（房间列表、在线玩家数、公开排行榜），不泄露玩家私有数据
 - 无 per-message 签名要求（只读、无状态变更）
 - 速率限制：每个 spectator 连接最多 10 events/s
@@ -215,7 +215,7 @@ Swarm-Signature: <ed25519 signature>
 | `public_key` | 用户/设备公钥 |
 | `usage` | `client_auth` / `code_signing` |
 | `scope` | 空格分隔的权限 |
-| `audience` | `swarm-aud-v1:<transport>:<server_id>:<world_id>:<player_id>` |
+| `transport_binding` | signed `cert_id`, `player_id`, and `X-Swarm-Transport` |
 | `expires_at` | 证书过期时间 |
 | `issuer` | Server CA fingerprint |
 
@@ -235,11 +235,13 @@ AI 玩家令牌: `swarm:deploy swarm:read swarm:debug`。
 
 ## 4. MCP 工具 — 部署与管理
 
-> **MCP 工具权威清单** 见 [API Registry §3.2](../reference/api-registry.md#32-game-api-工具清单-57) — 57 工具。
+> **MCP 工具权威清单** 见 [API Registry §3.2](../reference/api-registry.md) — `all_declared=51`, `active_only=50`, `rfc_gated=1`。
 >
 > **认证工具权威定义** 见 [auth_api.idl.yaml](../reference/auth_api.idl.yaml) → [API Registry §3.2 Auth](../reference/api-registry.md#auth-2)。
 >
-> **MCP 工具授权 (authz)** 以 [API Registry §3.4 Capability Profiles](../reference/api-registry.md#34-capability-profiles) 为权威来源。工具按 profile（`onboarding`、`play`、`deploy`、`debug`、`admin`）分组分配；每个 profile 对应特定 scope 和 rate limit。MCP 客户端的能力面由分配的 profile 决定，不在本文档中重复声明。
+> **MCP 工具授权 (authz)** 以 [API Registry §3.4 Capability Profiles](../reference/api-registry.md#34-capability-profiles) 为权威来源。工具按 profile（`onboarding`、`play`、`deploy`、`debug`、`arena`）分组分配；每个 profile 对应特定 scope 和 rate limit。MCP 客户端的能力面由分配的 profile 决定，不在本文档中重复声明。
+
+Gateway 对 MCP/REST signed request nonce 使用 `SWARM_GATEWAY_NONCE_PATH`（默认 `/tmp/swarm-gateway-nonces.db`）持久化 replay 状态。Sandbox 对 NATS HMAC 信封 nonce 使用 `SWARM_SANDBOX_NONCE_PATH`（默认 `/tmp/swarm-sandbox-nonces.db`）持久化 replay 状态。生产环境必须把两个路径挂载到各自服务实例的可写持久卷；读取、解析或原子写入失败时对应认证路径 fail closed。
 
 ### 4.1 WASM 模块管理
 
@@ -248,8 +250,6 @@ AI 玩家令牌: `swarm:deploy swarm:read swarm:debug`。
 - `swarm_validate_module` — 上传前预校验
 - `swarm_get_deploy_status` / `swarm_list_deployments` — 查询部署状态
 - `swarm_list_modules` — 列出已部署模块（active，详细定义见 [API Registry §3.2 Deploy](../reference/api-registry.md#deploy-7)）
-
-> **变更记录**：`swarm_rollback` 已替换为 `swarm_admin_rollback`（Admin profile）。
 
 #### `swarm_deploy`
 

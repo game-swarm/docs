@@ -6,8 +6,7 @@
 # Markdown tables directly.
 #
 # Per design/auth.md: CSR -> certificate -> credential -> session, Ed25519
-# canonical request signatures, audience/scope labels, and optional email
-# recovery.
+# canonical request signatures, and scope labels.
 # =============================================================================
 
 api_version: "0.2.0"
@@ -49,7 +48,6 @@ csr_lifecycle_tools:
         challenge_id: string
         nonce: string
         csr_signature: string
-        email: "string?"
       output_schema:
         certificate_bundle:
           client_auth_cert: string
@@ -70,8 +68,7 @@ csr_lifecycle_tools:
         Submit a CSR with PoW proof and Ed25519 csr_signature. Server validates
         admission, atomically consumes the challenge, creates or updates the
         player record, and issues ClientAuthCertificate plus
-        CodeSigningCertificate via the Server CA. Optional email is a bootstrap
-        recovery address and is not an active auth surface.
+        CodeSigningCertificate via the Server CA.
 
     - name: swarm_renew_certificate
       index: 3
@@ -138,7 +135,10 @@ csr_lifecycle_tools:
         certificate_id: string
       output_schema:
         valid: bool
+        certificate_id: string
         player_id: PlayerId
+        client_public_key: string
+        public_key_fingerprint: string
         usage: string
         scope: string
         audience: string
@@ -151,7 +151,7 @@ csr_lifecycle_tools:
       visibility_filter: owner
       rate_limit_key: per_player
       transport: "agent-mcp, cli-rest, wasm-sdk"
-      description: "Validate an application-layer certificate and return its metadata."
+      description: "Validate an application-layer certificate and return issuer-verified stored certificate metadata, including the trusted client public key."
 
     - name: swarm_get_server_trust
       index: 7
@@ -180,13 +180,13 @@ certificate_types:
   types:
     - type: ClientAuthCertificate
       usage: "client_auth"
-      audience_scope: "swarm-aud-v1:<transport>:<server_id>:<world_id>:<player_id>"
+      audience_scope: "bound to cert_id, player_id, transport, and signed request payload"
       ttl: "default 24h; configurable 15min-7d"
       renewal: "swarm_renew_certificate"
-      description: "Carries authenticated MCP, REST, and WebSocket requests using SWARM-REQUEST-V1."
+      description: "Carries authenticated MCP, REST, and WebSocket requests using the frontend canonical request payload."
     - type: CodeSigningCertificate
       usage: "code_signing"
-      audience_scope: "swarm-aud-v1:wasm-sdk:<server_id>:<world_id>:<player_id>"
+      audience_scope: "bound to cert_id, player_id, wasm-sdk usage, and signed deploy payload"
       ttl: "30-180d (default 30d)"
       renewal: "swarm_renew_certificate"
       description: "Signs SWARM-DEPLOY-V1 payloads for module deployment."
@@ -207,7 +207,7 @@ certificate_types:
 canonical_request_signature:
   description: >
     Every authenticated request carries a canonical Ed25519 signature over a
-    SWARM-REQUEST-V1 payload. The signature covers Swarm-Cert-Id; Gateway
+    frontend canonical payload. The signature covers Swarm-Cert-Id; Gateway
     rejects requests where the header id does not match the certificate body.
   headers:
     - "Swarm-Certificate: <base64 ClientAuthCertificate or CodeSigningCertificate>"
@@ -216,16 +216,16 @@ canonical_request_signature:
     - "Swarm-Nonce: <random 128-bit>"
     - "Swarm-Signature: <ed25519 signature by user private key>"
   signature_payload:
-    format: "SWARM-REQUEST-V1\nmethod: <v>\npath: <v>\nbody_hash: <v>\ntimestamp: <v>\nnonce: <v>\ncertificate_id: <v>\nplayer_id: <v>\naudience: <v>\n"
+    format: "METHOD\nPATH\nTIMESTAMP\nNONCE\nCERTIFICATE_ID\nPLAYER_ID\nTICK\nBLAKE3(stable_json(body))"
     fields:
-      - "method: HTTP method or MCP tool name"
-      - "path: HTTP path or MCP tool name"
-      - "body_hash: blake3 canonical body hash"
-      - "timestamp: unix_ms as decimal string"
-      - "nonce: random 128-bit hex"
-      - "certificate_id: Swarm-Cert-Id header and certificate body cert_id"
-      - "player_id: authenticated player ID"
-      - "audience: swarm-aud-v1:<transport>:<server_id>:<world_id>:<player_id>"
+      - "METHOD: uppercase HTTP method"
+      - "PATH: HTTP path or MCP endpoint path"
+      - "TIMESTAMP: unix_ms as decimal string"
+      - "NONCE: random 128-bit hex"
+      - "CERTIFICATE_ID: Swarm-Cert-Id header and certificate body cert_id"
+      - "PLAYER_ID: authenticated player ID"
+      - "TICK: request tick header value or empty string"
+      - "BLAKE3(stable_json(body)): hex BLAKE3 over recursive key-sorted stable JSON"
     encoding: "UTF-8, LF line endings, no BOM"
     algorithm: Ed25519
   validation_order:
@@ -244,10 +244,10 @@ canonical_request_signature:
 deploy_canonical_signature:
   description: >
     SWARM-DEPLOY-V1 is signed by CodeSigningCertificate and binds the canonical
-    deploy body, module hash, player identity, audience, deploy_id, and
+    deploy body, module hash, player identity, transport binding, deploy_id, and
     per-slot version_counter.
   signature_payload:
-    format: "SWARM-DEPLOY-V1\nmethod: swarm_deploy\npath: /deploy\nbody_hash: <v>\ntimestamp: <v>\nnonce: <v>\ncertificate_id: <v>\nplayer_id: <v>\naudience: <v>\ndeploy_id: <v>\nmodule_hash: <v>\nversion_counter: <v>\n"
+    format: "SWARM-DEPLOY-V1\nmethod: swarm_deploy\npath: /deploy\nbody_hash: <v>\ntimestamp: <v>\nnonce: <v>\ncertificate_id: <v>\nplayer_id: <v>\ntransport_binding: <v>\ndeploy_id: <v>\nmodule_hash: <v>\nversion_counter: <v>\n"
     fields:
       - "method: swarm_deploy"
       - "path: /deploy"
@@ -256,7 +256,7 @@ deploy_canonical_signature:
       - "nonce: random 128-bit hex"
       - "certificate_id: CodeSigningCertificate cert_id"
       - "player_id: deploying player"
-      - "audience: swarm-aud-v1:wasm-sdk:<server_id>:<world_id>:<player_id>"
+      - "transport: wasm-sdk usage is bound by the certificate and deploy payload"
       - "deploy_id: unique deploy identifier"
       - "module_hash: blake3 of WASM module bytes"
       - "version_counter: per-player/per-slot deploy counter"
@@ -269,7 +269,7 @@ deploy_canonical_signature:
     - "4. deploy_id is unique for the player"
     - "5. version_counter is greater than the stored slot counter"
     - "6. Timestamp within window and nonce not consumed"
-    - "7. audience matches server, world, player, and wasm-sdk transport"
+    - "7. certificate usage, player, and wasm-sdk transport binding match the deploy payload"
   replay_protection:
     mechanism: "redb manifest transaction + per-slot version_counter + deploy_id uniqueness"
     description: "The accepted deploy manifest is written atomically with the version counter update."
@@ -302,7 +302,7 @@ auth_trace_events:
     - { name: auth_cert_issue, index: 2, replay_class: admin_critical, description: "Emitted when a certificate is issued" }
     - { name: auth_cert_renew, index: 3, replay_class: idempotent_mutation, description: "Emitted on swarm_renew_certificate" }
     - { name: auth_cert_revoke, index: 4, replay_class: admin_critical, description: "Emitted on certificate revocation" }
-    - { name: auth_recovery_bind, index: 5, replay_class: non_replayable, description: "Emitted on optional email recovery binding" }
+    - { name: auth_recovery_bind, index: 5, replay_class: non_replayable, description: "Emitted on optional recovery binding" }
     - { name: auth_rate_limit_hit, index: 6, replay_class: non_replayable, description: "Emitted when an auth endpoint rate limit is exceeded" }
     - { name: auth_security_alert, index: 7, replay_class: non_replayable, description: "Emitted on security-relevant auth anomaly" }
 
