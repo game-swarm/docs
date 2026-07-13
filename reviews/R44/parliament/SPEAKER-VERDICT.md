@@ -1,5 +1,7 @@
 # R44 Speaker 裁决
 
+> **Archive notice:** this is a historical R44 review record, not a current implementation or protocol authority. See [the R44 archive index](../README.md) and the current specs for active contracts.
+
 Speaker: rev-speaker / GPT-5.5
 Input: 9/9 reviewer reports read from `/data/swarm/docs/reviews/R44/parliament/`
 
