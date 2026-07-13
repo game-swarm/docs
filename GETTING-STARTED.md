@@ -13,58 +13,37 @@ git clone https://github.com/game-swarm/gateway.git
 git clone https://github.com/game-swarm/frontend.git
 ```
 
-基础启动顺序为：先启动 NATS，再启动 `sandbox` worker、`engine`、`gateway`，最后启动 `frontend`。每个仓库的 README 负责说明本仓库的本地启动命令。
+基础启动顺序为：先启动 NATS，再启动 `sandbox` worker、`engine`、`gateway`，最后启动 `frontend`。Engine、Gateway 和 Sandbox worker 都会重试初始 NATS 连接，但当前没有无 NATS 的本地 sandbox fallback。每个仓库的 README 负责说明本仓库的本地启动命令。
 
-确认服务就绪：
+引擎与 Gateway 的健康端点分别返回纯文本和 JSON：
 ```bash
-curl http://localhost:8080/healthz  # → {"status":"ok"}
+curl http://localhost:8080/healthz  # → ok
+curl http://localhost:8082/healthz  # → {"status":"ok"}
 ```
+
+NATS 不可达时，Engine `/healthz` 返回 `503 degraded`；Gateway `/healthz` 返回 HTTP 503 和 `{"status":"degraded","nats":"unavailable"}`，直到 NATS relay 连接并订阅成功。Sandbox worker 没有 HTTP readiness endpoint；它保持进程存活并按 `NATS_CONNECT_RETRY_MS`（默认 1000ms）重试初始 NATS 连接。Gateway 与 Sandbox 会把认证 nonce/replay 状态分别持久化到 `SWARM_GATEWAY_NONCE_PATH`（默认 `/tmp/swarm-gateway-nonces.db`）和 `SWARM_SANDBOX_NONCE_PATH`（默认 `/tmp/swarm-sandbox-nonces.db`）；生产环境应把这些路径挂载到可写持久卷，避免重启后接受旧 nonce。
 
 ## 2. 选择 SDK
 
 | SDK | 语言 | 适合 |
 |-----|------|------|
-| sdk-ts | TypeScript | Web 前端开发、快速原型 |
+| `@swarm/sdk-ts` | TypeScript | Web 前端开发、快速原型 |
 | sdk-rust | Rust | 高性能、编译时安全 |
 
 ## 3. 写第一个 Bot（TypeScript）
 
 ```typescript
-import { tick, Snapshot, Command } from "swarm-sdk";
+import { actions, command, type TickHandler } from "@swarm/sdk-ts";
 
-tick((snap: Snapshot): Command[] => {
-  const cmds: Command[] = [];
+export const tick: TickHandler = (snapshot) => {
+  const spawn = snapshot.entities.find(
+    (entity) => entity.type === "structure" && entity.owner === snapshot.player_id
+  );
 
-  // 找到自己的 spawn
-  const spawn = snap.entities.find(e => e.type === "Structure" && e.structure_type === "Spawn");
   if (!spawn) return [];
 
-  // 没有 drone → 生成一个
-  const drones = snap.entities.filter(e => e.type === "Drone");
-  if (drones.length === 0) {
-    cmds.push({
-      action: "Spawn",
-      object_id: spawn.id,
-      body: ["MOVE", "WORK", "CARRY"],
-      sequence: 1,
-    });
-    return cmds;
-  }
-
-  // 有 drone → 找最近的 Source 采集
-  const drone = drones[0];
-  const source = snap.entities.find(e => e.type === "Source");
-  if (source) {
-    cmds.push({
-      action: "Harvest",
-      object_id: drone.id,
-      target_id: source.id,
-      sequence: 2,
-    });
-  }
-
-  return cmds;
-});
+  return [command(0, actions.spawn(spawn.id, ["Move", "Work", "Carry"]))];
+};
 ```
 
 ## 4. 部署
@@ -75,7 +54,7 @@ tick((snap: Snapshot): Command[] => {
 1. 首次访问时确认服务器 Server CA fingerprint
 2. 生成本地设备密钥并提交 CSR
 3. 获得应用层证书（ClientAuthCertificate + CodeSigningCertificate）
-4. 点击 **Deploy** → 代码编译为 WASM → 签名 DeployPayload → 上传到引擎
+4. 点击 **Deploy** → 代码编译为 WASM → 签名 DeployPayload → 上传到引擎；sandbox worker 在部署消息到达后本地编译模块
 5. 下一个 tick 开始，你的 drone 就会自动采集
 
 ### 4.2 AI Agent（MCP）
@@ -94,7 +73,7 @@ AI agent 通过 MCP 部署 WASM，与人类玩家走相同的证书路径：
 9. swarm_explain_last_tick   → 验证第一个 tick 执行结果
 ```
 
-不需要先请求 `swarm_deploy_challenge`——防重放由 `version_counter` 保证。
+部署防重放由单调递增的 `version_counter` 保证。
 
 **MCP 工具清单**见 [specs/reference/mcp-tools.md](specs/reference/mcp-tools.md)。
 

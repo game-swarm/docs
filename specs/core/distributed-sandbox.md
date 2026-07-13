@@ -88,26 +88,46 @@ Tick N COLLECT 开始:
 swarm.tick.{tick}.player.{player_id}     — 分发 WASM 执行任务（request）
 swarm.tick.{tick}.player.{player_id}.reply — 返回命令结果（reply）
 
-swarm.deploy.{module_hash}               — 推送新 WASM 模块到所有 sandbox
-swarm.deploy.{module_hash}.ack           — sandbox 确认已缓存模块
+swarm.deploy.{module_hash}               — request-reply 推送新 WASM 模块到 sandbox
 
 swarm.sandbox.heartbeat.{instance_id}     — sandbox 存活心跳
 ```
 
 ### 4.1.1 NATS 安全
 
-NATS 连接必须使用 TLS 与 per-role ACL。Engine 只允许 publish sandbox request、subscribe sandbox reply；Sandbox worker 只允许 subscribe sandbox queue group、publish reply 与 heartbeat。NATS message 不要求 MAC/签名信封；安全边界由 NATS credential、topic ACL、Engine/Gateway 应用层认证和 mod 源码审查提供。
+NATS 连接必须使用 TLS 与 per-role ACL。Engine 只允许 publish sandbox request、subscribe sandbox reply；Sandbox worker 只允许 subscribe sandbox queue group、publish reply 与 heartbeat。除此之外，deploy/tick request 与 reply 都必须使用 `SWARM_NATS_AUTH_SECRET` 做 HMAC-SHA256 消息认证；缺少 secret、缺少 tag、tag 不匹配、timestamp 过期或重复 `(request_id, nonce)` 都必须拒绝。Sandbox worker 必须将已接受的 `(request_id, nonce)` 持久化到 `SWARM_SANDBOX_NONCE_PATH`（默认 `/tmp/swarm-sandbox-nonces.db`），按 `AUTH_FRESHNESS_MS` 剪枝；生产部署必须把该路径挂载到可写持久卷。nonce store 读取、解析或原子写入失败时请求 fail closed，不得继续执行 tick/deploy payload。
+
+认证信封固定为 `{ request_id, nonce, timestamp_ms, payload, auth_tag_hex }`，字段顺序按 Rust `AuthenticatedMessage<T>` / sandbox `AuthenticatedRequest<T>` 声明顺序序列化。`request_id` 与 `nonce` 为 16-byte lowercase hex（32 chars），`timestamp_ms` 为 Unix epoch milliseconds。HMAC 签名输入为 `serde_json::to_vec(AuthenticatedSigningMessage { request_id, nonce, timestamp_ms, payload })`，即同序字段但不包含 `auth_tag_hex`；`auth_tag_hex` 是 HMAC-SHA256 lowercase hex。NATS 内 `module_hash` 为原始 `[u8; 32]`，仅 subject、HTTP、日志和 UI 使用 lowercase 64-char hex。
+
+```rust
+struct AuthenticatedMessage<T> {
+    request_id: String,
+    nonce: String,
+    timestamp_ms: u64,
+    payload: T,
+    auth_tag_hex: String,
+}
+
+struct AuthenticatedSigningMessage<'a, T> {
+    request_id: &'a str,
+    nonce: &'a str,
+    timestamp_ms: u64,
+    payload: &'a T,
+}
+```
 
 ### 4.2 Request 载荷
 
 ```rust
 struct SandboxTickRequest {
+    schema: "swarm.sandbox.tick.v1",
     tick: u64,
-    player_id: PlayerId,
-    snapshot_json: Vec<u8>,         // 可见世界快照（≤256KB）
+    player_id: String,
+    room_id: String,
     module_hash: [u8; 32],         // WASM 模块标识
+    snapshot_json: String,         // 可见世界快照（≤256KB）
     fuel_budget: u64,              // wasmtime fuel units
-    collect_timeout_ms: u64,       // 本 tick COLLECT 截止时间（墙钟绝对时间）
+    collect_timeout_ms: u64,       // 本 tick COLLECT timeout
 }
 ```
 
@@ -116,10 +136,11 @@ struct SandboxTickRequest {
 ```rust
 struct SandboxTickReply {
     tick: u64,
-    player_id: PlayerId,
-    commands: Vec<RawCommand>,           // 指令列表（JSON）
+    player_id: String,
+    commands: Vec<Value>,                // 指令列表（JSON）
+    errors: Vec<String>,                 // Engine 兼容字段；sandbox 当前不主动填充
     metrics: SandboxExecutionMetrics,    // 执行指标
-    status: SandboxExecutionStatus,      // 执行状态
+    status: String,                      // "Ok", "Timeout", "FuelExhausted", "ModuleNotFound", "Trap(...)"
 }
 
 struct SandboxExecutionMetrics {
@@ -129,14 +150,6 @@ struct SandboxExecutionMetrics {
     host_function_calls: u32,
 }
 
-enum SandboxExecutionStatus {
-    Ok,
-    Timeout,
-    FuelExhausted,
-    Trap(String),
-    Oom,
-    ModuleNotFound,
-}
 ```
 
 ## 5. WASM 模块分发
@@ -144,23 +157,30 @@ enum SandboxExecutionStatus {
 ```
 Engine 接收 swarm_deploy(MCP):
 
-1. 校验 WASM + 编译 + redb manifest commit（逻辑不变）
-2. 编译完成后：
-   ├─ 计算 compiled_artifact_hash
-   ├─ NATS broadcast: swarm.deploy.{compiled_artifact_hash}
+1. 校验 WASM、证书、签名与 version_counter，并提交 redb manifest
+2. 计算 `module_hash = BLAKE3(module_bytes)` 后：
+   ├─ NATS request: swarm.deploy.{module_hash_hex}
    │   payload = {
-   │       module_hash, compiled_artifact_hash,
-   │       module_bytes,                    // 原始 WASM 二进制
-   │       compiled_native_bytes,         // 预编译原生码（可选）
-   │       wasmtime_version,              // 版本对齐
-   │       validation_policy_version,
+   │       schema: "swarm.sandbox.deploy.v1",
+   │       module_hash: [u8; 32],
+   │       module_bytes,
+   │       validation_policy_version: "raw-wasm-v1",
    │   }
-   └─ 等待所有活跃 sandbox ack（或 timeout 后继续——不阻塞）
+   └─ 等待 authenticated deploy ack；ack 校验失败、超时或非 cached 状态均视为部署失败
 
 3. Sandbox Container 接收：
-   ├─ 存储 WASM 二进制 + 预编译模块到本地缓存
-   ├─ 缓存键 = Blake3(compiled_artifact_hash || wasmtime_version)
-   └─ NATS reply: swarm.deploy.{compiled_artifact_hash}.ack
+   ├─ 验证 HMAC、schema 与 BLAKE3(module_bytes) == module_hash
+   ├─ 在 sandbox 进程内编译 WASM；禁止接收调用方提供的 native artifact
+   ├─ 缓存键 = module_hash + wasmtime_version + validation_policy_version
+    └─ NATS request reply: authenticated DeployAck
+
+```rust
+struct DeployAck {
+    instance_id: String,
+    module_hash: String,  // lowercase 64-char BLAKE3 hex
+    status: String,       // success: "cached:{validation_policy_version}"; failure: "rejected:{reason}"
+}
+```
 
 4. 未 ack 的 sandbox 在下次 tick 请求时：
    ├─ 请求携带 module_hash
@@ -174,7 +194,7 @@ Engine 接收 swarm_deploy(MCP):
 ```
 启动:
   1. 容器启动
-  2. 连接 NATS
+  2. 连接 NATS；失败时按 NATS_CONNECT_RETRY_MS（默认 1000ms）持续重试
   3. 订阅: swarm.tick.*.player.* (shared queue group "sandbox-workers")
   4. 发布心跳: swarm.sandbox.heartbeat.{instance_id}
   5. 等待任务
@@ -205,7 +225,7 @@ Engine 接收 swarm_deploy(MCP):
 |------|------|
 | Sandbox 超时（2500ms 无 reply） | 玩家本 tick 0 指令，不计入 sandbox 健康度 |
 | Sandbox crash/重启 | NATS queue group 自动重新分配任务；该 tick 该玩家 0 指令 |
-| NATS 断连 | Engine 本地降级：等待超时 → 所有玩家 0 指令（degraded mode） |
+| NATS 不可达 | Engine/Gateway/Sandbox 都重试初始 NATS 连接；无本地 sandbox fallback。Engine `/healthz` 返回 `503 degraded`；Gateway `/healthz` 返回 503 degraded JSON；Sandbox 无 HTTP readiness endpoint，保持进程存活并持续重试初始连接。 |
 | 模块缓存未命中 | 即时 fetch + 编译，若仍失败 → ModuleNotFound，本 tick 0 指令 |
 | Engine crash | Sandbox 等待超时后清理当前任务；恢复后从 redb 读取最后提交 tick |
 | 编译失败 | 记录审计日志；本 tick 0 指令；不影响其他玩家 |
@@ -215,16 +235,12 @@ Engine 接收 swarm_deploy(MCP):
 分布式 Sandbox 是 Worker Pool 的超集——本地 Worker Pool 退化为 N=1 个本地容器：
 
 ```
-本地模式（开发/小规模）:
-  sandbox_backend = "local"
-  → Engine 上运行 1 个本地 Sandbox Container（同机）
-
 分布式模式（生产/大规模）:
   sandbox_backend = "nats"
   → NATS 连接外部 Sandbox Container 集群
 ```
 
-模式切换仅在 Engine 配置中修改 `sandbox_backend`——Sandbox Container 代码完全一致。
+当前 Engine 要求远程 NATS sandbox；`SANDBOX_BACKEND` 非 `nats` 会被忽略，不会启用本地 sandbox fallback。
 
 ## 9. 关键不变量
 

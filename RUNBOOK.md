@@ -1,10 +1,14 @@
 # Swarm 运维手册 (Runbook)
 
+> 本手册描述当前工作树的运行行为。设计文档中的目标态组件或指标端点不应当作为现网操作步骤。
+
 ## 1. 启动序列
 
 ### 1.1 完整栈启动 (生产)
 
 Swarm 没有单一主仓库。生产部署应把 `engine`、`sandbox`、`gateway`、`frontend` 作为独立制品发布；NATS 是外部基础设施服务。
+
+Engine 与 Sandbox 必须从 secrets store 读取同一个 `SWARM_NATS_AUTH_SECRET`；Engine 与 Gateway 必须读取同一个 `SWARM_PROXY_SIGNATURE_SECRET`。两个值都不得为空或写入仓库。Engine、Gateway 和 Sandbox 默认使用 `NATS_URL=nats://127.0.0.1:4222`。Gateway 默认订阅 `NATS_SUBJECT=swarm.realtime.v1`，NATS relay 重试间隔由 `NATS_RETRY_DELAY_MS` 控制（默认 2000ms）。Sandbox 初始连接重试间隔由 `NATS_CONNECT_RETRY_MS` 控制（默认 1000ms）。Gateway 认证 nonce store 默认 `SWARM_GATEWAY_NONCE_PATH=/tmp/swarm-gateway-nonces.db`；Sandbox NATS nonce store 默认 `SWARM_SANDBOX_NONCE_PATH=/tmp/swarm-sandbox-nonces.db`。生产部署必须把这两个路径指向各自服务实例的可写持久卷；读取、解析或原子写入失败时服务按 fail-closed 处理认证请求。
 
 ```bash
 # 1. 基础设施
@@ -16,7 +20,7 @@ nats server check connection
 # 3. Sandbox workers
 systemctl start swarm-sandbox
 
-# 4. 引擎 (redb + Moka Cache 均为进程内，无需额外 daemon)
+# 4. 引擎（redb、进程内 BTreeMap 快照缓存；无需额外 cache daemon）
 systemctl start swarm-engine
 
 # 5. Gateway 与 Frontend
@@ -37,35 +41,30 @@ nats ──→ sandbox workers ──→ engine ──→ gateway ──→ fron
 | 服务 | 依赖 | 启动超时 | 就绪信号 |
 |------|------|---------|---------|
 | NATS | 无 | 10s | `nats server check connection` |
-| Sandbox | NATS | 30s | NATS worker subscriptions active |
-| Engine | NATS + Sandbox | 60s | `/healthz` → 200，`tick_ok: true` |
-| Gateway | Engine + NATS | 15s | `/healthz` → 200 |
+| Sandbox | NATS | 无固定超时；持续重试初始连接 | 无 HTTP readiness；日志显示 NATS connected 后订阅 active |
+| Engine | NATS + Sandbox | 无固定超时；按 tick interval 重试初始 NATS | `/healthz` → `200 ok`；依赖未就绪时 `503 degraded` |
+| Gateway | Engine + NATS | 无固定超时；按 `NATS_RETRY_DELAY_MS` 重试 NATS relay | `/healthz` → 200 JSON；NATS relay 未就绪时 503 degraded JSON |
 | Frontend | Gateway | 10s | HTTP 200 on `/` |
 
 ### 1.3 降级启动
 
 ```bash
-# 仅引擎 (无 NATS) — 单节点开发/测试
-cd engine && cargo run
-
-# 引擎 + NATS — 标准生产
+# 引擎 + NATS — 当前支持的运行方式
 systemctl start nats swarm-sandbox swarm-engine swarm-gateway
 ```
 
-降级模式下引擎自动检测依赖缺失：
-- 无 NATS → delta 推送暂停，客户端 REST fetch 同步
-- Moka Cache miss → Engine 从 redb 重建缓存
+Engine、Gateway 和 Sandbox 都会重试初始 NATS 连接；NATS 不可达时不会切换到本地 sandbox fallback。Engine `/healthz` 在依赖未就绪时返回 `503 degraded`。Gateway HTTP server 保持运行，但 `/healthz` 在 NATS relay 未连接并订阅前返回 HTTP 503 和 `{"status":"degraded","nats":"unavailable"}`。Sandbox worker 没有 HTTP readiness endpoint；它保持进程存活并按 `NATS_CONNECT_RETRY_MS` 重试初始 NATS 连接。当前没有外部缓存库。
 
 ### 1.4 启动后验证
 
 ```bash
-# 1. 引擎存活
-curl -s http://localhost:8080/healthz | jq .
+# 1. 引擎存活（纯文本 ok/degraded）
+curl -fsS http://localhost:8080/healthz
 
-# 2. 首个 tick 完成
-curl -s http://localhost:8080/metrics | grep "tick_number"
+# 2. 引擎就绪（当前没有 /metrics 端点）
+curl -fsS http://localhost:8080/healthz
 
-# 3. Gateway 就绪
+# 3. Gateway 就绪（NATS relay 未就绪时返回 503 degraded JSON）
 curl -s http://localhost:8082/healthz | jq .
 ```
 
@@ -175,8 +174,8 @@ swarm verify --redb /data/swarm/world.redb
 # 启动引擎
 systemctl start swarm-engine
 
-# 监控 100 tick
-watch -n 5 "curl -s localhost:8080/metrics | grep tick_number"
+# 监控引擎健康（当前不提供 HTTP /metrics）
+watch -n 5 "curl -fsS localhost:8080/healthz"
 ```
 
 ---
@@ -185,8 +184,8 @@ watch -n 5 "curl -s localhost:8080/metrics | grep tick_number"
 
 | 模式 | 触发 | 影响 | 恢复 |
 |------|------|------|------|
-| **无 NATS** | NATS 连接丢失 | delta 推送暂停，客户端 REST fetch | NATS 恢复后自动重连 |
-| **Moka Cache miss** | Engine 进程内缓存未命中或过期 | 读取回退 redb 直读 | Engine 异步重建缓存 |
+| **无 NATS** | NATS 不可达或连接丢失 | Engine `/healthz` 返回 `503 degraded`；Gateway `/healthz` 返回 503 degraded JSON；Sandbox 无 HTTP readiness 并持续重试初始连接；无本地 sandbox fallback | 恢复 NATS 后 Engine/Gateway 重新变为健康，Sandbox 订阅恢复 |
+| **BTreeMap cache miss** | Engine 进程内缓存未命中 | 读取回退 redb 直读 | Engine 重建缓存 |
 | **引擎 OOM** | cgroup OOM killer | 进程重启，从 redb 恢复最近 tick | systemd auto-restart |
 | **redb 写入失败** | 磁盘满/权限错误 | tick abort，世界状态不推进 | 运维介入检查磁盘/权限 |
 
@@ -215,7 +214,7 @@ watch -n 5 "curl -s localhost:8080/metrics | grep tick_number"
 3. 恢复 keyframe backup: `swarm keyframe restore --source /backup/keyframes --dest /data/swarm/world.redb.keyframes`
 4. 验证 state_checksum 与 keyframe hash: `swarm verify --redb /data/swarm/world.redb --keyframes /data/swarm/world.redb.keyframes`
 5. 启动引擎: `systemctl start swarm-engine`
-6. 监控 100 tick: `watch -n 5 "curl -s localhost:8080/metrics | grep tick_number"`
+6. 监控引擎健康: `watch -n 5 "curl -fsS localhost:8080/healthz"`
 7. 验证无玩家数据丢失: 抽样检查 player 资源总量
 
 ---
@@ -225,8 +224,12 @@ watch -n 5 "curl -s localhost:8080/metrics | grep tick_number"
 | 组件 | 类型 | 部署方式 |
 |------|------|---------|
 | **redb** | Engine 进程内嵌入式 KV | 无需独立 daemon，每 shard 一个 `.redb` 文件 |
-| **Moka Cache** | Engine 进程内读缓存 | 无需独立 daemon，随 Engine 生命周期 |
+| **BTreeMap cache** | Engine 进程内读缓存 | 无需独立 daemon，随 Engine 生命周期 |
 | **NATS** | 外部 daemon | 独立服务，单节点部署即为单节点 cluster |
 | **Gateway** | Rust 独立进程 | 独立制品发布，无状态可水平扩展 |
 | **Sandbox Workers** | WASM 执行 worker pool | 独立制品发布，通过 NATS queue-group 负载均衡 |
 | **Frontend** | 静态 Web 制品 | 独立构建后由任意静态文件服务托管 |
+
+## 8. Container Tags
+
+Engine, frontend, gateway, and sandbox CI publish to GHCR (`ghcr.io/game-swarm/<service>`). Each workflow publishes `sha-<commit>` tags, and publishes mutable `latest` only for the default branch. The workflows require GHCR login before pushing; no Docker Hub or branch-tag publishing path is defined. A SHA-shaped tag is a deployment pin, but the repositories do not configure GHCR policy to enforce immutability. Record the full image digest in production deployment configuration when an immutable artifact reference is required.

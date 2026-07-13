@@ -110,7 +110,7 @@ neutral ──Claim──→ reserved ──RCL 1──→ owned ←──→ co
                  │    阶段三：广播 (BROADCAST)         │
                  │  ┌─────────────────────────┐     │
                  │  │ 1. 计算实体增量            │     │
-                 │  │ 2. Moka Cache + NATS      │     │
+                  │  │ 2. In-process cache + NATS│     │
                  │  │    (并行 fan-out)         │     │
                  │  └─────────────────────────┘     │
                  └──────────┬───────────────────────┘
@@ -418,7 +418,7 @@ Source E1: energy = 5
 
 **关键区别 vs 替换前模型**：
 - **替换前（已删除）**：每房间独立 redb WriteTransaction 提交 + 全局回滚。声称「room-partition 仅是写入分片策略，不产生 per-room 独立 commit 语义」，但实现上仍依赖 per-room commit hash → 全局 manifest——存在「per-room 写入已持久化、全局 abort」的时序窗口。
-- **新（Shadow Write）**：Per-room 写入只到 content-addressed staging 行（如 `/staging/{namespace_epoch}/{content_hash}`）——**staging 行不是已发布状态**，且可在 GlobalTickCommit 失败后由 GC 回收。GlobalTickCommit 是 manifest-only publish 点：仅写入全局 head、房间 hash 列表、manifest/hash-chain 与 staging namespace epoch pointer。所有下游读取（replay、Moka Cache、MCP query）先读取全局 manifest，再按 manifest 指向的 room hash 读取内容——未被 manifest 引用的 staging 数据对外不可见。
+- **新（Shadow Write）**：Per-room 写入只到 content-addressed staging 行（如 `/staging/{namespace_epoch}/{content_hash}`）——**staging 行不是已发布状态**，且可在 GlobalTickCommit 失败后由 GC 回收。GlobalTickCommit 是 manifest-only publish 点：仅写入全局 head、房间 hash 列表、manifest/hash-chain 与 staging namespace epoch pointer。所有下游读取（replay、进程内 cache、MCP query）先读取全局 manifest，再按 manifest 指向的 room hash 读取内容——未被 manifest 引用的 staging 数据对外不可见。
 
 #### 3.5.2 Shadow Write 流程
 
@@ -637,13 +637,13 @@ delta = compute_delta(world_state_before, world_state_after)
 ```
 1. Read committed tick result from in-memory post-commit state or redb tick head
 2. Post-commit delta fan-out:
-   Engine Moka Cache.update(delta)
-   NATS.publish("tick.{tick}", delta) → Gateway/WebSocket subscribers
+    Engine in-process BTreeMap cache updates from the committed snapshot
+NATS.publish("swarm.realtime.v1", envelope) → Gateway targeted realtime subscribers
 ```
 
-**设计理由**：Engine 进程内 Moka Cache 与 NATS 无网络级数据依赖——缓存刷新是本地内存写入，实时推送通过 NATS/Gateway 独立演化。任一失败均不 rollback committed tick。
+**实现说明**：Engine 进程内 BTreeMap cache 与 NATS 无网络级数据依赖——缓存刷新是本地内存写入，实时推送通过 NATS/Gateway 独立演化。任一失败均不 rollback committed tick。
 
-**BROADCAST failure never rolls back committed tick**——tick 已在 EXECUTE 阶段持久化到 redb。BROADCAST 阶段的任何失败（Moka cache miss、NATS 断开、部分客户端未收到）都不影响世界状态。客户端通过 `last_tick` 字段检测 gap → 主动 fetch。
+**BROADCAST failure never rolls back committed tick**——tick 已在 EXECUTE 阶段持久化到 redb。BROADCAST 阶段的任何失败（in-process cache miss、NATS 断开、部分客户端未收到）都不影响世界状态。
 
 ## 5. Tick 健康指标
 
@@ -666,8 +666,8 @@ delta = compute_delta(world_state_before, world_state_after)
 | **WASM crash** | 玩家 WASM 崩溃/panic/OOM | 同上 | 空 tick，不退 fuel。连续 3 tick crash → 玩家标记 degraded | 自动恢复，degraded 需人工解除 |
 | **WASM output invalid** | tick 输出不符合 JSON schema | 该玩家所有指令丢弃 | 空 tick，不退 fuel | 下 tick 正常（需玩家修复代码） |
 | **redb commit fail** | redb 事务冲突/网络错误 | tick 放弃，Bevy snapshot 恢复 | CPU fuel 退还 | 重试 3 次，失败等 1s 重试同 tick。连续 3 次 → 引擎降级 |
-| **Moka cache miss** | 缓存未命中/过期 | 无——回退到 redb 直读 | 无影响 | 从 redb 重建缓存（异步） |
-| **Moka cache stale** | 缓存版本落后于 redb | 无——redb 为权威源 | 替换前数据给查询入口，不影响 tick | 下次写入时自动刷新 |
+| **In-process cache miss** | 缓存未命中 | 无——回退到 redb 直读 | 无影响 | 从 redb 重建缓存 |
+| **In-process cache stale** | 缓存版本落后于 redb | 无——redb 为权威源 | 替换前数据给查询入口，不影响 tick | 下次写入时自动刷新 |
 | **NATS publish fail** | NATS 连接断开/超时 | tick 已持久化到 redb，客户端未收到 delta | 客户端未更新 | NATS 重连；客户端 5s 未收到 delta → 主动拉取 |
 | **Broadcast partial** | 部分客户端收到 delta | 客户端间状态暂时不一致 | 未收到的显示替换前状态 | 客户端 last_tick gap 检测 → fetch |
 | **BROADCAST overload** | 单 tick delta 过大导致 fan-out 积压 | tick 已持久化，但广播延迟 | 客户端收到延迟 delta | 降级：降低 fan-out rate，优先推送关键实体 |
@@ -694,6 +694,8 @@ delta = compute_delta(world_state_before, world_state_after)
 /tick/{N}/rejections → 被拒绝的指令及原因
 /tick/{N}/metrics    → TickMetrics
 ```
+
+这是 redb 回放记录路径，不是 HTTP `/metrics` 端点；当前 engine 路由不提供 HTTP metrics。
 
 AI 玩家：记录 ACCEPTED 指令，不是原始 LLM 输出。回放时喂记录指令——不重调 LLM。
 
@@ -757,12 +759,12 @@ RichTraceBlob 缺失的 tick 标记 `terminal_state = audit_gap`——replay 可
 |---------|--------|------|
 | 当前世界状态（snapshot） | Bevy World（内存） | COLLECT 阶段已构建，最新 |
 | 历史 tick 数据 | redb | 不可变记录 |
-| 高频读取（地图/资源） | Engine 进程内 Moka Cache | 允许滞后 ≤ 2 tick；cache miss → redb |
+| 高频读取（地图/资源） | Engine 进程内 BTreeMap cache | cache miss → redb |
 | 实时事件（delta） | NATS | 仅推送，不保证送达；gap → redb fetch |
 
 MCP_Query 不得直接读取 redb（绕过可见性过滤）。所有查询路径共享 `is_visible_to` 过滤器。
 
-COLLECT 阶段从 Bevy World 内存读取权威状态，不访问 redb/Moka Cache。EXECUTE 阶段在 Bevy World 上原地修改 → redb WriteTransaction 提交 → 成功后 redb 为新的权威源。Bevy World 与 redb 的关系：Bevy 是每 tick 的工作副本，redb 是持久化的权威源。启动/恢复时从 redb 重建 Bevy World。
+COLLECT 阶段从 Bevy World 内存读取权威状态，不访问 redb 或进程内 cache。EXECUTE 阶段在 Bevy World 上原地修改 → redb WriteTransaction 提交 → 成功后 redb 为新的权威源。Bevy World 与 redb 的关系：Bevy 是每 tick 的工作副本，redb 是持久化的权威源。启动/恢复时从 redb 重建 Bevy World。
 
 ## 7. 确定性保证与反作弊
 
@@ -862,7 +864,7 @@ assert_eq!(replayed.entity_count, recorded.entity_count);
 | **EXECUTE** | wall-clock total | `tick_soft_deadline_ms` 内完成 | 软截止前必须完成（EXECUTE 不独立超时，由 COLLECT+EXECUTE 总预算控制，详见 §8.1 `tick_hard_deadline_ms`）。World ≤400ms / Arena ≤50ms 仅为性能目标，非硬超时。 | — |
 | **EXECUTE** | redb retry count | 3 次 | 第 4 次失败 → tick 放弃 | ✅ 全额退还 |
 | **EXECUTE** | COLLECT 缓存跨重试 | 复用首次 COLLECT 结果 | 不重新执行 WASM，fuel 不追加扣费 | — |
-| **BROADCAST** | wall-clock | 无硬限制（异步发布） | Moka Cache/NATS 失败不影响已持久化 tick | — |
+| **BROADCAST** | wall-clock | 无硬限制（异步发布） | in-process cache/NATS 失败不影响已持久化 tick | — |
 | **COMPILE** | wall-clock | 30s per module | 超时 → 拒绝部署 | ✅ (deploy 阶段，非 tick) |
 | **COMPILE** | memory | 512 MB | OOM → 拒绝部署 | ✅ |
 
@@ -944,12 +946,12 @@ tick N+1:  若 redb deploy manifest 存在且 compiled artifact 匹配 → COLLE
 | **MCP `swarm_get_snapshot`** | 同 WASM 的 snapshot | `snapshot.tick == current_tick` | 0 |
 | **WebSocket delta** | BROADCAST 阶段计算的增量 | `delta.tick == last_committed_tick` | 0（同 tick 推送） |
 | **Replay / TickCommitRecord** | redb 持久化记录 | `tick_commit_record.tick == executed_tick` | 0（权威审计记录） |
-| **MCP `swarm_get_player_status`** | Moka Cache → redb | `last_tick` 字段 | ≤ 1 tick |
-| **Moka cache** | 上次 BROADCAST 写入 | 缓存版本号 | 0–60s（可配置） |
+| **MCP `swarm_get_player_status`** | fresh HTTP `/mcp` world | `last_tick` 字段 | implementation-dependent |
+| **In-process cache** | 上次提交/缓存写入 | 缓存版本号 | implementation-dependent |
 
 **关键不变量**：WASM `tick()` 和 MCP `swarm_get_snapshot` 始终看到同一份权威快照——不存在"WASM 执行中世界已变化"的时差。WebSocket 推送的 delta 基于同一份已提交状态计算。
 
-Bevy World 是 tick 内的权威执行状态；redb 是跨 tick 的持久化权威；Engine 进程内 Moka Cache 是读缓存（允许滞后，但写入后立即一致）；NATS/WebSocket 是推送通道（尽力送达，gap 由客户端 fetch 填补）。
+Bevy World 是 tick 内的权威执行状态；redb 是跨 tick 的持久化权威；Engine 进程内 BTreeMap 是读缓存；NATS 是 Gateway 的 delta 推送通道。Gateway 仅转发带目标身份的 `swarm.realtime.v1` payload，前端支持该版本化 tick envelope。
 
 ### 9.4 TickCommitRecord 完整性
 
