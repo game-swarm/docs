@@ -21,12 +21,12 @@ WASM 模块通过 `tick(snapshot) → CommandIntent[]` JSON 返回指令。
 
 ## 指令列表 — 见 [API Registry](api-registry.md) §1
 
-以下指令对应 `CommandAction` enum 的非战斗基础变体；战斗/效果动作通过 `CommandAction::Action { type, payload }` 派发到 `ActionRegistry`（见下方「Action Dispatch」节）。**权威指令清单与数量由 IDL 生成，见 [API Registry](api-registry.md) §1**。
+以下指令对应 `CommandAction` enum 的非战斗基础变体；战斗/效果动作通过 `CommandAction::Action { action_type, payload }` 派发到 `ActionRegistry`（见下方「Action Dispatch」节）。**权威指令清单与数量由 IDL 生成，见 [API Registry](api-registry.md) §1**。
 
 ### Move
 移动 drone 到目标方向。
 ```json
-{ "sequence": 1, "action": { "type": "Move", "object_id": "d1", "direction": "North" } }
+{ "sequence": 1, "action": { "type": "Move", "object_id": 1001, "direction": "Top" } }
 ```
 - 校验：drone 有 MOVE body part，fatigue = 0，目标格可通行，非 spawning
 - 消耗：无
@@ -34,7 +34,7 @@ WASM 模块通过 `tick(snapshot) → CommandIntent[]` JSON 返回指令。
 ### Harvest
 从 Source 采集资源。
 ```json
-{ "sequence": 2, "action": { "type": "Harvest", "object_id": "d1", "target_id": "s1" } }
+{ "sequence": 2, "action": { "type": "Harvest", "object_id": 1001, "target_id": 4001 } }
 ```
 - 校验：drone 有 WORK + CARRY body part，target 是 Source 且有资源，相邻，fatigue = 0
 - 产出：每 WORK part 采集 2 单位资源
@@ -42,7 +42,7 @@ WASM 模块通过 `tick(snapshot) → CommandIntent[]` JSON 返回指令。
 ### Transfer
 向目标转移资源。
 ```json
-{ "sequence": 3, "action": { "type": "Transfer", "object_id": "d1", "target_id": "s2", "resource": "Energy", "amount": 100 } }
+{ "sequence": 3, "action": { "type": "Transfer", "object_id": 1001, "target_id": 2002, "resource": "Energy", "amount": 100 } }
 ```
 - 校验：drone 有 CARRY part 且有足够资源，target 有容量，相邻
 - 支持目标：Structure、Controller（升级）、其他 drone
@@ -50,14 +50,14 @@ WASM 模块通过 `tick(snapshot) → CommandIntent[]` JSON 返回指令。
 ### Withdraw
 从目标提取资源。
 ```json
-{ "sequence": 4, "action": { "type": "Withdraw", "object_id": "d1", "target_id": "s1", "resource": "Energy", "amount": 50 } }
+{ "sequence": 4, "action": { "type": "Withdraw", "object_id": 1001, "target_id": 2001, "resource": "Energy", "amount": 50 } }
 ```
 - 校验：drone 有 CARRY part，target 有足够资源，相邻
 
 ### Spawn
 创建新 drone。
 ```json
-{ "sequence": 8, "action": { "type": "Spawn", "object_id": "d1", "spawn_id": "s1", "body_parts": ["MOVE", "WORK", "CARRY"] } }
+{ "sequence": 8, "action": { "type": "Spawn", "object_id": 1001, "spawn_id": 2001, "body_parts": ["Move", "Work", "Carry"] } }
 ```
 - 校验：spawn 是玩家的 Spawn，cooldown = 0，body 长度 ≤ 50，能量足够，房间有空槽位
 - 消耗：BODY_PART_COST 累加 → 从 Spawn 扣除
@@ -66,7 +66,7 @@ WASM 模块通过 `tick(snapshot) → CommandIntent[]` JSON 返回指令。
 ### Build
 建造建筑。
 ```json
-{ "sequence": 9, "action": { "type": "Build", "object_id": "d1", "x": 5, "y": 3, "structure_type": "Extension" } }
+{ "sequence": 9, "action": { "type": "Build", "object_id": 1001, "x": 5, "y": 3, "structure": "Extension" } }
 ```
 - 校验：drone 有 WORK + CARRY part，坐标在己方房间，格为空 + Plain 地形，在建 < 100，3 格内
 - 消耗：结构造价
@@ -74,7 +74,7 @@ WASM 模块通过 `tick(snapshot) → CommandIntent[]` JSON 返回指令。
 ### TransferToGlobal
 存入全局存储。
 ```json
-{ "sequence": 10, "action": { "type": "TransferToGlobal", "object_id": "d1", "resource": "Energy", "amount": 500 } }
+{ "sequence": 10, "action": { "type": "TransferToGlobal", "resource": "Energy", "amount": 500 } }
 ```
 - 校验：全局存储 enabled，未达容量上限，transfer_time_remaining = 0
 - 延迟：N tick 到账（默认 10），1% 手续费，可被运输拦截
@@ -82,7 +82,7 @@ WASM 模块通过 `tick(snapshot) → CommandIntent[]` JSON 返回指令。
 ### TransferFromGlobal
 从全局存储提取。
 ```json
-{ "sequence": 11, "action": { "type": "TransferFromGlobal", "object_id": "d1", "resource": "Energy", "amount": 200 } }
+{ "sequence": 11, "action": { "type": "TransferFromGlobal", "resource": "Energy", "amount": 200 } }
 ```
 - 校验：全局存储有足够余额，transfer_time_remaining = 0
 - 延迟：N tick 到账（默认 5），5% 手续费
@@ -90,7 +90,7 @@ WASM 模块通过 `tick(snapshot) → CommandIntent[]` JSON 返回指令。
 ### Recycle
 回收自身，退还 lifespan-proportional 比例（10%–50%）body part 资源。Recycle 为 self-action（仅 `object_id`，无 `target_id`）。**权威公式见 [API Registry](api-registry.md) §10 Canonical Formulas**。
 ```json
-{ "sequence": 12, "action": { "type": "Recycle", "object_id": "d1" } }
+{ "sequence": 12, "action": { "type": "Recycle", "object_id": 1001 } }
 ```
 - 校验：`object_id` 属于调用者，实体可回收，且未处于禁止回收状态；不要求靠近 Spawn
 - 退还：`max(1000, remaining_lifespan × 5000 / total_lifespan) bp × body_cost / 10000`（范围 10%–50%）
@@ -98,7 +98,7 @@ WASM 模块通过 `tick(snapshot) → CommandIntent[]` JSON 返回指令。
 ### ClaimController
 占领敌方 Controller。
 ```json
-{ "sequence": 13, "action": { "type": "ClaimController", "object_id": "d1", "target_id": "c1" } }
+{ "sequence": 13, "action": { "type": "ClaimController", "object_id": 1001, "target_id": 3001 } }
 ```
 - 校验：drone 有 CLAIM body part，target 是 Controller，1 格内
 - 每 CLAIM part → 1 占领进度
@@ -111,8 +111,9 @@ WASM 模块通过 `tick(snapshot) → CommandIntent[]` JSON 返回指令。
 
 ```text
 CommandAction::Action {
-  type: "Attack",
-  payload: { object_id: "d1", target_id: "e5" }
+  action_type: "Attack",
+  object_id: 1001,
+  payload: { target_id: 5005 }
 }
 ```
 

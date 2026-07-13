@@ -52,53 +52,53 @@ type_registry:
       scale: 1_000_000  # 1e6
       description: "Cost in micro resource units (1.0 = 1_000_000)"
 
-  enum_types:
-    ObjectiveType:
-      description: "Machine-readable objective type for swarm_get_objectives. AI agents use this to plan."
-      total_variants: 8
-      variants:
-        - { name: collect_resource, value: 0, description: "Gather resources; Vanilla resource set is Energy-only, multi-resource worlds are advanced/modded" }
-        - { name: build_structure, value: 1, description: "Build a specific structure type" }
-        - { name: claim_room,      value: 2, description: "Claim a room controller to target RCL" }
-        - { name: spawn_drones,    value: 3, description: "Spawn N drones with specified body composition" }
-        - { name: deploy_code,     value: 4, description: "Deploy/update WASM module" }
-        - { name: survive_ticks,   value: 5, description: "Survive for N ticks with at least one drone" }
-        - { name: defeat_enemy,    value: 6, description: "Destroy enemy units/structures (PvP/Arena)" }
-        - { name: event,           value: 7, description: "Time-limited special world event objective" }
+  enum_types: {}
 
 # =============================================================================
-# 1. CommandAction — 11 variants (+ Action system)
+# 1. CommandAction — 14 variants (+ Action system)
 # =============================================================================
 # All 11 combat actions (Attack, RangedAttack, Heal, Hack, Drain,
 # Overload, Debilitate, Disrupt, Fortify, Leech, Fabricate) moved to
 # ActionRegistry. CommandAction retains only non-combat fundamental operations.
 command_action:
   description: "Core CommandAction enum. WASM tick() output CommandIntent action types. Combat/effect actions dispatched via ActionRegistry."
-  total_variants: 11
+  total_variants: 14
   variants:
-    # --- 1.1 Core (8) ---
+    # --- 1.1 Core (11) ---
     - name: Move
       index: 1
       category: core
       parameters:
-        - name: direction
-          type: Direction4
+        - name: object_id
+          type: ObjectId
           required: true
-      description: "Move one cell in N/S/E/W direction"
+        - name: direction
+          type: Direction
+          required: true
+      description: "Move one cell in a hex-grid direction"
 
     - name: Harvest
       index: 2
       category: core
       parameters:
+        - name: object_id
+          type: ObjectId
+          required: true
         - name: target_id
           type: EntityId
           required: true
+        - name: resource
+          type: ResourceType
+          required: false
       description: "Harvest a resource from target"
 
     - name: Transfer
       index: 3
       category: core
       parameters:
+        - name: object_id
+          type: ObjectId
+          required: true
         - name: target_id
           type: EntityId
           required: true
@@ -114,6 +114,9 @@ command_action:
       index: 4
       category: core
       parameters:
+        - name: object_id
+          type: ObjectId
+          required: true
         - name: target_id
           type: EntityId
           required: true
@@ -125,11 +128,70 @@ command_action:
           required: true
       description: "Withdraw resources from structure"
 
-    - name: Build
+    - name: Action
       index: 5
       category: core
       parameters:
-        - name: structure_type
+        - name: action_type
+          type: string
+          required: true
+          description: "Action type key registered in ActionRegistry"
+        - name: object_id
+          type: ObjectId
+          required: true
+        - name: target_id
+          type: EntityId
+          required: false
+        - name: payload
+          type: ActionPayload
+          required: true
+          description: "Type-specific action parameters"
+      description: "Execute a registered action via ActionRegistry dispatch. Custom-action wire serialization uses the action_type string as the command type."
+
+    - name: ClaimController
+      index: 6
+      category: core
+      parameters:
+        - name: object_id
+          type: ObjectId
+          required: true
+        - name: target_id
+          type: EntityId
+          required: true
+      description: "Claim a room controller"
+
+    - name: Spawn
+      index: 7
+      category: core
+      parameters:
+        - name: object_id
+          type: ObjectId
+          required: true
+        - name: spawn_id
+          type: SpawnId
+          required: true
+        - name: body_parts
+          type: "[BodyPart]"
+          required: true
+      description: "Spawn a drone with given body parts"
+
+    - name: Recycle
+      index: 8
+      category: core
+      parameters:
+        - name: object_id
+          type: EntityId
+          required: true
+      description: "Recycle own drone (self-action — no spawn proximity required)"
+
+    - name: Build
+      index: 9
+      category: core
+      parameters:
+        - name: object_id
+          type: ObjectId
+          required: true
+        - name: structure
           type: StructureType
           required: true
         - name: x
@@ -140,38 +202,29 @@ command_action:
           required: true
       description: "Build a structure at (x,y)"
 
-    - name: Spawn
-      index: 9
+    - name: Repair
+      index: 10
       category: core
       parameters:
         - name: object_id
           type: ObjectId
           required: true
-        - name: body_parts
-          type: "[BodyPart]"
-          required: true
-        - name: spawn_id
-          type: SpawnId
-          required: true
-      description: "Spawn a drone with given body parts"
-
-    - name: Recycle
-      index: 10
-      category: core
-      parameters:
-        - name: object_id
-          type: EntityId
-          required: true
-      description: "Recycle own drone (self-action — no spawn proximity required)"
-
-    - name: ClaimController
-      index: 11
-      category: core
-      parameters:
         - name: target_id
           type: EntityId
           required: true
-      description: "Claim a room controller"
+      description: "Repair or heal target"
+
+    - name: UpgradeController
+      index: 11
+      category: core
+      parameters:
+        - name: object_id
+          type: ObjectId
+          required: true
+        - name: target_id
+          type: EntityId
+          required: true
+      description: "Upgrade a room controller"
 
     # --- 1.2 Global Storage (2) ---
     - name: TransferToGlobal
@@ -198,20 +251,21 @@ command_action:
           required: true
       description: "Withdraw resources from global storage"
 
-    # --- 1.3 Action (1) — unified combat/effect dispatch ---
-    - name: Action
-      index: 22
-      category: action
+    # --- 1.3 Allied transfer (1) ---
+    - name: AlliedTransfer
+      index: 14
+      category: global_storage
       parameters:
-        - name: type
-          type: string
+        - name: target_player
+          type: PlayerId
           required: true
-          description: "Action type key registered in ActionRegistry"
-        - name: payload
-          type: ActionPayload
+        - name: resource
+          type: ResourceType
           required: true
-          description: "Type-specific action parameters"
-      description: "Execute a registered action via ActionRegistry dispatch. Replaces all combat/special-attack CommandAction variants ."
+        - name: amount
+          type: u32
+          required: true
+      description: "Transfer resources to another player through delayed allied transfer rules"
 
   # =============================================================================
   # ActionRegistry — 11 vanilla + mod-extensible combat/effect actions
@@ -539,7 +593,7 @@ mcp_tools:
 
   tools:
     # =========================================================================
-    # Onboarding (11 tools)
+    # Onboarding (10 tools)
     # =========================================================================
     - name: swarm_get_info
       category: Onboarding
@@ -695,36 +749,6 @@ mcp_tools:
       visibility_filter: none
       rate_limit_key: global
 
-    - name: swarm_get_objectives
-      category: Onboarding
-      input_schema:
-        player_id: u32?
-        scope: string?         # "current" | "all" | "next"; default "current"
-      output_schema:
-        objectives:
-          type: array
-          items:
-            id: string          # unique objective ID
-            type: ObjectiveType
-            description: string
-            required:
-              type: object      # {resource: amount, ...} — what you need
-              additional_properties: u32
-            current:
-              type: object      # {resource: amount, ...} — what you have
-              additional_properties: u32
-            reward:
-              type: object      # {resource: amount, ...} — what you get on completion
-              additional_properties: u32
-            priority: u32       # 0 = highest, >=1 = lower
-            expires_at: u64?    # tick number, null = no deadline
-      rate_limit: "5/tick"
-      required_scope: "swarm:read"
-      subject_source: player_id
-      replay_class: read_replay_safe
-      visibility_filter: owner
-      rate_limit_key: per_player
-
     # =========================================================================
     # Auth (3 tools) — 证书链模型
     # =========================================================================
@@ -754,12 +778,9 @@ mcp_tools:
         username: string
         csr: string
         certificate_profile: string
-        device_label: string
         challenge_id: string
         nonce: string
         csr_signature: string
-        email: string?
-        recovery_password: string?
       output_schema:
         certificate_bundle: CertificateBundle
       rate_limit: "1/30s"
@@ -778,7 +799,10 @@ mcp_tools:
         certificate_id: string
       output_schema:
         valid: bool
+        certificate_id: string
         player_id: PlayerId
+        client_public_key: string
+        public_key_fingerprint: string
         usage: string
         scope: string
         audience: string
@@ -795,23 +819,8 @@ mcp_tools:
       notes: "证书验证"
 
     # =========================================================================
-    # Play (14 tools)
+    # Play (13 tools)
     # =========================================================================
-    - name: swarm_get_world_stats
-      category: Play
-      input_schema:
-        scope: string
-        limit: u32
-      output_schema:
-        stats: "[{player, gcl, rooms, drones}]"
-      rate_limit: "5/tick"
-      required_scope: "swarm:read"
-      subject_source: world
-      replay_class: read_replay_safe
-      visibility_filter: none
-      rate_limit_key: global
-      notes: "World non-competitive stats — no ranking, no rewards, no fairness guarantees"
-
     - name: swarm_get_replay
       category: Play
       input_schema:
@@ -980,20 +989,6 @@ mcp_tools:
       visibility_filter: owner
       rate_limit_key: per_player
 
-    - name: swarm_get_drone_diligence
-      category: Play
-      input_schema:
-        drone_id: DroneId
-      output_schema:
-        diligence: EfficiencyBps  # u32, 0-10000 = 0%-100%
-        factors: "[EfficiencyFactor]"
-      rate_limit: "10/tick"
-      required_scope: "swarm:read"
-      subject_source: drone_id
-      replay_class: read_replay_safe
-      visibility_filter: owner
-      rate_limit_key: per_drone
-
     - name: swarm_get_economy_trend
       category: Play
       input_schema:
@@ -1007,6 +1002,22 @@ mcp_tools:
       replay_class: read_replay_safe
       visibility_filter: owner
       rate_limit_key: per_player
+
+    - name: swarm_get_drone_efficiency
+      category: Play
+      input_schema:
+        drone_id: DroneId
+      output_schema:
+        drone_id: DroneId
+        owner: PlayerId
+        efficiency: u32
+        factors: "{string: i64}"
+      rate_limit: "10/tick"
+      required_scope: "swarm:read"
+      subject_source: drone_id
+      replay_class: read_replay_safe
+      visibility_filter: owner_or_visible
+      rate_limit_key: per_drone
 
     - name: swarm_profile
       category: Play
@@ -1039,7 +1050,7 @@ mcp_tools:
       rate_limit_key: per_drone
 
     # =========================================================================
-    # Deploy (6 tools)
+    # Deploy (7 tools)
     # =========================================================================
     - name: swarm_deploy
       category: Deploy
@@ -1152,7 +1163,7 @@ mcp_tools:
       rate_limit_key: per_player
 
     # =========================================================================
-    # Debug (7 tools)
+    # Debug (8 tools)
     # =========================================================================
     - name: swarm_get_tick_trace
       category: Debug
@@ -1281,98 +1292,6 @@ mcp_tools:
       rate_limit_key: per_drone
 
     # =========================================================================
-    # Admin (6 tools)
-    # =========================================================================
-    - name: swarm_admin_challenge
-      category: Admin
-      input_schema:
-        challenge: string
-        signature: string
-      output_schema:
-        granted: bool
-        scope: string
-        expiry: u64
-      rate_limit: "5/min"
-      required_scope: "swarm:admin"
-      subject_source: admin_id
-      replay_class: admin_critical
-      visibility_filter: admin_scope
-      rate_limit_key: per_admin
-
-    - name: swarm_admin_set_world_config
-      category: Admin
-      input_schema:
-        key: string
-        value: string
-      output_schema:
-        accepted: bool
-        applied_at: u64
-      rate_limit: "10/h"
-      required_scope: "swarm:admin"
-      subject_source: admin_id
-      replay_class: admin_critical
-      visibility_filter: admin_scope
-      rate_limit_key: per_admin
-
-    - name: swarm_admin_rollback
-      category: Admin
-      input_schema:
-        target_tick: u64
-      output_schema:
-        rollback_id: RollbackId
-        state: StateInfo
-      rate_limit: "5/h"
-      required_scope: "swarm:admin"
-      subject_source: admin_id
-      replay_class: admin_critical
-      visibility_filter: admin_scope
-      rate_limit_key: per_admin
-
-    - name: swarm_admin_ban_player
-      category: Admin
-      input_schema:
-        player_id: PlayerId
-        reason: string
-        duration: u32
-      output_schema:
-        banned: bool
-        expiry: u64
-      rate_limit: "10/h"
-      required_scope: "swarm:admin"
-      subject_source: admin_id
-      replay_class: admin_critical
-      visibility_filter: admin_scope
-      rate_limit_key: per_admin
-
-    - name: swarm_admin_force_gc
-      category: Admin
-      input_schema:
-        scope: string
-      output_schema:
-        freed_bytes: u64
-        duration: u64
-      rate_limit: "5/h"
-      required_scope: "swarm:admin"
-      subject_source: admin_id
-      replay_class: admin_critical
-      visibility_filter: admin_scope
-      rate_limit_key: per_admin
-
-    - name: swarm_admin_get_audit_log
-      category: Admin
-      input_schema:
-        scope: string
-        limit: u32
-      output_schema:
-        entries: "[{timestamp, actor, action, detail}]"
-      rate_limit: "30/tick"
-      required_scope: "swarm:admin"
-      subject_source: admin_id
-      replay_class: read_replay_safe
-      visibility_filter: admin_scope
-      rate_limit_key: per_admin
-
-    # =========================================================================
     # SDK (1 tool)
     # =========================================================================
     - name: swarm_sdk_fetch
@@ -1394,24 +1313,8 @@ mcp_tools:
       rate_limit_key: global
 
     # =========================================================================
-    # Arena (1 active + 3 extension)
+    # Arena (4 tools)
     # =========================================================================
-    - name: swarm_get_leaderboard
-      category: Arena
-      rfc_status: LEADERBOARD
-      input_schema:
-        scope: string
-        limit: u32
-      output_schema:
-        entries: "[{player, gcl, rooms, drones}]"
-      rate_limit: "5/tick"
-      required_scope: "swarm:read"
-      subject_source: world
-      replay_class: read_replay_safe
-      visibility_filter: arena_only
-      rate_limit_key: global
-      notes: "extension-LEADERBOARD: 排行榜为 Product 扩展项，P0 不实现。返回 ERR_FEATURE_GATED。"
-
     - name: swarm_tournament_create
       category: Arena
       rfc_status: TOURNAMENT
@@ -1548,9 +1451,6 @@ mcp_tools:
     debug:
       categories: [Debug]
       default_assignment: "developers / Arena hosts"
-    admin:
-      categories: [Admin]
-      default_assignment: "server owner / Admin certificate"
     arena:
       categories: [Arena]
       default_assignment: "Arena host / tournament admin"
@@ -1825,16 +1725,18 @@ tick_trace_envelope:
         description: "WASM was not executed this tick (e.g., replay from snapshot, degraded mode skip)"
 
 # =============================================================================
-# 7. Direction4 — enum
+# 7. Direction — enum
 # =============================================================================
-direction4:
-  description: "4-direction enum used by Move command. 8-direction (NE/NW/SE/SW) is a extension, not in current core."
+direction:
+  description: "6-direction hex-grid enum used by Move command. Names match Engine `Direction` serialization."
   type: enum
   values:
-    - { name: North, value: 0 }
-    - { name: South, value: 1 }
-    - { name: East, value: 2 }
-    - { name: West, value: 3 }
+    - { name: Top, value: 0 }
+    - { name: TopRight, value: 1 }
+    - { name: BottomRight, value: 2 }
+    - { name: Bottom, value: 3 }
+    - { name: BottomLeft, value: 4 }
+    - { name: TopLeft, value: 5 }
 
 # =============================================================================
 # 8. SwarmError JSON-RPC Envelope

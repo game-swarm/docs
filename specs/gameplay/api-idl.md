@@ -94,6 +94,8 @@ enums:
     - SchemaViolation
     - ObjectNotFound
     - NotOwner
+    - InsufficientResource
+    - OutOfRange
     - NotStructure
     - NotController
     - NotVisibleOrNotFound
@@ -116,8 +118,6 @@ enums:
     - UnknownAction
     - GlobalStorageDisabled
     - TransferInProgress
-    - MainActionQuotaExceeded
-    - NotEligible
     - RateLimited
     - InvalidCertificate
     - NotAuthorized
@@ -127,15 +127,6 @@ enums:
     - CommandBufferFull
     - ServerOverloaded
     - InternalError
-    - CertExpired
-    - DeviceNotRegistered
-    - SessionLimitReached
-    - CertRevoked
-    - ScopeInsufficient
-    - CertificateLimitReached
-    - MultiDeviceConflict
-    - UnknownCredential
-    - InternalAuthError
 
 commands:
   # > 权威定义见 [API Registry](../reference/api-registry.md) §1 — 10 non-combat base actions + Action dispatch
