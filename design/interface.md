@@ -16,7 +16,7 @@ AI：  MCP 看世界 → 生成 WASM → 部署 ───┘
 
 ### 4.1 MCP 工具分类
 
-> **权威工具清单见 [API Registry](../specs/reference/api-registry.md) §3** — Game API `all_declared=57` / `active_only=53` / `rfc_gated=4`，Auth API `all_declared=7` / `active_only=7` / `rfc_gated=0`。
+> **权威工具清单见 [API Registry](../specs/reference/api-registry.md) §3** — Game API `all_declared=51` / `active_only=50` / `rfc_gated=1`，Auth API `all_declared=7` / `active_only=7` / `rfc_gated=0`。
 >
 > 以下为**概念分类概述**，不列完整表。所有工具的 canonical schema、replay_class、rate_limit、security columns 以 Registry 为准。本表仅作方向性说明，不得用于实现引用。
 
@@ -25,11 +25,9 @@ AI：  MCP 看世界 → 生成 WASM → 部署 ───┘
 | **世界查看** | `swarm_get_snapshot`, `swarm_get_terrain`, `swarm_list_drones`, `swarm_get_room` | AI agent 感知世界的「眼睛」 |
 | **部署** | `swarm_deploy` (deploy_mutation), `swarm_validate_module`, `swarm_list_modules` | WASM 上传与预检 |
 | **调试** | `swarm_explain_last_tick`, `swarm_get_tick_trace`, `swarm_dry_run`, `swarm_simulate` | 开发者诊断与离线模拟 |
-| **经济** | `swarm_get_economy`, `swarm_get_drone_diligence`, `swarm_get_economy_trend` | 资源流查询 |
+| **经济** | `swarm_get_economy`, `swarm_get_economy_trend` | 资源流查询；drone diligence 为未来/非当前工具概念 |
 | **认证** | 见 [auth_api.idl.yaml](../specs/reference/auth_api.idl.yaml) | 设备注册、证书管理、email 恢复 |
 | **锦标赛** | `swarm_tournament_create`, `swarm_tournament_status`, `swarm_match_result` | 竞技赛事管理 |
-
-> ⚠️ **已从 registry 移除的工具**：`swarm_attack`/`swarm_build`/`swarm_move`/`swarm_spawn` → MCP 不做游戏动作；`swarm_rollback` → `swarm_admin_rollback`；`swarm_inspect_entity` → `swarm_get_drone`；`swarm_inspect_room` → `swarm_get_room`；`swarm_get_objects_in_range` → host function（非 MCP 工具）；`swarm_dry_run_commands` → `swarm_dry_run`。替换前 OAuth / bearer / refresh-token 工具不在 Registry 中，认证入口为 CSR/certificate lifecycle（见 Registry §3.3）。
 
 ### 4.1a MCP Capability Profiles
 
@@ -41,7 +39,6 @@ MCP 工具按 capability profile 分组。详见 [API Registry](../specs/referen
 | play | 游戏过程工具（world view + queries + economy） | 日常游戏 |
 | deploy | 部署管理工具（upload + validate + list） | 代码部署 |
 | debug | 调试与性能分析工具 | 开发诊断 |
-| admin | 管理工具（证书吊销、账号恢复等） | 服务器管理 |
 | arena | 赛事管理工具（创建/预提交/状态/结果） | 竞技赛事 |
 
 ### 4.2 明确不在 MCP 中

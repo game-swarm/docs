@@ -527,7 +527,7 @@ Swarm 是一个**可配置的游戏引擎平台**——每个世界实例（worl
 | **Controller 维修** | 物理范围、设施容量、队列和 Depot 本地资源约束；无全局 repair cap | 详见 engine.md §3.4.5 与 Resource Ledger §2.4 |
 | **可见性** | `fog_of_war = true`，`player_view = drone`，`public_spectate = false` | 玩家仅可见自己 drone 视野内的内容；公开观战默认关闭 |
 | **核心数值** | Work harvest: 1 unit/tick；Spawn cooldown: 5 tick；Tower attack: 50 dmg/10 tick cooldown/range 5；Source capacity: 3000/tick regen 300 | 编码前必需的最小默认值，确保 feedback loop 可平衡 |
-| **展示/世界统计** | World 模式无公开排行榜，仅提供非竞争统计（`swarm_get_world_stats`）；Arena 模式通过 `swarm_get_world_stats` 提供段位统计 | 持久世界天然不公平（老玩家先发优势），竞技场模式为有限时间窗口的公平竞争 |
+| **展示/世界统计** | World 模式无公开排行榜；非竞争世界统计与 Arena 段位统计为未来/非当前工具概念 | 持久世界天然不公平（老玩家先发优势），竞技场模式为有限时间窗口的公平竞争 |
 | **新玩家保护** | 首次 spawn 后 **500 tick safe_mode** | 房间内无敌，不可被攻击/Claim/Hack，详见 §3.1a 新手房间分配策略 |
 | **新手过渡期 (soft_launch)** | safe_mode 结束后 1500 tick `soft_launch_duration` | 仅 PvE 威胁（中立 NPC、资源潮、公共事件）。PvP 不可用。结束后 50 tick 前广播警告 |
 
@@ -1832,7 +1832,7 @@ Swarm 支持跨世界 identity mapping——同一身份可在多个世界中使
 | 工具 | 返回 | 说明 |
 |---|---|---|
 | `swarm_get_economy` | `EconomySnapshot` | 当前 tick 经济全貌（收入/支出分项、storage、税率、预测） |
-| `swarm_get_drone_diligence` | `Vec<DroneDiligence>` | 每 drone 最近 N tick 的效率（harvest 量、idle 比例） |
+| future drone diligence query (non-current) | `Vec<DroneDiligence>` | 每 drone 最近 N tick 的效率（harvest 量、idle 比例） |
 | `swarm_get_economy_trend` | `EconomyTrend` | 最近 K tick 的趋势线（energy、drones、rooms、storage） |
 
 这些工具不修改世界状态——纯读取，不计入 MCP rate limit 的写操作配额。AI agent 可利用此数据做出宏观策略决策（"我应该扩展还是优化效率？"）。

@@ -244,9 +244,7 @@ swarm sim --ticks=5000 --speed=100x
 
 ### 5.1 每 Tick 解释
 
-```
-GET /specs/reference/v1/ticks/4521/explanation?player=42
-```
+通过 MCP 调用 `swarm_explain_last_tick` 获取上一 tick 的执行解释。
 
 ```json
 {
