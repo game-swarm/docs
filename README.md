@@ -78,10 +78,11 @@ Swarm 没有单一主仓库。每个代码仓库自包含自己的源码、构�
 |------|:----:|------|
 | mod-empire-upkeep | ✅ on | 帝国维护费 + Controller Repair + Recycle |
 | mod-fog-of-war | ✅ on | 可见性 + 感知 + Oracle 防线 |
-| mod-resource-decay | ❌ off | 存储资源自然衰减 |
+| mod-resource-decay | ✅ on | 存储资源自然衰减 |
 | mod-pve-spawning | ✅ on | NPC 出生 + PvE 难度梯度 |
 | mod-combat-core | ✅ on | 战斗 + 死亡 + 再生 |
 | mod-special-attacks | ✅ on | Hack/Drain/Overload/Debilitate/Disrupt/Fortify |
 | mod-depot-storage | ✅ on | Depot 维持 + 全局存储 + 物流 |
+| mod-vanilla-boss | ✅ on | Arena/World Boss 规则 |
 
 ## 服务架构

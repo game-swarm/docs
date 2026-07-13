@@ -148,10 +148,7 @@ swarm/
 │   ├── specs/      #   技术规范 (core/ security/ gameplay/)
 │   └── specs/reference/        #   API 参考
 ├── engine/         # Rust 游戏引擎 — Bevy ECS, Tick 调度, 世界模拟
-│   └── mods/       #   vanilla 内置模组（git submodule 引用独立仓库）
-│       ├── empire-upkeep/   → git@...swarm/mods/empire-upkeep.git
-│       ├── fog-of-war/      → git@...swarm/mods/fog-of-war.git
-│       └── resource-decay/  → git@...swarm/mods/resource-decay.git
+├── mods/           # vanilla 内置模组源码；发布时打包为签名 .swarm-mod 制品
 ├── sandbox/        # WASM 沙箱运行时 — 编译服务, 模块管理, 安全审计
 ├── gateway/        # Rust API 网关 — WebSocket, REST, gRPC, 认证
 ├── frontend/       # Web 客户端 — Monaco Editor, PixiJS 渲染
@@ -159,7 +156,7 @@ swarm/
 └── sdk-rust/       # Rust SDK — 游戏 API + wasm-bindgen 工具链
 ```
 
-**模组仓库**：每个 vanilla 内置模组为独立 git 仓库，engine 通过 submodule 引用固定版本。发布时 CI 对每个 submodule 执行 `swarm mod pack` 产出 Ed25519 签名的 `.swarm-mod` 单文件包，随 engine release 分发。服主通过 `swarm mod install-vanilla` 一键安装。第三方模组遵循相同格式——开发用 git 仓库，发布用 `.swarm-mod` 签名包。
+**模组发布**：vanilla 内置模组以源码目录维护，发布时 CI 执行 `swarm mod pack` 产出 Ed25519 签名的 `.swarm-mod` 单文件包，随 engine release 分发。服主通过 `swarm mod install-vanilla` 一键安装。第三方模组遵循相同发布格式：开发用源码仓库，发布用 `.swarm-mod` 签名包。
 
 ---
 
