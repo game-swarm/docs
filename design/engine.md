@@ -325,7 +325,7 @@ Swarm:     Move = Action  → 每 tick 移动 OR 采集 OR 攻击 OR 建造
 | **System Pass 2b** | ECS Systems (serial spine + parallel sets) | death_marker, spawn, spawning_grace, regeneration, combat (parallel set A), special_attack_reducer, damage_application, status buffer production (parallel set B: S16-S22b), status_advance_system (S22 serial unique writer), aging, decay, death_cleanup, pvp_block, room_state, controller_2b, resource_ledger — ** 31 systems** | **被动系统**——有依赖关系的系统串行执行（保证正确性），无数据竞争的系统利用并行调度。不接收玩家命令，响应 2a 产生的状态变化。完整调度见 [Complete Tick Execution Manifest](../specs/core/phase2b-system-manifest.md) |
 
 **Action dispatch 与 combat_system 的职责分离（**：
-- **CommandAction 边界**：IDL 中 `CommandAction` 不再包含 `Attack`/`RangedAttack`/`Heal` 等 combat variant；所有 combat 与特殊攻击统一编码为 `Action { type, payload }`。
+- **CommandAction 边界**：IDL 中 `CommandAction` 不再包含独立的 `Attack`/`RangedAttack`/`Heal` combat variants；所有 combat 与特殊攻击在 wire 上以具体 action 名称作为 `type`，引擎内部统一映射为 `Action { action_type, payload }`。
 - **System Pass 2a Action dispatch**：`ActionRegistry` 根据 `type` 查找 handler，校验 body part、cooldown、fatigue、target validity 与 payload schema。`Attack`/`RangedAttack`/`Heal` handler 只生成 `PendingDamage`/`PendingHeal` intent，**不直接修改目标 HP**；8 种 special action handler 只生成 status intent。
 - **System Pass 2b combat/status pipeline**：combat intent 与 Tower 自动攻击、持续伤害效果（DoT）进入 S15 damage_application 统一写入 `Entity.hits`；special action intent 经 S14 reducer → S22 status_advance_system 统一推进。
 - 此分离保证「先到先得」竞争在 System Pass 2a 校验层面生效（先通过校验的 action 先拿到 intent 优先级），但所有 HP 变更统一在 System Pass 2b 确定——避免同 tick 内 action 顺序差异导致的不同 HP 结果。
@@ -526,7 +526,7 @@ WASM tick() 输入 snapshot 受 per-player 256KB cap 约束：
 
 **Anti-abuse**：可见实体造成的 snapshot 压力纳入 room/entity cap、density tax 和 attacker cost 策略。敌对方可通过堆叠实体增加受害方 snapshot 压力——此行为不被禁止，但 snapshot truncation 不会因此泄露更多信息。
 
-**WASM 输出截断**：WASM `tick()` 输出上限 256KB。超出时整批丢弃（不保留前缀，不执行已解析指令）。产出 `output_truncated` 拒绝原因，写入 TickCommitRecord，通过 snapshot/status 通知玩家。详见 [Tick Protocol §9.7](../specs/core/tick-protocol.md#97-wasm-output-截断)。
+**WASM 输出截断**：WASM `tick()` 输出上限 256KB。超出时整批丢弃（不保留前缀，不执行已解析指令）。产出非 wire 状态 `output_truncated`，写入 TickCommitRecord，通过 snapshot/status 通知玩家；该值不是 canonical `RejectionReason`。详见 [Tick Protocol §9.7](../specs/core/tick-protocol.md#97-wasm-output-截断)。
 
 #### 3.4.5 Controller 维修公式
 

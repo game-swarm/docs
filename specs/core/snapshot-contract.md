@@ -216,7 +216,7 @@ Allied Transfer 在核心系统中以**受限 Allied Transfer（Restricted Allie
 | `allied_transfer_cooldown` | 500 tick | 同目标两次转移间冷却 |
 | `allied_daily_cap` | `max(10_000, receiver_gcl × 20_000) × allied_daily_cap_world_multiplier / 100` | 24h 内对同一接收者上限 |
 | 联盟成员最低时长 | 100 tick | 双方必须在同一联盟 ≥ 100 tick |
-| 新玩家锁 | 500 tick | 新玩家禁止接收任何转移 |
+| 新玩家锁 | 无专用锁 | 仅受联盟时长、cooldown、daily cap 与统一 rate limit 约束 |
 | 审计日志 | 全部记录 | 每笔 Allied Transfer 写入完整审计日志 |
 
 **核心系统不实现**：联盟资源池（Alliance Resource Pool）、联盟税率、联盟仓库共享。完整物流战（路径追踪、护航编队、多跳拦截）留给 mod Plugin 实现。

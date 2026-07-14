@@ -62,7 +62,7 @@ resource_operation:
         Refund a fraction of the original body cost when recycling a drone or
         structure. The refund is proportional to remaining lifespan.
         Minimum refund: 10% (1000 bp). Maximum refund: 50% (5000 bp).
-      trigger: "Recycle command (CommandAction index 10)"
+      trigger: "Recycle command (CommandAction index 8)"
       parameters:
         - name: total_lifespan
           type: u32
@@ -228,7 +228,7 @@ resource_operation:
       description: >
         Resource cost to build a structure. Deducted at the start of construction.
         Costs vary by structure type.
-      trigger: "Build command (CommandAction index 5)"
+      trigger: "Build command (CommandAction index 9)"
       parameters:
         - name: structure_type
           type: StructureType
@@ -272,6 +272,21 @@ resource_operation:
           - type: Observer
             cost: 500
             description: "Observation post"
+          - type: Container
+            cost: 100
+            description: "Small local resource container"
+          - type: Depot
+            cost: 600
+            description: "Forward maintenance and logistics depot"
+          - type: Factory
+            cost: 1500
+            description: "Commodity production facility"
+          - type: PowerSpawn
+            cost: 1200
+            description: "High-tier drone spawn point"
+          - type: Nuker
+            cost: 5000
+            description: "Strategic weapon facility"
       computation:
         build_cost:
           formula: "structure_base_cost * controller_level_discount_factor"
@@ -305,7 +320,7 @@ resource_operation:
       description: >
         Resource cost to spawn a drone. Cost is the sum of individual body part
         costs. Deducted at the start of spawning.
-      trigger: "Spawn command (CommandAction index 9)"
+      trigger: "Spawn command (CommandAction index 7)"
       parameters:
         - name: body_parts
           type: "[BodyPart]"
@@ -355,7 +370,7 @@ resource_operation:
         Resource transfer between allied players via global storage.
         Subject to fee, cooldown, and daily cap (per specs/core/resource-ledger.md §2.1).
         Both sender and receiver must have an active alliance ≥ 100 tick.
-      trigger: "TransferToGlobal + TransferFromGlobal (allied only)"
+      trigger: "AlliedTransfer command (CommandAction index 14)"
       parameters:
         - name: sender_id
           type: PlayerId
@@ -380,7 +395,7 @@ resource_operation:
         cooldown: 500
         cooldown_unit: tick
         cooldown_scope: "per receiver"
-        daily_cap: 10000
+        daily_cap: "max(10_000, receiver_gcl * 20_000) * allied_daily_cap_world_multiplier / 100"
         daily_cap_unit: resource units
         daily_cap_scope: "per receiver per 24h"
         rate_limit: "Receiver and sender must satisfy allied cap and transfer rate-limit policy"

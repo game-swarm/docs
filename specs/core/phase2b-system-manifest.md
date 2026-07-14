@@ -27,7 +27,7 @@ Serial Spine:
     │   match cmd.kind:                                    │
     │     Move/Harvest/Transfer/Build/Spawn/Recycle/... →  │
     │       [S01] command_executor (inline handler)        │
-    │     Action { type, payload } →                       │
+│     Action { action_type, payload } →                │
     │       action_dispatch handler (per-command,          │
     │       not a manifest system)                         │
     │     Claim/UpgradeController →                        │
@@ -89,7 +89,7 @@ Serial Spine:
 - **S22 移出 Parallel Set B**：作为串行唯一 StatusState writer，不再与其他 system 并行。
 - **S16-S22b 只写 typed buffer**：`HackBuffer`/`DrainBuffer`/`OverloadBuffer`/`DebilitateBuffer`/`DisruptBuffer`/`FortifyBuffer`/`LeechBuffer`/`FabricateBuffer`——由 S22 统一消费并写 StatusState。
 - **S01 不处理 combat**：`Attack`/`RangedAttack`/`Heal` 不再是 `CommandAction` variant，也不由 S01 写 `HitPoints` 或 `Entity(hits)`；combat action 由 A01 action_dispatch 校验后写入 `PendingDamage`/`PendingHeal` intent buffer。
-- **A01 Action dispatch**：System Pass 2a sorted command loop 中 `CommandAction::Action { type, payload }` 的 per-command handler——不是 manifest system。读取 `ActionRegistry` 查找 handler → validate/apply。vanilla action（3 basic combat + 8 special）统一走 registry 元数据校验。
+- **A01 Action dispatch**：System Pass 2a sorted command loop 中 `CommandAction::Action { action_type, payload }` 的 per-command handler——不是 manifest system。读取 `ActionRegistry` 查找 handler → validate/apply。vanilla action（3 basic combat + 8 special）统一走 registry 元数据校验。
 - **S14 从 ActionRegistry intent buffer 读取**：Reducer 从 action handler 产生的 status intent buffer 读取 intent → merge sort → reducer resolve → 交付 S22。
 
 ---
@@ -103,7 +103,7 @@ Serial Spine:
 ### S01: command_executor
 - **ID**: `cmd_exec`
 - **Pass**: 2a inline
-- **Handled Commands**: `Move`, `Harvest`, `Transfer`, `Withdraw`, `Build`, `Spawn`, `Recycle`, `ClaimController`, `TransferToGlobal`, `TransferFromGlobal`
+- **Handled Commands**: `Move`, `Harvest`, `Transfer`, `Withdraw`, `Build`, `Spawn`, `Recycle`, `ClaimController`, `TransferToGlobal`, `TransferFromGlobal`, `AlliedTransfer`
 - **Reads**: CommandQueue, WorldConfig, PlayerState, Drone, Room, Entity (owner, position)
 - **Writes**: Drone (position, fatigue), ResourceAmount, EventLog, PendingEntityCreation buffer, DeathMark component, ResourceLedger
 - **Must run before**: S02
@@ -113,12 +113,12 @@ Serial Spine:
 ### A01: action_dispatch (System Pass 2a per-command handler — not a manifest system)
 - **ID**: `action_dispatch`
 - **Pass**: 2a inline, independent of S01
-- **Handled Commands**: `CommandAction::Action { type, payload }`
+- **Handled Commands**: `CommandAction::Action { action_type, payload }`
 - **Reads**: CommandQueue, ActionRegistry, WorldConfig, PlayerState, Drone, Room, Entity (owner, position, status), ResourceAmount
 - **Writes**: PendingDamage buffer, PendingHeal buffer, status intent buffer, ResourceAmount, EventLog
 - **Must run after**: S01 command sorting / quota gate for the same command slot
 - **Must run before**: S11-S15, S22
-- **Dispatch contract**: resolve `type` in `ActionRegistry`; reject unknown/disabled action; decode `payload` against handler schema; run handler validation against current Bevy World; apply only through typed intent buffers or non-HP resource/event writes. Handlers must not write `HitPoints` directly.
+- **Dispatch contract**: after deserialization, resolve internal `action_type` against the built-in handlers or `CustomActionRegistry`; reject unknown/disabled action; decode `payload` against handler schema; run handler validation against current Bevy World; apply only through typed intent buffers or non-HP resource/event writes. Handlers must not write `HitPoints` directly.
 
 ### S02: controller_system (phase 2a)
 - **ID**: `ctrl_2a`
@@ -148,11 +148,11 @@ Serial Spine:
 ### S05: transfer_system
 - **ID**: `transfer`
 - **Pass**: 2a inline
-- **Handled Commands**: `Transfer`, `Withdraw`, `TransferToGlobal`, `TransferFromGlobal`
+- **Handled Commands**: `Transfer`, `Withdraw`, `TransferToGlobal`, `TransferFromGlobal`, `AlliedTransfer`
 - **Reads**: ResourceAmount, Room, WorldConfig, ResourceLedger
 - **Writes**: ResourceAmount (source → target), ResourceLedger
 - **Linked to**: specs/core/resource-ledger.md
-- **Note**: TransferToGlobal/FromGlobal 路由至 ResourceLedger GlobalDeposit/GlobalWithdraw 操作，分别受 `global_deposit_delay`(10 tick) 和 `global_withdraw_delay`(100 tick) 约束。local Transfer/Withdraw 不受 global delay 影响。
+- **Note**: TransferToGlobal/FromGlobal 路由至 ResourceLedger GlobalDeposit/GlobalWithdraw 操作，分别受 `global_deposit_delay`(10 tick) 和 `global_withdraw_delay`(100 tick) 约束。AlliedTransfer 路由至 delayed allied transfer policy，执行 alliance/fee/cooldown/cap 校验。local Transfer/Withdraw 不受 global delay 影响。
 
 ### S06: spawn_validator
 - **ID**: `spawn_val`
@@ -339,7 +339,7 @@ for each active StatusState:
 | Standard | **全量启用** (Hack/Drain/Overload/Debilitate/Disrupt/Fortify/Leech/Fabricate) | 教程/SDK 强引导；学习者通过 code/docs 自学 |
 | Arena | 全量启用 | 与 Standard 相同 |
 
-全部 vanilla action 通过 ActionRegistry 暴露：3 种基础 combat action（Attack/RangedAttack/Heal）+ 8 种特殊 action（Hack/Drain/Overload/Debilitate/Disrupt/Fortify/Leech/Fabricate）。`CommandAction` 不再包含 combat variant；IDL 只承载 `Action { type, payload }`。
+全部 vanilla action 通过 ActionRegistry 暴露：3 种基础 combat action（Attack/RangedAttack/Heal）+ 8 种特殊 action（Hack/Drain/Overload/Debilitate/Disrupt/Fortify/Leech/Fabricate）。`CommandAction` 不再包含 combat variant；内部 IDL 使用 `Action { action_type, payload }`，wire `type` 为具体 action 名称。
 
 ### S23: aging_system
 - **ID**: `aging`
@@ -490,7 +490,7 @@ manifest_hash = Blake3(
 )
 ```
 
-`manifest_hash` 进入 TickTrace (§6 TickTrace Envelope, `system_manifest_hash`)。ActionRegistry handler set/hash 单独进入 world manifest；`CommandAction::Action { type, payload }` 的 dispatch 边界不改变本系统清单的固定顺序。
+`manifest_hash` 进入 TickTrace (§6 TickTrace Envelope, `system_manifest_hash`)。ActionRegistry handler set/hash 单独进入 world manifest；`CommandAction::Action { action_type, payload }` 的 dispatch 边界不改变本系统清单的固定顺序。
 
 ---
 
