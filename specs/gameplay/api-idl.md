@@ -2,27 +2,23 @@
 
 > 详见 design/interface.md
 >
-> **本文档说明 IDL 的设计理念、代码生成流程和 SDK 分发机制。`*.idl.yaml` 是唯一机器源；[API Registry](../reference/api-registry.md) 是由 IDL 生成的人类可读 publication。**
+> **本文档说明 IDL 的设计理念、架构边界和 SDK 协议。`*.idl.yaml` 是机器可读参考；[API Registry](../reference/api-registry.md) 是人类可读参考。Engine runtime IDL extraction 是独立表示，不读取文档 YAML，也不生成 Markdown。**
 
 > **目标**: host functions / Command / Validator / SDK / MCP schema 单一真相来源
 
 ## 1. 原则
 
-**IDL YAML 驱动所有绑定——不一致即编译错误。** `specs/reference/*.idl.yaml` 是机器可读实现输入；Registry 由 codegen 生成。CI 必须比较生成结果与仓库内容，禁止静默分叉。
+**IDL YAML 是 API 的机器可读权威参考。** Registry 与 YAML 当前手工同步；Engine extraction 从 Rust 类型和 runtime registries 构造另一份 `IdlDoc`。三者必须协调维护，但当前没有完整的三方自动 diff。
 
 **Core IDL vs World Action Manifest 边界**：
 
-- **Core IDL**（本文件 §2-4）：定义基础 envelope/ABI/host functions、非战斗基础指令（Move/Harvest/Transfer/Withdraw/Build/Spawn/Recycle/ClaimController/TransferToGlobal/TransferFromGlobal）以及统一 `Action { type, payload }` dispatch。Core IDL 长期稳定，ABI 版本号控制兼容性。
+- **Core IDL**（本文件 §2-4）：定义基础 envelope/ABI/host functions、14 个 `CommandAction` 变体：13 个非战斗基础指令（Move/Harvest/Transfer/Withdraw/ClaimController/Spawn/Recycle/Build/Repair/UpgradeController/TransferToGlobal/TransferFromGlobal/AlliedTransfer）以及统一 `Action { action_type, payload }` dispatch。Core IDL 长期稳定，ABI 版本号控制兼容性。
 - **World Action Manifest / ActionRegistry**：定义 vanilla combat/effect action（Attack/RangedAttack/Heal + 8 special attacks）与模组扩展 action。包含 canonical hash（`Blake3(manifest)`）、版本 tag、TickTrace 绑定。WASM 模块通过 `target_manifest_hash` 声明兼容的世界版本。
 
 ```
-game_api.idl  (单一真相)
-    │
-    ├──→ Rust:   host function stubs + Command enum + Validator trait
-    ├──→ TS:     SDK types + autocomplete
-    ├──→ MCP:    tool schemas + docs resources
-    ├──→ Docs:   API reference (human + AI)
-    └──→ Test:   property-based test generators
+文档参考：game_api.idl.yaml ↔ API Registry（手工同步）
+运行时表示：Engine Rust registries → IdlDoc extraction → SDK text
+轻量检查：链接 + 版本元数据 + 关键 gameplay 常量
 ```
 
 ### 2.0 TickResult
@@ -53,7 +49,7 @@ DroneMessage:
 
 **Schema 不可扩展性**：所有 JSON schema（CommandIntent、每个 Command action、MCP tool input/output、REST API response）默认设置 `additionalProperties: false`——拒绝未知字段。唯一例外需在本文件中显式声明。此规则防止字段注入攻击和实现分叉：不同实现者看到同一 schema 不会因未知字段处理策略不同而产生分歧。
 
-**扩展 action 的字段**：`CommandIntent.action` 使用 `Action { type, payload }` 派发到 ActionRegistry。vanilla action 与 mod action 的参数结构由 World Action Manifest 定义并通过 IDL 生成对应子 schema；每个子 schema `additionalProperties: false`，不影响 CommandIntent envelope。
+**扩展 action 的字段**：`CommandIntent.action` 内部使用 `Action { action_type, payload }` 派发到 ActionRegistry；wire `type` 为具体 action 名称。vanilla action 与 mod action 的参数结构由 World Action Manifest 定义对应子 schema；每个子 schema `additionalProperties: false`，不影响 CommandIntent envelope。
 
 **ABI 向后兼容**：`abi_version` 每次 host function 签名变更时递增。ABI 公告期如下：
 | 变更类型 | 公告期 | 替换前模块行为 |
@@ -89,7 +85,7 @@ enums:
   StructureType: [Spawn, Extension, Tower, Storage, Link, Extractor, Lab,
                   Terminal, Nuker, Observer, PowerSpawn, Factory, Depot]
   RejectionReason:
-    # > 生成 publication 见 [API Registry](../reference/api-registry.md) §2
+    # > 人类可读同步表见 [API Registry](../reference/api-registry.md#2-rejectionreason)
     - InvalidJson
     - SchemaViolation
     - ObjectNotFound
@@ -129,7 +125,7 @@ enums:
     - InternalError
 
 commands:
-  # > 权威定义见 [API Registry](../reference/api-registry.md) §1 — 10 non-combat base actions + Action dispatch
+  # > 权威定义见 [API Registry](../reference/api-registry.md#1-commandaction) — 14 total variants: 13 non-combat actions + Action dispatch
   Move:
     params: { object_id: ObjectId, direction: Direction }
     validator: [exists, owner, drone, fatigue, body_part(Move), passable, !spawning]
@@ -155,6 +151,11 @@ commands:
     validator: [exists, owner, drone, body_part(Work,Carry), in_your_room, tile_empty, plain_terrain, under_construction_limit(100), in_range(3)]
     cost: registry.build_cost(structure)
 
+  Repair:
+    params: { object_id: ObjectId, target_id: ObjectId }
+    validator: [exists, owner, drone, body_part(Work,Carry), has_resource, in_range(3)]
+    cost: { energy: registry.repair_cost(target) }
+
   Spawn:
     params: { object_id: ObjectId, spawn_id: ObjectId, body_parts: Vec<BodyPart> }
     validator: [exists, owner, is_spawn, cooldown_zero, body_size(50), has_energy(body_cost), room_drone_cap]
@@ -163,7 +164,7 @@ commands:
   Recycle:
     params: { object_id: ObjectId }
     validator: [exists, owner, drone_or_structure]
-    refund: RecycleRefund(body_cost, remaining_lifespan, total_lifespan)  # lifespan-proportional 10%-50% (权威公式见 API Registry §10.3 与 Resource Ledger §2.5)
+    refund: RecycleRefund(body_cost, remaining_lifespan, total_lifespan)  # lifespan-proportional 10%-50% (权威公式见 [API Registry](../reference/api-registry.md#103-canonical-formulas) 与 Resource Ledger §2.5)
 
   # ═════════════════════════════════════
   # 扩展指令
@@ -174,12 +175,18 @@ commands:
     validator: [exists, owner, drone, body_part(Claim), is_controller, in_range(1)]
     cost: {}
 
+  UpgradeController:
+    params: { object_id: ObjectId, target_id: ObjectId }
+    validator: [exists, owner, drone, body_part(Work,Carry), is_controller, in_range(3)]
+    cost: { energy: registry.upgrade_cost() }
+
   Action:
-    params: { type: String, payload: Map<String, JsonValue> }
-    dispatch: ActionRegistry
-    validator: registry.action(type).schema_and_validator(payload)
-    cost: registry.action(type).cost(payload)
-    description: "统一 action dispatch；Attack/RangedAttack/Heal 与 8 个 special attack 均为 ActionRegistry vanilla action，mod action 由 world action manifest 扩展。"
+    params: { action_type: String, object_id: ObjectId, target_id: ObjectId?, payload: Map<String, JsonValue> }
+    wire: { type: "<concrete action name>", object_id: ObjectId, target_id: ObjectId?, "...payload_fields": JsonValue }
+    dispatch: built_in_action_handler_or_CustomActionRegistry
+    validator: resolve_action(action_type).schema_and_validator(payload)
+    cost: resolve_action(action_type).cost(payload)
+    description: "统一 action dispatch；当前 Engine 对 Attack/RangedAttack/Heal 使用固定 handler，8 个 vanilla special attack 与 mod action 通过 CustomActionRegistry 执行。"
 
 # ═════════════════════════════════════
 # Body Part 默认成本表（权威来源）
@@ -201,9 +208,9 @@ body_cost:
 
 host_functions:
   # > 此块使用 IDL 内部短名称（如 get_terrain, path_find），权威名称带 host_ 前缀（host_get_terrain, host_path_find）。
-  # > 所有签名的权威定义见 [API Registry](../reference/api-registry.md) §4。以下为概念形式，实现以 Registry 为准。
+  # > 所有签名的权威定义见 [API Registry](../reference/api-registry.md#4-host-functions)。以下为概念形式，实现以 Registry 为准。
   tick:
-    # > tick 是 WASM export，非 host function import。Host functions 见 [API Registry](../reference/api-registry.md) §4
+    # > tick 是 WASM export，非 host function import。Host functions 见 [API Registry](../reference/api-registry.md#4-host-functions)
     export: true
     params: [snapshot_ptr: i32, snapshot_len: i32, result_ptr: i32]
     returns: i32  # 0 = success; result_ptr points to { ptr: u32, len: u32 } containing CommandIntent[] JSON
@@ -247,6 +254,13 @@ global_storage_commands:
     cost: registry.transfer_from_global_cost() * amount
     duration: global_withdraw_delay
 
+  AlliedTransfer:
+    classification: economy_operation
+    params: { target_player: PlayerId, resource: ResourceName, amount: ResourceAmount }
+    validator: [global_storage_enabled, has_global_resource, allied_transfer_allowed]
+    cost: registry.allied_transfer_fee() * amount
+    duration: allied_transfer_delay
+
 refund_policy:
   resource_refund:
     spawn_phase2b_creation_failure: 1.0  # refund body_cost to original debit source
@@ -259,31 +273,32 @@ refund_policy:
   note: "Resource refunds and WASM fuel refunds are separate ledgers; no generic contention_lost percentage applies."
 ```
 
-## 3. 代码生成规则
+## 3. IDL 表示与分发
 
- 目标 | 生成物 |
+文档 YAML/Registry 与 Engine runtime `IdlDoc` 是需要协调维护的不同表示。当前 Engine extraction 不读取文档 YAML；SDK 生成器消费 Engine 提取出的 runtime `IdlDoc`。
+
+| 目标 | 同步机制 |
 |------|--------|
-| Rust | `src/generated/commands.rs` — Command enum + validate() |
-| Rust | `src/generated/host_functions.rs` — host function stubs |
-| TS SDK | `sdk-ts/src/generated/api.ts` — types + autocomplete |
-| MCP | MCP tool schemas JSON |
-| Replay | TickTrace schema |
-| Docs | API reference markdown |
+| Engine | 从 Rust 类型与 runtime registries 提取 JSON `IdlDoc` |
+| SDK | Engine `sdk_gen` 消费 runtime `IdlDoc` 生成文本 |
+| MCP | 固定 vanilla schemas + 通用 custom-action schema；不为每个 custom action 生成独立工具 |
+| Docs | YAML 与 Registry 手工同步发布 |
 
-## 4. CI 检查
+## 4. 一致性检查边界
 
-```bash
-cargo run -- gen-api        # 从 IDL 生成代码
-git diff --exit-code        # 生成代码与提交代码一致 → 不一致则 CI 失败
-```
+当前检查分为两条独立路径：
 
-任何对游戏 API 的修改必须同步 Registry 与 `specs/reference/*.idl.yaml`。CI diff gate 执行：Registry 表格 ↔ IDL YAML ↔ 生成代码三方比对；任一方向出现未提交 diff 或字段不一致即失败。不允许手写 Command 变体、RejectionReason 或 host function。
+1. **文档仓库**：`scripts/check_docs.py` 检查链接、版本声明和关键 gameplay 常量，不比较全部 Registry/IDL 字段。
+2. **Engine 仓库**：Engine tests 检查 runtime extraction 和 SDK 生成，不读取本仓库 YAML/Registry。
+
+当前没有完整的 Registry ↔ IDL ↔ Engine 三方 generator/diff。禁止使用不存在的 `cargo run -- gen-api` 等命令；详细边界见 [Codegen Pipeline](../reference/codegen.md)。
 
 ---
 
 ## 5. 可配置命令
 
-**所有特殊攻击均为 ActionRegistry vanilla action**。参数、冷却、消耗和效果以 [Vanilla Action Canonical Table](../reference/special-attack-table.md) 与 [API Registry §1.1 ActionRegistry](../reference/api-registry.md#11-actionregistry) 为权威源；World Action Manifest 仅负责暴露当前世界启用的 action set 与 mod 扩展 action。
+**所有特殊攻击均为 ActionRegistry vanilla action**。参数、冷却、消耗和效果以 [Vanilla Action Canonical Table](../reference/special-attack-table.md) 与 [API Registry §1.4 ActionRegistry](../reference/api-registry.md#14-actionregistry--11-vanilla--mod-extensible-combat-actions) 为权威源；
+World Action Manifest 仅负责暴露当前世界启用的 action set 与 mod 扩展 action。
 
 ### 5.1 变体列表
 
@@ -303,24 +318,20 @@ git diff --exit-code        # 生成代码与提交代码一致 → 不一致则
 
 ### 5.2 注册规则
 
-- 以上 vanilla action 在引擎启动时从 ActionRegistry 注册，注册链路：
+- 规范层以 ActionRegistry 统一描述 vanilla 与 mod action；当前 Engine 的具体实现边界为：
   ```
-  vanilla action metadata → 定义 schema / validator / cost / cooldown / effect handler
-         │
-         ▼
-  ActionRegistry        → 注册 Attack/RangedAttack/Heal + 8 special attack
-         │
-         ▼
-  CommandAction::Action { type, payload } dispatch
-         │
-         ▼
-  IDL 代码生成器  →  扫描注册表 → 生成所有 target 语言的绑定
+  fixed handlers (Attack/RangedAttack/Heal) ─────────────┐
+                                                          ├→ CommandAction::Action dispatch
+  CustomActionRegistry (8 vanilla special + mod actions) ─┘
+                  │
+                  ├→ runtime IdlDoc → SDK generator
+                  └→ MCP generic custom-action schema
   ```
 - `[[body_part_types]]` 定义 body part → action 绑定（如 `Claim` part → `Hack` action）
-- `[[special_effects]]` 定义可复用效果 handler；vanilla special attack 已预注册为 ActionRegistry action，不通过 `[[action_registry]]` 重定义
+- `[[special_effects]]` 定义可复用效果 handler；8 个 vanilla special attack 由默认 `[[custom_actions]]` 配置加载到 `CustomActionRegistry`
 - 服主可通过 World Action Manifest/Bevy Plugin 注册 mod action；不得覆盖 vanilla action 名称
 - 需全新 handler 时通过 Bevy Plugin 注册
-- SDK 和 MCP schema 自动包含所有已注册 action
+- runtime SDK 包含 `CustomActionRegistry` 中的 custom action；MCP 通过通用 custom-action schema 接收非保留 action 名称
 
 ## 6. SDK 生成与分发
 

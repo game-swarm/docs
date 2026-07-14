@@ -6,7 +6,7 @@
 
 MCP 是 AI agent 的「屏幕和鼠标」——与人类玩家的 Web UI 完全同级。
 
-**Schema 完整性要求**：所有 MCP 工具由 `game_api.idl.yaml`（game 工具）、`auth_api.idl.yaml`（auth 工具）和 `economy.idl.yaml`（经济工具）定义，经 CI 生成 `api-registry.md`。详见 [API Registry](../specs/reference/api-registry.md) §3。
+**Schema 完整性要求**：所有 MCP 工具由 `game_api.idl.yaml`（game 工具）、`auth_api.idl.yaml`（auth 工具）和 `economy.idl.yaml`（经济工具）定义，并与手工维护的 `api-registry.md` 同步。当前 CI 只执行轻量一致性检查，不生成 Registry。详见 [API Registry](../specs/reference/api-registry.md) §3。
 
 ```
 人类：Monaco 编辑器 → 编译 WASM → 上传 ─┐
@@ -110,7 +110,7 @@ fn host_get_fuel_remaining() -> u64;
 
 ### 5.4 CommandAction 定义 (单一事实源)
 
-**CommandAction 的唯一权威定义在 [API Registry](../specs/reference/api-registry.md) §1**。CommandAction 变体的完整 schema、参数、分类和 actor_id/object_id 语义以 IDL 生成的 Registry 为准。combat/effect 能力（包括 vanilla `Attack`/`RangedAttack`/`Heal` 与 special action）通过 ActionRegistry 派发，不作为顶层 CommandAction 变体计数。本文档及其他设计文档不得重新声明 CommandAction 列表、数量或参数；只能引用 Registry。
+**CommandAction 的唯一人类可读权威定义在 [API Registry](../specs/reference/api-registry.md) §1**。CommandAction 变体的完整 schema、参数、分类和 actor_id/object_id 语义以 Registry 及其同步的 IDL YAML 为准。combat/effect 能力（包括 vanilla `Attack`/`RangedAttack`/`Heal` 与 special action）通过 ActionRegistry 派发，不作为顶层 CommandAction 变体计数。本文档及其他设计文档不得重新声明 CommandAction 列表、数量或参数；只能引用 Registry。
 
 Notes:
 - Move: 4方向 (N/S/E/W)。
@@ -134,7 +134,7 @@ Pathfinding 确定性要求：固定 neighbor order（NESW 顺时针）、cost t
 |------|------|
 | `error.code` | numeric JSON-RPC error code；Swarm application error 固定使用 `-32000`，不得填 RejectionReason 字符串 |
 | `error.message` | 人类可读摘要 |
-| `error.data.rejection_reason` | canonical RejectionReason wire enum string（见 Registry §2；数量由 IDL 生成） |
+| `error.data.rejection_reason` | canonical RejectionReason wire enum string（见 Registry §2；与 IDL YAML 同步维护） |
 | `error.data.debug_detail` | 非 canonical 上下文详情 (≤ 512 bytes)；详细程度由 `detail_level` 控制 |
 | `error.data.retry_allowed` | 是否可安全重试 (machine-readable) |
 | `error.data.idempotency_key` | 幂等重试 key (machine-readable) |

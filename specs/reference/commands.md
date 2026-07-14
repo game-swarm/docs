@@ -1,6 +1,6 @@
 # Command API 参考
 
-> 权威源: [game_api.idl.yaml](game_api.idl.yaml) → [api-registry.md](api-registry.md) (生成)
+> 同步权威源: [game_api.idl.yaml](game_api.idl.yaml) ↔ [api-registry.md](api-registry.md)
 
 > **本文档为 API Registry 的派生展示**。权威定义见 [API Registry](api-registry.md)。本文档提供使用示例和上下文说明。
 >
@@ -21,7 +21,7 @@ WASM 模块通过 `tick(snapshot) → CommandIntent[]` JSON 返回指令。
 
 ## 指令列表 — 见 [API Registry](api-registry.md) §1
 
-以下指令对应 `CommandAction` enum 的非战斗基础变体；战斗/效果动作通过 `CommandAction::Action { action_type, payload }` 派发到 `ActionRegistry`（见下方「Action Dispatch」节）。**权威指令清单与数量由 IDL 生成，见 [API Registry](api-registry.md) §1**。
+以下指令对应 `CommandAction` enum 的非战斗基础变体；战斗/效果动作通过 `CommandAction::Action { action_type, payload }` 派发到 `ActionRegistry`（见下方「Action Dispatch」节）。**权威指令清单由 IDL YAML 与 [API Registry](api-registry.md) §1 同步维护**。
 
 ### Move
 移动 drone 到目标方向。
@@ -141,13 +141,13 @@ CommandAction::Action {
 | `scramble_commands` | 随机化目标下一条指令顺序 | enemy_drone | — |
 | `convert_to_structure` | 将目标 drone 转化为己方建筑 | enemy_drone | Psionic |
 
-Vanilla action 与附加 special_effect handler 清单由 IDL/Registry 生成；本节只说明使用边界。
+Vanilla action 与附加 special_effect handler 清单以 IDL/Registry 的同步定义为准；本节只说明使用边界。
 
 > `TickResult.messages` 是 tick 输出中的消息结果面；`SendMessage` 若启用则作为 Registry 中的 command action 注册，不在本文手写枚举。
 
 ## 拒绝原因 — 见 [API Registry](api-registry.md) §2
 
-> 权威 `RejectionReason` enum 与数量由 IDL 生成（定义见 [API Registry §2](api-registry.md)）。分为 Pipeline、Validation、MCP、Runtime、Auth 五层。
+> 权威 `RejectionReason` enum 由 IDL YAML 与 [API Registry §2](api-registry.md) 同步维护。分为 Pipeline、Validation、MCP、Runtime、Auth 五层。
 
 > Canonical code 为 wire enum。详细上下文信息（如 fatigue 状态、特定目标容量、body part 缺失等）放入 `debug_detail` 字段，而非增加 RejectionReason enum 变体。这保持 wire enum 稳定，同时提供丰富的调试数据。
 

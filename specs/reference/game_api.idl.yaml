@@ -1,8 +1,8 @@
 # =============================================================================
 # Game API IDL — Machine-Readable Single Source of Truth
 # =============================================================================
-# Canonical source for codegen / SDK / CI. All other docs derive from this.
-# This file is validated by CI — do not edit Markdown tables directly.
+# Machine-readable documentation reference. Keep it synchronized manually with
+# api-registry.md; Engine runtime IDL extraction does not read this file.
 # =============================================================================
 
 api_version: "0.4.0"
@@ -389,7 +389,7 @@ rejection_reason:
     (e.g. NotMovable, Fatigued, specific target state) goes into the `debug_detail` field,
     NOT into additional RejectionReason enum variants. This keeps the wire enum stable
     while providing rich debugging data.
-  total_canonical_codes: generated
+  total_canonical_codes: 37
   debug_detail:
     description: >
       Non-canonical, human-readable detail string providing context beyond the
@@ -578,11 +578,11 @@ rejection_reason:
     NotAuthorized: "MCP-layer only; validation layer uses NotOwner"
 
 # =============================================================================
-# 3. MCP Tools — generated tool registry with security columns
+# 3. MCP Tools — active tool registry with security columns
 # =============================================================================
 mcp_tools:
   description: "All MCP tools available to clients. Grouped by capability profile."
-  total_tools: generated
+  total_tools: 50
   rate_limits:
     query: "50/tick"
     debug: "30/tick"
@@ -1476,7 +1476,7 @@ mcp_tools:
 # =============================================================================
 host_functions:
   description: "WASM modules import these host functions to call engine services."
-  total_functions: generated
+  total_functions: 7
   functions:
     - name: host_get_terrain
       index: 1
@@ -1742,27 +1742,27 @@ direction:
 # 8. SwarmError JSON-RPC Envelope
 # =============================================================================
 swarm_error_envelope:
-  description: "Unified MCP/API error format. MCP shared error code -32000 reserved for unclassified internal errors; specific errors use error.code string."
+  description: "Unified MCP/API error format. Swarm application errors use JSON-RPC numeric error.code -32000; the canonical wire enum is carried in error.data.rejection_reason."
   format: jsonrpc_2.0
   schema:
     jsonrpc: "2.0"
     error:
-      code: "RejectionReason (string)"
+      code: "-32000 (integer, Swarm application error)"
       message: "Human-readable detail (max 256 chars)"
       data:
+        rejection_reason: "RejectionReason (canonical enum string)"
         command_index: "u32 (optional)"
-        rejection_detail: "max 512 bytes (optional)"
         debug_detail: "max 512 bytes — non-canonical contextual detail (see rejection_reason.debug_detail)"
     id: "<request_id>"
   reserved_code:
     code: -32000
-    usage: "unclassified internal errors; specific errors use error.code string"
+    usage: "all Swarm application errors; JSON parse/schema/transport failures use standard JSON-RPC numeric codes"
 
 # =============================================================================
 # 9. ResourceOperation — all operation types
 # =============================================================================
 resource_operation:
-  description: "All operation types that involve resource manipulation. Subset of CommandAction."
+  description: "Resource-affecting operations across CommandAction and ActionRegistry."
   operations:
     - name: Harvest
       action_index: 2
@@ -1789,9 +1789,14 @@ resource_operation:
       category: global_storage
       description: "Withdraw resources from global storage"
       resource_flow: "global → drone"
+    - name: AlliedTransfer
+      action_index: 14
+      category: global_storage
+      description: "Delayed transfer to an allied player"
+      resource_flow: "sender global → receiver global"
     - name: Drain
-      action_index: 15
-      category: special_attack
+      action_index: 18
+      category: action_registry
       description: "Continuously drain resources from target"
       resource_flow: "target → drone"
 

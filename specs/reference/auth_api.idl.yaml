@@ -1,9 +1,9 @@
 # =============================================================================
 # Auth API IDL — Machine-Readable Single Source of Truth
 # =============================================================================
-# Canonical source for auth subsystem codegen / SDK / CI. All other auth docs
-# derive from this file. This file is validated by CI; do not edit generated
-# Markdown tables directly.
+# Machine-readable auth documentation reference. Keep it synchronized manually
+# with api-registry.md; the docs checker validates metadata but does not generate
+# Markdown tables.
 #
 # Per design/auth.md: CSR -> certificate -> credential -> session, Ed25519
 # canonical request signatures, and scope labels.
@@ -18,7 +18,7 @@ csr_lifecycle_tools:
     protected resources. Application-layer certificates signed by the
     single-layer Server CA are the sole trust root. No bearer tokens, OAuth2,
     TLS/mTLS client certificates.
-  total_tools: generated
+  total_tools: 7
   tools:
     - name: swarm_register_challenge
       index: 1

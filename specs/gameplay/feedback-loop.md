@@ -184,7 +184,7 @@ AI agent 开发循环强化：
 4. 部署到 tutorial world（swarm_deploy → 等待 first_tick_executed）
 ```
 
-Starter bot 代码中的字段名（`sequence`, `Spawn`, `MoveTo` 等）由 IDL 自动生成，禁止手写——通过 CI 交叉校验 `starter bot 源码` vs `game_api.idl` 的 schema。
+Starter bot 代码中的字段名（`sequence`, `Spawn`, `MoveTo` 等）必须遵循 IDL 契约。Engine 的教程合同测试检查已发布示例，但当前没有从文档 IDL 自动生成 starter bot 的管线。
 
 ## 3. 决策：信息与工具
 
