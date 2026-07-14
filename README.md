@@ -19,6 +19,13 @@
 | 运维部署 | [`RUNBOOK.md`](RUNBOOK.md) |
 | 5 分钟快速上手 | [`GETTING-STARTED.md`](GETTING-STARTED.md) |
 
+## 技术规范索引
+
+- **Core**: [Tick Protocol](specs/core/tick-protocol.md) · [Command Validation](specs/core/command-validation.md) · [Shard Protocol](specs/core/shard-protocol.md) · [World Rules](specs/core/world-rules.md) · [WASM Sandbox](specs/core/wasm-sandbox.md) · [Distributed Sandbox](specs/core/distributed-sandbox.md) · [Mod Runtime](specs/core/mod-runtime.md) · [Phase 2b System Manifest](specs/core/phase2b-system-manifest.md) · [Incremental Snapshot](specs/core/incremental-snapshot.md) · [Snapshot Contract](specs/core/snapshot-contract.md) · [Persistence Contract](specs/core/persistence-contract.md) · [Resource Ledger](specs/core/resource-ledger.md)
+- **Security**: [MCP Security](specs/security/mcp-security.md) · [Gateway Protocol](specs/security/gateway-protocol.md) · [Visibility](specs/security/visibility.md) · [Command Source](specs/security/command-source.md) · [CVE SLA](specs/security/CVE-SLA.md)
+- **Gameplay**: [API IDL](specs/gameplay/api-idl.md) · [Feedback Loop](specs/gameplay/feedback-loop.md) · [Playtest Gates](specs/gameplay/PLAYTEST-GATED.md)
+- **Reference**: [API Registry](specs/reference/api-registry.md) · [Commands](specs/reference/commands.md) · [Host Functions](specs/reference/host-functions.md) · [MCP Tools](specs/reference/mcp-tools.md) · [Special Attack Table](specs/reference/special-attack-table.md) · [Codegen](specs/reference/codegen.md)
+
 ## 目录结构
 
 ```
@@ -47,9 +54,9 @@ docs/
 
 | Domain | Authority |
 |--------|-----------|
-| API tools / RejectionReason / CommandAction / Host Functions | IDL YAML + generated API Registry |
-| Economy parameters / formulas | Resource Ledger + generated economy schema |
-| Body/structure costs | generated cost table from IDL/Registry |
+| API tools / RejectionReason / CommandAction / Host Functions | IDL YAML + manually maintained API Registry publication |
+| Economy parameters / formulas | Resource Ledger + economy IDL schema |
+| Body/structure costs | IDL/Registry reference tables |
 | Special attacks | `specs/reference/special-attack-table.md` |
 | Tick schedule / ECS R/W | `specs/core/phase2b-system-manifest.md` + mod plugin policy |
 | Snapshot truncation | `specs/core/snapshot-contract.md` + visibility oracle |

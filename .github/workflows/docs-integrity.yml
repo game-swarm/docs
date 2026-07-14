@@ -1,0 +1,30 @@
+name: Docs integrity
+
+on:
+  pull_request:
+    paths:
+      - "**/*.md"
+      - "specs/reference/*.idl.yaml"
+      - "scripts/check_docs.py"
+      - ".github/workflows/docs-integrity.yml"
+  push:
+    paths:
+      - "**/*.md"
+      - "specs/reference/*.idl.yaml"
+      - "scripts/check_docs.py"
+      - ".github/workflows/docs-integrity.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Validate documentation
+        run: python3 scripts/check_docs.py
