@@ -65,10 +65,11 @@ HOSTILE: 若在任何友好视野源范围内则可见。
 MARKET: 所有活跃订单对有视野房间的全体玩家可见。订单创建者身份可见。
 ```
 
-### 2.6 排行榜
+### 2.6 统计与排行榜
 
 ```
-LEADERBOARD: 公开。指标: GCL、房间数、drone 数。
+STATISTICS (World, target state): 启用后公开非竞争性统计。指标: GCL、房间数、drone 数；相关工具当前尚未发布。
+RANKINGS (Arena): 公开竞争性排名。
 隐藏: 资源总量、当前策略、WASM 模块源码。
 ```
 
@@ -88,7 +89,7 @@ LEADERBOARD: 公开。指标: GCL、房间数、drone 数。
   "terrain": [/* 所有可见房间的地形 */],
   "resources": { "energy": 5000, "minerals": {"H": 1200} },  // 仅自身
   "controller": { "level": 3, "progress": 4500 },            // 仅自身
-  "leaderboard_snapshot": { "rank": 42, "gcl": 1500000 },
+  "stats_snapshot": { "rank": 42, "gcl": 1500000 },  // World Statistics (non-competitive) or Arena Rankings
   "snapshot_tick": 4521,        // 快照构建时刻的 tick 编号——与 WASM tick(snapshot) 输入一致
   "truncated": false,           // 是否因 256KB 限制被截断
   "omitted_categories": {
@@ -406,8 +407,8 @@ spectate_delay = 50
 |---------|--------|
 | 目标不存在 | `NotVisibleOrNotFound` |
 | 目标存在但不可见 | `NotVisibleOrNotFound` |
-| 目标不可被该攻击类型指定 | `NotEligible` |
-| 目标在冷却中（per-target global cooldown） | `NotEligible` |
-| 攻击者自身条件不足（fatigue/cooldown/资源） | 具体的自身状态码（`Fatigued`/`OnCooldown`/`InsufficientEnergy`） |
+| 目标不可被该攻击类型指定 | `NotVisibleOrNotFound` |
+| 目标在冷却中（per-target global cooldown） | `NotVisibleOrNotFound` |
+| 攻击者自身条件不足（fatigue/cooldown/资源） | `CooldownActive` / `InsufficientResource`（可附自身 `debug_detail`） |
 
-攻击者**永远无法**通过拒绝码区分"目标不存在"与"目标不可见"——两类都返回 `NotVisibleOrNotFound`。"不满足攻击条件"与"在冷却中"统一返回 `NotEligible`。仅自身状态码暴露自身信息（合法——玩家已知自身状态）。
+攻击者**永远无法**通过拒绝码区分"目标不存在"、"目标不可见"、"目标不符合该攻击类型"或目标级冷却——这些目标侧失败统一返回 `NotVisibleOrNotFound`。仅攻击者自身的 canonical 状态码可暴露自身信息（合法——玩家已知自身状态）。
