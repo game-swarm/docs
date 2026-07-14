@@ -12,7 +12,6 @@ docs/
 │   ├── security/     Security specs (MCP, visibility, provenance, CVE-SLA)
 │   ├── gameplay/     Gameplay specs (feedback loops, API IDL)
 │   └── reference/    API reference (commands, host functions, MCP tools, codegen)
-├── reviews/          Design review archives (R44 parliament, etc.)
 ├── RUNBOOK.md        Operations manual
 ├── GETTING-STARTED.md Quick-start guide
 ├── AGENTS.md         This file
