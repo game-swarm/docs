@@ -89,7 +89,7 @@ RANKINGS (Arena): 公开竞争性排名。
   "terrain": [/* 所有可见房间的地形 */],
   "resources": { "energy": 5000, "minerals": {"H": 1200} },  // 仅自身
   "controller": { "level": 3, "progress": 4500 },            // 仅自身
-  "stats_snapshot": { "rank": 42, "gcl": 1500000 },  // World Statistics (non-competitive) or Arena Rankings
+  "stats_snapshot": { "gcl": 1500000 },  // World Statistics（非竞争）；Arena rank 通过独立 ranking 输出面提供
   "snapshot_tick": 4521,        // 快照构建时刻的 tick 编号——与 WASM tick(snapshot) 输入一致
   "truncated": false,           // 是否因 256KB 限制被截断
   "omitted_categories": {
