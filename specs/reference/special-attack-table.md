@@ -5,7 +5,7 @@
 
 ## 概述
 
-所有战斗/效果动作通过 `CommandAction::Action { type, payload }` 派发至 `ActionRegistry`。Vanilla 注册表包含 11 个内置动作：3 个 `basic_combat`，8 个 `special_attack`。Mod 可通过 world action manifest 注册额外 action，但不能覆盖 vanilla 名称。
+所有战斗/效果动作通过内部 `CommandAction::Action { action_type, payload }` 派发至 `ActionRegistry`；wire `type` 为具体 action 名称。Vanilla 注册表包含 11 个内置动作：3 个 `basic_combat`，8 个 `special_attack`。Mod 可通过 world action manifest 注册额外 action，但不能覆盖 vanilla 名称。
 
 Standard/Arena 模式全量启用。Tutorial/Novice 模式可通过 `world.toml` 的 vanilla action allowlist 覆盖。TickTrace 记录 `world_action_manifest_hash` 以确保 replay 确定性。
 
@@ -15,7 +15,7 @@ Standard/Arena 模式全量启用。Tutorial/Novice 模式可通过 `world.toml`
 |---|--------|-----------|----------|-----------|-------------|------------|------|------------------|-------|-------------|-------------|-------------------|
 | 1 | **Attack** | 14 | `basic_combat` | `Attack` | Kinetic | Target `Kinetic` 抗性 | — | fatigue gate | 1 | 瞬发 | Fortify 抗性减伤 | `command-validation.md` §3 — 近战攻击目标 |
 | 2 | **RangedAttack** | 15 | `basic_combat` | `RangedAttack` | Kinetic | Target `Kinetic` 抗性 | — | fatigue gate | 3 | 瞬发 | Fortify 抗性减伤 | `command-validation.md` §3 — 远程攻击目标 |
-| 3 | **Heal** | 16 | `basic_combat` | `Heal` | — | — | — | fatigue gate | 3 | 瞬发 | Disrupt 不可打断瞬发治疗 | `command-validation.md` §3 — 治疗或修复目标 |
+| 3 | **Heal** | 16 | `basic_combat` | `Heal` | — | — | — | fatigue gate | 1 | 瞬发 | Disrupt 不可打断瞬发治疗 | `command-validation.md` §3 — 治疗或修复目标 |
 | 4 | **Hack** | 17 | `special_attack` | `Claim` | Psionic | Target `Psionic` 抗性 | 1000 Energy | 200 (global) | 1 | 5 ticks (持续施法) | ✅ Disrupt 打断 / Fortify 清除 | `command-validation.md` §3 — 5-stage 控制夺取 |
 | 5 | **Drain** | 18 | `special_attack` | `Work` + `Carry` | EMP | Target `EMP` 抗性 | 200 Energy/tick | 50 (per drone) | 1 | 持续 (移动/Disrupt 中断) | ✅ Disrupt 打断 / Fortify 清除 | `command-validation.md` §3 — 从目标建筑/存储窃取资源 |
 | 6 | **Overload** | 19 | `special_attack` | `RangedAttack` | EMP | Target `EMP` 抗性 | 300 Energy | 200 (per drone) | 5 (LOS required) | 瞬发 | ✅ Disrupt 打断恢复 / Fortify 清除 | `command-validation.md` §3 — 目标为 PlayerId，燃料预算压制 |
@@ -65,4 +65,4 @@ Standard/Arena 模式全量启用。Tutorial/Novice 模式可通过 `world.toml`
 | Leech | 23 | `special_attack` | 吸血攻击 |
 | Fabricate | 24 | `special_attack` | 构造转换 |
 
-> **注意**：此表以 IDL indices 14–24 为唯一 vanilla action 行集。`Attack`、`RangedAttack`、`Heal` 属于 `basic_combat`；其余 8 个属于 `special_attack`。CI 校验以 IDL `index` 与 `category` 为准。
+> **注意**：此表以 IDL indices 14–24 为唯一 vanilla action 行集。`Attack`、`RangedAttack`、`Heal` 属于 `basic_combat`；其余 8 个属于 `special_attack`。当前轻量 checker 校验三种基础 action 的 range；`index` 与 `category` 仍需在变更评审中对照 IDL。

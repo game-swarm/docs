@@ -57,6 +57,7 @@ build.Tower = { Energy = 100 }
 body_part.Move = { Energy = 50 }
 body_part.Work = { Energy = 100 }
 body_part.Attack = { Energy = 80 }
+body_part.RangedAttack = { Energy = 150 }
 body_part.Heal = { Energy = 250 }
 code_update = { Energy = 500 }
 
@@ -370,7 +371,7 @@ description = "近战攻击——距离 1，每 part 30 伤害"
 action = "Attack"
 damage_type = "Kinetic"
 base_damage = 30
-range = 3
+range = 1
 cost = { Energy = 80 }
 
 [[body_part_types]]
@@ -380,7 +381,7 @@ action = "RangedAttack"
 damage_type = "Kinetic"
 base_damage = 25
 range = 3
-cost = { Energy = 100 }
+cost = { Energy = 150 }
 
 [[body_part_types]]
 name = "Heal"
@@ -392,7 +393,7 @@ cost = { Energy = 250 }
 
 [[body_part_types]]
 name = "Claim"
-description = "占领——夺取敌方建筑/Controller"
+description = "占领——夺取无主或敌方 Controller"
 action = "ClaimController"
 range = 1
 cost = { Energy = 600 }
@@ -423,7 +424,7 @@ cost = { Energy = 10 }
 
 - 一个 ActionRegistry action 可被多个 body part 触发（如 `Attack` 可由 `Claw`/`Bite` 触发）
 - 新 body part 绑定到已有 action 时，只需定义不同的 damage_type/base_damage/cost，引擎复用该 action 的校验和应用逻辑
-- 引入新 combat/effect action 时需在 ActionRegistry 注册 schema + validate/apply handler；IDL 继续使用通用 `CommandAction::Action { type, payload }`
+- 引入新 combat/effect action 时需在 ActionRegistry 注册 schema + validate/apply handler；内部 IDL 继续使用通用 `CommandAction::Action { action_type, payload }`
 
 **Bevy Plugin 扩展**：
 
@@ -587,7 +588,7 @@ cost = { Energy = 5000 }
 
 [[structure_types]]
 name = "Depot"
-description = "前线维护节点——消耗资源为附近 drone 降低 age，可被占领"
+description = "前线维护节点——消耗资源为附近 drone 降低 age；不可转移所有权"
 category = "logistics"
 hits = 2500
 rcl_required = 2
@@ -749,7 +750,7 @@ resistance = "Psionic"
 
 ### 7.5 ActionRegistry (`[[action_registry]]`)
 
-Vanilla `Attack`/`RangedAttack`/`Heal` 与 8 个 special attack 均由 ActionRegistry 预注册，WASM 通过 `CommandAction::Action { type, payload }` dispatch。`world.toml` 的 `[[action_registry]]` 只用于服主覆盖启用状态或注册 mod action；vanilla 参数、消耗、body part 与抗性以 [special-attack-table.md](../reference/special-attack-table.md) 为权威。
+Vanilla `Attack`/`RangedAttack`/`Heal` 与 8 个 special attack 均由 ActionRegistry 预注册；WASM wire `type` 使用具体 action 名称，引擎映射为内部 `CommandAction::Action { action_type, payload }`。`world.toml` 的 `[[action_registry]]` 只用于服主覆盖启用状态或注册 mod action；vanilla 参数、消耗、body part 与抗性以 [special-attack-table.md](../reference/special-attack-table.md) 为权威。
 
 ```toml
 [vanilla]
