@@ -1,60 +1,67 @@
-# Codegen Pipeline — IDL → API Registry / SDK / Docs
+# Codegen Pipeline - Current Sources and Validation
 
-## 原则
+## 当前事实
 
-1. **生成权威在 Engine**：当前可执行的生成逻辑在 `engine/src/idl.rs`（IDL extraction）和 `engine/src/sdk_gen.rs`（SDK text generation）。`*.idl.yaml` 是参考级机器规范，必须与 Engine extraction 保持一致。
-2. **API Registry 是发布口径**：`api-registry.md` 是面向人的 canonical publication；表格、列表、计数必须与 Engine extraction 和 `*.idl.yaml` 保持一致。
-3. **CI/check 口径**：当前仓库没有 `hermes codegen` CLI。可用检查是 Engine cargo tests；若新增独立 generator CLI，本文档必须与实际命令同步。
+1. **文档 YAML 与 Registry 是手工同步的参考发布物**：`game_api.idl.yaml`、`auth_api.idl.yaml`、`economy.idl.yaml` 和 `api-registry.md` 都位于本仓库，用于发布机器可读参考与人类可读参考。修改 schema 时必须在同一变更中手工更新相应 YAML、Registry 表格和 Registry 版本头。
+2. **当前文档检查不执行生成**：`scripts/check_docs.py` 验证仓库相对链接、GitHub-style heading anchors、Schema input 链接、版本元数据和关键 gameplay 常量；它不从 YAML 生成 Markdown、SDK 或其他文件，也不声称验证 Registry 表格逐项相等。
+3. **Engine extraction 是另一条独立生成管线**：Engine 仓库的 `src/idl.rs` 从 Rust 维护的 extraction tables 和运行时 mod registries 构造 JSON `IdlDoc`。它不读取本仓库的 `*.idl.yaml`，也不生成本仓库的 Markdown Registry。
+4. **Engine SDK 生成器消费运行时 IDL**：Engine 仓库的 `src/sdk_gen.rs` 通过 `generate_typescript(&idl)` 和 `generate_rust(&idl)` 从 `IdlDoc` 生成 SDK 文本。
 
-## 输入 → 输出映射
+因此，文档 YAML、Registry 和 Engine `IdlDoc` 是需要协调维护的不同表示；在提供统一 generator 之前，不应把文档 YAML 或 Registry 描述为可由当前 Engine extraction 或文档检查重建的生成产物。
 
-| 输入 (IDL) | 生成产物 | 不可手写区域 |
-|------------|---------|-------------|
-| `game_api.idl.yaml` | `api-registry.md` §1-8, §11-13 | CommandAction 表、RejectionReason 表、MCP Tools 表（三口径统计）、Host Functions 表、容量限制表、TickTrace、Direction、SwarmError、Deploy/Persistence/Security columns |
-| `auth_api.idl.yaml` | `api-registry.md` §2-3, §5-6, §8-9, §13 | Auth RejectionReason、Auth 工具表、Auth 限制、Auth TickTrace events、SwarmError canonical enum、Certificate Envelope、Security columns |
-| `economy.idl.yaml` | `api-registry.md` §5, §10 | Economy 限制、Economy Operations 表、Canonical Formulas 表 |
-| 所有 IDL | SDK 类型定义 (`sdk-templates/`) | 类型定义、ABI 版本 |
+## 来源与产物
 
-## 禁止手写的数值
+| 来源 | 当前产物 | 维护/验证方式 |
+|------|----------|---------------|
+| 文档 `game_api.idl.yaml` + Registry | Game API 参考发布 | 手工同步；`scripts/check_docs.py` 校验版本声明和来源链接，不生成 Markdown |
+| 文档 `auth_api.idl.yaml` + Registry | Auth API 参考发布 | 手工同步；`scripts/check_docs.py` 校验版本声明和来源链接，不生成 Markdown |
+| 文档 `economy.idl.yaml` + Registry | Economy API 参考发布 | 手工同步；`scripts/check_docs.py` 校验版本声明和来源链接，不生成 Markdown |
+| Engine Rust 类型 + runtime registries | JSON `IdlDoc` | Engine `extract_idl(...)` 和 Engine tests |
+| Engine JSON `IdlDoc` | TypeScript/Rust SDK 文本 | Engine `generate_typescript(...)` / `generate_rust(...)` 和 Engine tests |
 
-以下数值**只存在于 IDL 中**，API Registry 由 codegen 生成。任何手写副本为错误；本文档只引用 Registry，不重新声明计数：
+## 文档仓库检查
 
-> ⚠️ **本文档自身为手工维护**。CommandAction、MCP tool、RejectionReason、Host function 等计数以 [API Registry](api-registry.md)、`*.idl.yaml` 和 Engine extraction tests 为准。当前可用检查见下方 `cargo test` 命令；不要引用未提供的 generator CLI。
-
-- CommandAction 数量（见 Registry §1）
-- MCP tool 数量（见 Registry §3 三口径：`all_declared` / `active_only` / `rfc_gated`）
-- RejectionReason 数量（见 Registry §2）
-- Host function 数量（见 Registry §4）
-- `MAX_DRONES_PER_PLAYER`（见 Registry §5）
-- Body part costs（见 Registry §10）
-- Storage tax anchors（见 Registry §10）
-- Refund rates（见 Registry §10）
-- Rate limits（见 Registry §3.1）
-
-## CI Gate
+从本仓库根目录运行：
 
 ```bash
-# Engine extraction exposes the current generated command/rejection registries.
-cargo test -p swarm-engine --lib extracted_idl_exposes_command_and_rejection_registries
+python3 scripts/check_docs.py
+```
 
-# MCP docs/tutorial contract checks cover published API resources.
+该命令仅使用 Python 标准库，并执行以下检查：
+
+- Markdown 相对链接的目标文件或目录存在。
+- Markdown 相对链接中的 heading anchor 存在。
+- Registry 的三个 schema input 链接完整。
+- Registry 声明的 Game/Auth/Economy API 版本与对应 IDL 的 `api_version` 一致。
+- Attack/RangedAttack/Heal 的 body cost 在 Economy IDL、Registry、World Rules 与 Gameplay 中一致；range 在 canonical action table、World Rules 与 Gameplay 中一致。
+- Economy IDL、Registry、World Rules 与 Gameplay 中的完整 structure cost schedule 一致。
+
+这项检查不解析完整 YAML schema，也不比较 Registry 的全部表格内容。表格变化仍需评审；把这项轻量检查描述为完整 codegen drift 检测是不准确的。
+
+## Engine 检查
+
+以下命令必须从 Engine 仓库根目录运行。它们验证 Engine 自己的 runtime IDL extraction 和发布教程合同，不验证本仓库 YAML 与 Registry 的逐项一致性：
+
+```bash
+cargo test -p swarm-engine --lib extracted_idl_exposes_command_and_rejection_registries
 cargo test -p swarm-engine --lib basic_agent_tutorial_preserves_mcp_security_and_idl_contracts
 ```
 
-## Codegen 命令
+当前没有从文档 YAML 生成 `api-registry.md` 的 CLI。Engine 二进制提供的是 runtime IDL/SDK 命令，它们不读取本仓库 YAML，也不生成 Registry：
 
 ```bash
-# 当前仓库没有 standalone codegen binary/CLI。
-# 生成逻辑入口（library functions）：
-#   engine::idl::extract_idl(...)
-#   engine::sdk_gen::generate_typescript(&idl)
-#   engine::sdk_gen::generate_rust(&idl)
+cargo run -p swarm-engine -- dump-idl [world.toml]
+cargo run -p swarm-engine -- generate-sdk [world.toml] [out_dir]
+```
 
-# 可执行一致性检查：
-cargo test -p swarm-engine --lib extracted_idl_exposes_command_and_rejection_registries
-cargo test -p swarm-engine --lib basic_agent_tutorial_preserves_mcp_security_and_idl_contracts
+对应的 library 入口为：
+
+```text
+engine::idl::extract_idl(...)
+engine::sdk_gen::generate_typescript(&idl)
+engine::sdk_gen::generate_rust(&idl)
 ```
 
 ## 版本同步
 
-IDL 版本变更时自动更新 API Registry 头部 `api_version` 行。当前 `game_api` 版本为 `0.4.0`，`auth_api` 版本为 `0.2.0`。若 Registry 与 IDL 不一致，先修正 IDL 再运行生成器；不得把 Registry 版本单独推进。
+IDL 版本变更时，必须手工更新 `api-registry.md` 的 `API 版本` 行。`scripts/check_docs.py` 会在声明与 `game_api.idl.yaml`、`auth_api.idl.yaml` 或 `economy.idl.yaml` 不一致时失败；当前没有 generator 自动更新该行。

@@ -45,9 +45,9 @@ ROADMAP.md           Optional per-repository gap checklist, when present
 
 | Domain | Authority |
 |--------|-----------|
-| API tools / RejectionReason / CommandAction / Host Functions | IDL YAML + generated API Registry |
-| Economy parameters / formulas | `specs/core/resource-ledger.md` + generated economy schema |
-| Body/structure costs | generated cost table from IDL/Registry |
+| API tools / RejectionReason / CommandAction / Host Functions | IDL YAML + manually maintained API Registry publication |
+| Economy parameters / formulas | `specs/core/resource-ledger.md` + economy IDL schema |
+| Body/structure costs | economy IDL + Registry reference table |
 | Special attacks | `specs/reference/special-attack-table.md` |
 | Tick schedule / ECS R/W | `specs/core/phase2b-system-manifest.md` + mod plugin policy |
 | Snapshot truncation | `specs/core/snapshot-contract.md` + visibility oracle |
