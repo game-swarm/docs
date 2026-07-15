@@ -48,7 +48,7 @@
 | `Rollback` | ✅（回滚写入） | ✅ | ✅ | ✅ | N/A（回滚状态） |
 | `Deploy` | ❌ | ❌ | ✅ | ❌ | ❌ |
 
-> **Admin 路径统一**：Admin 命令走标准 `validate_and_apply()` 管线，仅 RejectionReason 阈值放宽（Admin 可操作任意玩家的实体，所有权检查放宽）。编译期通过 Rust trait 设计确保任何修改世界状态的代码无法绕过此路径——`WorldMutate` trait 的唯一实现者是 `validate_and_apply()`，任何试图直接持有 `&mut World` 的代码会产生编译错误。不存在 Admin 专用的独立代码路径。
+> **Admin 路径统一**：Admin 命令走标准 `validate_and_apply()` 管线，仅实体所有权检查放宽（Admin 可操作任意玩家的实体）。`WorldMutate` 是 sealed trait，仅 `RawCommand` 实现；`ValidatedCommand` 字段私有且 `apply_command()` 为 crate-private，因此外部 command source 只能从公开的 validate-and-apply 入口修改世界。Engine 内部 Bevy systems 仍可按 system manifest 持有 `&mut World`；不存在 Admin 专用的独立 mutation 路径。
 
 ### 2.4 Tutorial 来源的隔离约束
 
@@ -81,9 +81,8 @@
   "world_id": "world_v1",
   "module_slot": "main",
   "version_counter": 17,
-  "transport": "agent-mcp",
-  "signed_at": 1781697600,
-  "signature": "ed25519:sig..."
+  "transport": "mcp",
+  "signed_at": 1781697600
 }
 ```
 
@@ -96,11 +95,10 @@
 | `world_id` | 目标世界 ID |
 | `module_slot` | 模块槽位（main/defense/worker/...） |
 | `version_counter` | per-player/per-slot 单调递增计数器 |
-| `transport` | 实际入口 transport 绑定，通常为 `agent-mcp`、`cli-rest` 或敏感 browser 工具的 `browser-http` |
+| `transport` | 实际入口 transport 绑定；canonical wire values 为 `mcp`、`rest`、`ws`、`replay` |
 | `signed_at` | 客户端签名时间戳（unix 秒） |
-| `signature` | 客户端 Ed25519 私钥对上述字段的签名 |
 
-`compiled_artifact_hash` 是服务端编译后派生字段，不属于 `DeployPayload`，不得由客户端自报或签名。服务端 deploy manifest 同时记录 `signed_payload_hash = Blake3(canonical SWARM-DEPLOY-V1 payload)` 与 `compiled_artifact_hash`，用于区分代码签名审计与运行时 artifact/cache 完整性。
+客户端 Ed25519 私钥对上述 canonical `DeployPayload` JSON bytes 签名；Base64 签名通过 `swarm_deploy.params.code_signature` 作为 payload 的 sibling 字段发送，不属于 `DeployPayload` 本体。`compiled_artifact_hash` 是服务端编译后派生字段，也不属于 `DeployPayload`，不得由客户端自报或签名。服务端 deploy manifest 同时记录 `signed_payload_hash = Blake3(canonical SWARM-DEPLOY-V1 payload)` 与 `compiled_artifact_hash`，用于区分代码签名审计与运行时 artifact/cache 完整性。
 
 ### 3.3 部署验证流程
 
@@ -189,7 +187,7 @@ RawCommand (携带 auth context)
 
 | Transport | 应用层证书绑定 | 判定方式 |
 |-----------|---------------------|---------|
-| MCP (Agent) | signed `cert_id` + `player_id` + `X-Swarm-Transport: agent-mcp` | HTTP header `X-Swarm-Transport: agent-mcp` + `Swarm-Certificate` + `Swarm-Cert-Id` + `Swarm-Signature` |
+| MCP (Agent) | signed `cert_id` + `player_id` + `X-Swarm-Transport: mcp` | HTTP header `X-Swarm-Transport: mcp` + `Swarm-Certificate` + `Swarm-Cert-Id` + `Swarm-Signature` |
 | WebSocket (Agent) | signed `certId` ticket + `X-Swarm-Transport: ws` | WebSocket query `room`, `sessionId`, `certId`, `expires`, `signature` |
 | WebSocket (Spectator) | public read-only transport | 公开只读 WebSocket；不接受应用层证书，不允许写操作 |
 | HTTP (Browser) | browser origin + signed certificate for sensitive tools | Browser endpoint + Origin/Host/CSRF/Fetch Metadata；敏感工具仍需 application certificate signature |
@@ -200,7 +198,7 @@ RawCommand (携带 auth context)
 - 缺少 `X-Swarm-Transport` header → 拒绝（`401 MissingTransportHeader`）
 - 证书 transport binding 不匹配请求 transport → 拒绝（`403 AudienceMismatch`）
 - MCP application certificate **不得**用于 WebSocket 连接；browser、MCP、WebSocket、spectator、REST transport 不可互换
-- Deploy payload 的 transport binding 必须为实际入口 transport（通常为 `agent-mcp`、`rest`，或 browser 敏感工具）
+- Deploy payload 的 transport binding 必须为实际入口的 canonical transport value（`mcp`、`rest`、`ws` 或 `replay`）
 
 **Server-issued Certificate 所有权模型**：
 

@@ -242,7 +242,7 @@ AI 玩家令牌: `swarm:deploy swarm:read swarm:debug`。
 > **MCP 工具授权 (authz)** 以 [game_api.idl.yaml §capability_profiles](../reference/game_api.idl.yaml) 为权威来源。工具按 profile（`onboarding`、`play`、`deploy`、`debug`、`arena`）分组分配；每个 profile 对应特定 scope 和 rate limit。
 MCP 客户端的能力面由分配的 profile 决定，不在本文档中重复声明。
 
-Gateway 对 MCP/REST signed request nonce 使用 `SWARM_GATEWAY_NONCE_PATH`（默认 `/tmp/swarm-gateway-nonces.db`）持久化 replay 状态。Sandbox 对 NATS HMAC 信封 nonce 使用 `SWARM_SANDBOX_NONCE_PATH`（默认 `/tmp/swarm-sandbox-nonces.db`）持久化 replay 状态。生产环境必须把两个路径挂载到各自服务实例的可写持久卷；读取、解析或原子写入失败时对应认证路径 fail closed。
+Gateway 对 MCP/REST signed request nonce 使用 `SWARM_GATEWAY_NONCE_PATH` 持久化 replay 状态。Sandbox 对 NATS HMAC 信封 nonce 使用 `SWARM_SANDBOX_NONCE_PATH` 持久化 replay 状态。开发环境下，这些路径默认为私有的进程或用户状态目录；生产环境必须把两个路径挂载到各自服务实例的可写持久卷；读取、解析或原子写入失败时对应认证路径 fail closed。
 
 ### 4.1 WASM 模块管理
 

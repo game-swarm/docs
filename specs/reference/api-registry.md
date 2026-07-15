@@ -762,9 +762,12 @@ Algorithm: Ed25519. `stable_json` recursively sorts object keys before BLAKE3 ha
 
 | Label | Audience |
 |-------|----------|
-| `agent-mcp` | AI agent via MCP session |
-| `cli-rest` | Human CLI or REST client |
-| `wasm-sdk` | WASM SDK (deploy, code signing) |
+| `mcp` | AI agent or browser-sensitive tool via MCP JSON-RPC |
+| `rest` | Human CLI or REST client |
+| `ws` | Authenticated WebSocket session |
+| `replay` | Replay viewer transport |
+
+`wasm-sdk` is a code-signing certificate audience, not an `X-Swarm-Transport` wire value.
 
 ---
 
