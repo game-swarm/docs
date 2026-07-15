@@ -95,7 +95,7 @@ swarm.sandbox.heartbeat.{instance_id}     — sandbox 存活心跳
 
 ### 4.1.1 NATS 安全
 
-NATS 连接必须使用 TLS 与 per-role ACL。Engine 只允许 publish sandbox request、subscribe sandbox reply；Sandbox worker 只允许 subscribe sandbox queue group、publish reply 与 heartbeat。除此之外，deploy/tick request 与 reply 都必须使用 `SWARM_NATS_AUTH_SECRET` 做 HMAC-SHA256 消息认证；缺少 secret、缺少 tag、tag 不匹配、timestamp 过期或重复 `(request_id, nonce)` 都必须拒绝。Sandbox worker 必须将已接受的 `(request_id, nonce)` 持久化到 `SWARM_SANDBOX_NONCE_PATH`（默认 `/tmp/swarm-sandbox-nonces.db`），按 `AUTH_FRESHNESS_MS` 剪枝；生产部署必须把该路径挂载到可写持久卷。nonce store 读取、解析或原子写入失败时请求 fail closed，不得继续执行 tick/deploy payload。
+NATS 连接必须使用 TLS 与 per-role ACL。Engine 只允许 publish sandbox request、subscribe sandbox reply；Sandbox worker 只允许 subscribe sandbox queue group、publish reply 与 heartbeat。除此之外，deploy/tick request 与 reply 都必须使用 `SWARM_NATS_AUTH_SECRET` 做 HMAC-SHA256 消息认证；缺少 secret、缺少 tag、tag 不匹配、timestamp 过期或重复 `(request_id, nonce)` 都必须拒绝。Sandbox worker 必须将已接受的 `(request_id, nonce)` 持久化到 `SWARM_SANDBOX_NONCE_PATH`，按 `AUTH_FRESHNESS_MS` 剪枝；开发环境默认使用私有用户状态目录，生产部署必须显式配置 `/tmp` 以外的可写持久卷。nonce store 读取、解析或原子写入失败时请求 fail closed，不得继续执行 tick/deploy payload。
 
 认证信封固定为 `{ request_id, nonce, timestamp_ms, payload, auth_tag_hex }`，字段顺序按 Rust `AuthenticatedMessage<T>` / sandbox `AuthenticatedRequest<T>` 声明顺序序列化。`request_id` 与 `nonce` 为 16-byte lowercase hex（32 chars），`timestamp_ms` 为 Unix epoch milliseconds。HMAC 签名输入为 `serde_json::to_vec(AuthenticatedSigningMessage { request_id, nonce, timestamp_ms, payload })`，即同序字段但不包含 `auth_tag_hex`；`auth_tag_hex` 是 HMAC-SHA256 lowercase hex。NATS 内 `module_hash` 为原始 `[u8; 32]`，仅 subject、HTTP、日志和 UI 使用 lowercase 64-char hex。
 

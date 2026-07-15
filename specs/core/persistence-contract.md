@@ -57,7 +57,7 @@ replay-critical 字段在 redb WriteTransaction 中原子提交（replay-critica
 
 ### 2.2 Debug/Rich（对象存储异步写入 — 可降级）
 
-**Blob Store 仅承载 RichTraceBlob**。对象存储中不存放 replay-critical 数据。对象存储写入失败仅导致 `terminal_state = audit_gap`（审计记录缺失，游戏状态可从相邻 tick 重建），**绝不会**导致 `unreplayable`——redb 中 TickCommitRecord 的 10 个字段足够完成确定性 replay。
+**Blob Store 承载 redb small-row 之外的非关键大对象**：RichTraceBlob、snapshot delta/full artifact、可视化 replay artifact 与 WASM binary。redb 原子保存这些对象的 pointer、content hash 与 replay-critical decision；大对象写入失败不得回滚已提交 tick。RichTraceBlob 缺失导致 `terminal_state = audit_gap`；snapshot delta 缺失时从相邻 keyframe 与 redb TickCommitRecord 重建；WASM/replay artifact 缺失只产生对应 audit gap，**绝不会**单独导致 `unreplayable`。
 
 > **WASM 模块 blob 非 replay-critical（D6）**：WASM 模块二进制文件存储在对象存储中，其可用性不影响确定性 replay。Replay verifier 仅使用 redb 中的 TickCommitRecord（含 `commands`、`canonical_codec_version`、`manifest_hash` 等 10 字段）重放，不重新执行 WASM 模块。WASM 模块 blob 缺失只影响 rich audit/debug 路径——deploy 的 `deploy_activation_decision` 已在 redb 清单中通过 `wasm_module_hash`、`compiled_artifact_hash` + `redb_version_counter` 完整记录激活决策，replay 不需要原始 WASM 字节。
 
