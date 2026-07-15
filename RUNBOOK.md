@@ -8,7 +8,13 @@
 
 Swarm 没有单一主仓库。生产部署应把 `engine`、`sandbox`、`gateway`、`frontend` 作为独立制品发布；NATS 是外部基础设施服务。
 
-Engine 与 Sandbox 必须从 secrets store 读取同一个 `SWARM_NATS_AUTH_SECRET`；Engine 与 Gateway 必须读取同一个 `SWARM_PROXY_SIGNATURE_SECRET`。两个值都不得为空或写入仓库。Engine、Gateway 和 Sandbox 默认使用 `NATS_URL=nats://127.0.0.1:4222`。Gateway 默认订阅 `NATS_SUBJECT=swarm.realtime.v1`，NATS relay 重试间隔由 `NATS_RETRY_DELAY_MS` 控制（默认 2000ms）。Sandbox 初始连接重试间隔由 `NATS_CONNECT_RETRY_MS` 控制（默认 1000ms）。Gateway 认证 nonce store 默认 `SWARM_GATEWAY_NONCE_PATH=/tmp/swarm-gateway-nonces.db`；Sandbox NATS nonce store 默认 `SWARM_SANDBOX_NONCE_PATH=/tmp/swarm-sandbox-nonces.db`。生产部署必须把这两个路径指向各自服务实例的可写持久卷；读取、解析或原子写入失败时服务按 fail-closed 处理认证请求。
+**生产环境强制安全要求：**
+
+- **NATS 安全**：Engine、Gateway 和 Sandbox 默认使用 `production` 模式。必须设置 `NATS_TLS_REQUIRED=true` 并通过 `NATS_CREDENTIALS_FILE` 指定有效的 NATS 角色凭据。
+- **消息认证**：Engine 与 Sandbox 必须从 secrets store 读取同一个 `SWARM_NATS_AUTH_SECRET`；Engine 与 Gateway 必须读取同一个 `SWARM_PROXY_SIGNATURE_SECRET`。
+- **Engine 发行者密钥**：必须设置 `SWARM_ENGINE_ISSUER_KEY_FILE` (32字节种子文件) 或 `SWARM_ENGINE_ISSUER_KEY_B64`。
+- **持久化 Nonce**：Engine proxy nonce store `SWARM_PROXY_NONCE_PATH`、Gateway 认证 nonce store `SWARM_GATEWAY_NONCE_PATH` 与 Sandbox NATS nonce store `SWARM_SANDBOX_NONCE_PATH` **必须指向 `/tmp` 以外的可写持久卷**。Engine nonce store 的父目录必须为 engine 用户所有、私有权限且不能是 symlink；未设置时生产默认使用 `/var/lib/swarm-engine/proxy-nonces.db`。开发环境必须为 Engine 显式设置带私有父目录的 `SWARM_PROXY_NONCE_PATH`；Gateway 与 Sandbox 未显式设置时分别使用私有进程临时目录和私有用户状态目录。
+- **备份**：Engine 必须配置 `KEYFRAME_BACKUP_PATH` 以启用生产级 Keyframe 备份。
 
 ```bash
 # 1. 基础设施
@@ -17,20 +23,28 @@ systemctl start nats
 # 2. 等待 NATS 就绪
 nats server check connection
 
-# 3. Sandbox workers
+# 3. Sandbox workers (SWARM_SANDBOX_MODE=production)
 systemctl start swarm-sandbox
 
-# 4. 引擎（redb、进程内 BTreeMap 快照缓存；无需额外 cache daemon）
+# 4. 引擎 (SWARM_ENGINE_MODE=production, REDB_PATH 指向持久卷)
 systemctl start swarm-engine
 
-# 5. Gateway 与 Frontend
+# 5. Gateway (SWARM_GATEWAY_MODE=production)
 systemctl start swarm-gateway
-systemctl start swarm-frontend
 
-# 6. 健康检查
-curl -f http://localhost:8080/healthz          # 引擎
-curl -f http://localhost:8082/healthz          # gateway
+# 6. Frontend
+# 环境变量必须包含:
+# VITE_SWARM_COMPILE_URL=https://.../compile
+# VITE_ENGINE_MCP_URL=https://.../mcp
+# VITE_SWARM_WS_URL=wss://...
+# VITE_SWARM_WORLD_ID=...
+# VITE_SWARM_ROOM_ID=...
+# VITE_SWARM_DRONE_ID=...
+# VITE_SWARM_TARGET_MANIFEST_HASH=...
+# VITE_SWARM_ENGINE_ABI_VERSION=...
+systemctl start swarm-frontend
 ```
+
 
 ### 1.2 启动顺序约束
 
@@ -66,6 +80,34 @@ curl -fsS http://localhost:8080/healthz
 
 # 3. Gateway 就绪（NATS relay 未就绪时返回 503 degraded JSON）
 curl -s http://localhost:8082/healthz | jq .
+```
+
+### 1.5 本地开发启动 (Development)
+
+本地开发环境允许使用明文 NATS，但 Engine 仍要求可用的 redb 与 keyframe backup 文件路径。Gateway 与 Sandbox 未显式配置 nonce 路径时，分别使用私有的进程临时目录和用户状态目录；不会回退到内存 nonce store。
+
+```bash
+# 设置开发环境变量
+export SWARM_ENGINE_MODE=development
+export SWARM_SANDBOX_MODE=development
+export SWARM_GATEWAY_MODE=development
+
+# 必须设置的基础密钥
+export SWARM_NATS_AUTH_SECRET="dev-secret"
+export SWARM_PROXY_SIGNATURE_SECRET="dev-proxy-secret"
+
+# Engine 必须设置的持久化路径
+export REDB_PATH="./dev.redb"
+export KEYFRAME_BACKUP_PATH="./dev-backups"
+export SWARM_PROXY_NONCE_PATH="./.swarm-state/proxy-nonces.db"
+install -d -m 700 "$(dirname "$SWARM_PROXY_NONCE_PATH")"
+
+# Gateway 与 Sandbox 的可选覆盖；缺失时使用各自的私有开发目录
+export SWARM_GATEWAY_NONCE_PATH="./gateway-nonces.db"
+export SWARM_SANDBOX_NONCE_PATH="./sandbox-nonces.db"
+
+# 启动服务
+# (请参考各目录下的 README.md 获取具体的 cargo/npm 启动指令)
 ```
 
 ---

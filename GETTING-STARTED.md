@@ -21,7 +21,7 @@ curl http://localhost:8080/healthz  # → ok
 curl http://localhost:8082/healthz  # → {"status":"ok"}
 ```
 
-NATS 不可达时，Engine `/healthz` 返回 `503 degraded`；Gateway `/healthz` 返回 HTTP 503 和 `{"status":"degraded","nats":"unavailable"}`，直到 NATS relay 连接并订阅成功。Sandbox worker 没有 HTTP readiness endpoint；它保持进程存活并按 `NATS_CONNECT_RETRY_MS`（默认 1000ms）重试初始 NATS 连接。Gateway 与 Sandbox 会把认证 nonce/replay 状态分别持久化到 `SWARM_GATEWAY_NONCE_PATH`（默认 `/tmp/swarm-gateway-nonces.db`）和 `SWARM_SANDBOX_NONCE_PATH`（默认 `/tmp/swarm-sandbox-nonces.db`）；生产环境应把这些路径挂载到可写持久卷，避免重启后接受旧 nonce。
+NATS 不可达时，Engine 启动会持续重试，tick 只在连接成功后开始；Gateway `/healthz` 返回 HTTP 503 和 `{"status":"degraded","nats":"unavailable"}`，直到 NATS relay 连接并订阅成功。Sandbox worker 没有 HTTP readiness endpoint；它保持进程存活并按 `NATS_CONNECT_RETRY_MS`（默认 1000ms）重试初始 NATS 连接。Gateway 与 Sandbox 会把认证 nonce/replay 状态分别持久化到 `SWARM_GATEWAY_NONCE_PATH` 和 `SWARM_SANDBOX_NONCE_PATH`；开发环境默认分别使用私有进程临时目录和私有用户状态目录，生产环境必须显式配置 `/tmp` 以外的可写持久卷，避免重启后接受旧 nonce。
 
 ## 2. 选择 SDK
 
