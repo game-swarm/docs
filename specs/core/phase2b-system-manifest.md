@@ -64,8 +64,8 @@ Serial Spine:
   │ │ [S19] debilitate_buffer     │  (disjoint types) │   │
   │ │ [S20] disrupt_buffer        │                   │   │
   │ │ [S21] fortify_buffer        │                   │   │
-  │ │ [S22a] leech_buffer         │  (new — )   │   │
-  │ │ [S22b] fabricate_buffer     ┘  (new — )   │   │
+  │ │ [S22a] leech_buffer         │  (new)      │   │
+  │ │ [S22b] fabricate_buffer     ┘  (new)      │   │
   │ └────────────────────────────────────────────────┘   │
   ├─────────────────────────────────────────────────────┤
   │ [S22] status_advance_system  (serial — 唯一 writer) │
@@ -219,7 +219,7 @@ S11-S13 不产生特殊攻击 intent。特殊 action intent 由 A01 ActionRegist
 - **fix**: 从 A01 ActionRegistry handler 产生的 status intent buffer 读取 intents（非 S01/S11-S13）；不直接写 StatusState。
 - **Reads**: status intent buffer (from A01), Entity (status components — read-only for existing state reference)
 - **Writes**: `pending_intents` buffer (canonical sorted + resolved)
-- **Processing pipeline ()**:
+- **Processing pipeline**:
   1. **Collect**: A01 在 System Pass 2a dispatch 的 special action handler 产生的 intent 已入队 status intent buffer
   2. **Merge sort**: 按 `(priority_class, intent_source.entity_id, intent_target.entity_id)` 确定性归并排序
   3. **Reducer resolve**: 同一 target 的多个 intent 按**唯一权威优先级链**裁决：**Hack > Drain > Overload > Debilitate > Disrupt > Fortify > Leech > Fabricate**（此为 Swarm 引擎中该优先级链的唯一定义）；冲突 intent 降级记录
@@ -269,7 +269,7 @@ S22 移出 Parallel Set B，作为串行系统。**唯一写入**所有 StatusSt
 - **Must run before**: S23
 - **Note**: 统一消费 S14 的 canonical sorted intents 和 S16-S22b 的 typed buffers → 唯一推进所有 StatusState（duration--, expire, apply new intents, apply buffer effects）。
 
-### Status Advance Execution Order (per tick, within S22 — )
+### Status Advance Execution Order (per tick, within S22)
 
 ```
 // Pass 1: Apply new intents from S14 (new status applications)
@@ -302,7 +302,7 @@ for each active StatusState:
     if status.duration == 0 → expire effect (reverse temporary modifiers)
 ```
 
-### Special Attack Unique Writer Contract ()
+### Special Attack Unique Writer Contract
 
 每种 StatusState component 有且仅有一个写入者 system（S22）。S16-S22b 写入 typed buffer（非 StatusState），S14 写入 `pending_intents` buffer。
 
@@ -416,7 +416,7 @@ S22 `status_advance_system` 迭代实体顺序：`sorted(entities_with_active_st
 
 ---
 
-## 4. Component R/W Matrix（全部 31 systems —
+## 4. Component R/W Matrix（全部 31 systems）
 
 以下矩阵定义每个 system 对核心 Component 的读写关系。`R`=只读，`W`=写入，`-`=不访问。`SpecAtkIntent` 列表示 A01 产生的 status action intent；`StatusState` 和 `SpecBuffer` 列拆分。
 
@@ -462,12 +462,12 @@ S22 `status_advance_system` 迭代实体顺序：`sorted(entities_with_active_st
 | **S28 ctrl_p2b** | - | - | - | - | - | - | - | R | - | W | - | - | - | - |
 | **S29 res_ledger** | - | - | - | R | - | - | - | - | - | - | - | - | - | W |
 
-**Column legend ()**:
+**Column legend**:
 - `SpecAtkIntent` = status action intent buffer — A01 writes, S14 reads
 - `SpecBuffer` = typed effect buffers (`HackBuffer`/`DrainBuffer`/.../`LeechBuffer`/`FabricateBuffer`) — S16-S22b write, S22 reads
 - `StatusState` = all status components (`HackState`/`DrainState`/.../`LeechState`/`FabricateState`) — S14 reads (reference), S16-S22b read (reference), **S22 is the ONLY writer**
 
-**并行安全证明 ()**：
+**并行安全证明**：
 
 - **Combat Parallel Set A (S11-S13)**: 按 `target_id` partition，同一 entity 只被一个 system 写入。`SpawningGrace` 列为 `R`（只读 filter，不修改）。
 - **Status Buffer Production Parallel Set B (S16-S22b)**: 各 system 写入互不重叠的 typed buffer（`HackBuffer` ≠ `DrainBuffer` ≠ …）。所有 system 只读 StatusState（不修改）。零并行写入冲突。

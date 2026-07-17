@@ -12,7 +12,7 @@ tick() 输出 JSON（来自 WASM 模块）
 │  Tick 输出 Schema  │  JSON schema 验证：最大 256KB、拒绝额外字段、深度≤10
 │  校验              │  超限/畸形的 tick 输出直接丢弃，不计入 refund
 └────────┬────────┘
-         │ Ok(Command[])
+         │ Ok(CommandIntent[])
          ▼
 ┌─────────────────┐
 │  反序列化         │  JSON 解析，逐指令 schema 验证，边界检查

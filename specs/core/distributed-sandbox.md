@@ -71,7 +71,7 @@ Tick N COLLECT 开始:
    ├─ 接收请求
    ├─ 查找/加载 WASM 模块（本地预编译缓存）
    ├─ 执行 WASM tick(snapshot)
-   ├─ 收集 Vec<Command> JSON
+   ├─ 收集 CommandIntent[] JSON
    └─ NATS reply: 命令列表 + metrics
 
 4. Engine: 收集所有 reply
@@ -225,7 +225,7 @@ struct DeployAck {
 |------|------|
 | Sandbox 超时（2500ms 无 reply） | 玩家本 tick 0 指令，不计入 sandbox 健康度 |
 | Sandbox crash/重启 | NATS queue group 自动重新分配任务；该 tick 该玩家 0 指令 |
-| NATS 不可达 | Engine/Gateway/Sandbox 都重试初始 NATS 连接；无本地 sandbox fallback。Engine `/healthz` 返回 `503 degraded`；Gateway `/healthz` 返回 503 degraded JSON；Sandbox 无 HTTP readiness endpoint，保持进程存活并持续重试初始连接。 |
+| NATS 不可达 | Engine/Gateway/Sandbox 都重试初始 NATS 连接；无本地 sandbox fallback。Engine 和 Gateway `/healthz` 返回 `503 degraded`；Sandbox `/healthz` 与 `/readyz` 返回 503 degraded JSON 并标明 tick/deploy 订阅不可用，进程保持存活并持续重试初始连接。 |
 | 模块缓存未命中 | 即时 fetch + 编译，若仍失败 → ModuleNotFound，本 tick 0 指令 |
 | Engine crash | Sandbox 等待超时后清理当前任务；恢复后从 redb 读取最后提交 tick |
 | 编译失败 | 记录审计日志；本 tick 0 指令；不影响其他玩家 |

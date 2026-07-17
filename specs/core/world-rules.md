@@ -12,7 +12,7 @@ Swarm 不是「一个游戏」，是「游戏引擎平台」。规则模组是**
 引擎核心:  Rust → 确定性模拟      (不可变)
 ```
 
-每个世界通过 `world.toml` 启用一组已编译进 Engine 的模组，每模组有独立的参数配置。模组通过 Bevy ECS systems、World Action Manifest 和 ActionRegistry 接入引擎——不能绕过 Command Validation Pipeline。
+每个部署通过 `mods.lock` 启用并配置一组已编译进 Engine 的模组；`world.toml` 仅覆盖 Engine 自有且显式声明的世界规则字段。模组通过 Bevy ECS systems、World Action Manifest 和 ActionRegistry 接入引擎——不能绕过 Command Validation Pipeline。
 
 ## 2. 配置 Schema
 
@@ -26,7 +26,8 @@ tick_interval_ms = 3000
 
 [spawn]
 policy = "RandomRoom"
-respawn = "NewRoom"
+respawn_policy = "NewRoom"           # 默认复活策略 (NewRoom | OriginalRoom)
+# respawn = "NewRoom"                # [Deprecated] serde 别名，仅用于后向兼容
 cooldown = 0
 
 [code]
@@ -92,28 +93,13 @@ transfer_from_global_fee_bp = 500
 [combat]
 pvp_enabled = true
 friendly_fire = false
-damage_multiplier_bp = 10000
+damage_multiplier = 1.0             # world.toml decimal; engine converts to fixed bp internally
 
 [visibility]
 fog_of_war = true
 
-# ═════════════════════════════════════
-# 已安装模组
-# ═════════════════════════════════════
-
-[[mods]]
-name = "empire-upkeep"
-version = "1.2.0"
-[mods.config]
-drone_cost = 5
-room_superlinear = 2    # fixed<u32,4>: 0.0002
-onshortfall = "damage"
-
-[[mods]]
-name = "resource-decay"
-version = "0.3.0"
-[mods.config]
-decay_rate_ppm = 1000
+# 模组启用状态与 typed runtime config 来自 engine/mods.lock。
+# world.toml 不承载 [[mods]] / [mods.config] 插件控制面。
 
 ```
 
@@ -285,7 +271,7 @@ fn host_get_world_config(key_ptr: i32, key_len: i32, out_ptr: i32, out_len: i32)
 ```typescript
 // TypeScript SDK
 interface WorldConfig {
-    spawn: { policy: string; respawn: string; cooldown: number };
+    spawn: { policy: string; respawn_policy: string; cooldown: number };
     code: {
         update_cost: Record<string, number>;
         update_cooldown: number;
@@ -339,7 +325,7 @@ World rules are defined via Bevy Plugins, statically compiled into the Engine bi
 
 ## 7. 可配置类型系统
 
-### 7.1 身体部件类型 (`[[body_part_types]]`)
+### 7.1 身体部件类型（`[[body_part_types]]`）
 
 与资源类型一样，身体部件可通过 world.toml 定义。默认世界提供 8 种基础类型：
 
@@ -448,7 +434,7 @@ impl Plugin for LeechBodyPartPlugin {
 }
 ```
 
-### 7.2 建筑类型 (`[[structure_types]]`)
+### 7.2 建筑类型（`[[structure_types]]`）
 
 与身体部件一样，建筑类型可通过 world.toml 定义。默认结构类型与建造成本以 [API Registry §10.2 BuildCost](../reference/api-registry.md#102-economy-resource-operations) 为权威：
 
@@ -636,9 +622,9 @@ cost = { Energy = 600 }
 
  **维修约束**: age repair 不存在额外全局 cap；维修能力只受物理范围、每设施容量、队列和 Depot 本地资源约束。权威模型见 design/engine.md §3.4.5 与 specs/core/resource-ledger.md §2.4。
 
-### 7.4 特殊效果类型定义 (`[[special_effects]]`)
+### 7.4 特殊效果类型定义（`[[special_effects]]`）
 
-与 body_part_types 和 damage_types 一样，特殊效果可通过 world.toml 定义和扩展。每个条目定义一种可由 `[[action_registry]]` 引用的效果：
+与 body_part_types 和 damage_types 一样，特殊效果可通过 world.toml 定义和扩展。每个条目定义一种可由 `[[custom_actions]].special_effect` 引用的效果：
 
 ```toml
 [[special_effects]]
@@ -731,7 +717,7 @@ resistance = "Psionic"
 
  字段 | 类型 | 必需 | 说明 |
 ------|------|------|------|
- `name` | string | ✅ | 唯一标识符，被 `[[action_registry]].effect_handler` 引用 |
+ `name` | string | ✅ | 唯一标识符，被 `[[custom_actions]].special_effect` 引用 |
  `description` | string | ✅ | 人类可读描述 |
  `handler` | string | ✅ | 引擎内置处理器。内置：`hack`, `drain`, `overload`, `debilitate`, `disrupt`, `fortify`, `leech`, `fabricate`, `heal_self`, `scramble_commands`, `convert_to_structure` |
  `target` | enum | ✅ | 目标类型：`enemy_drone`, `enemy_structure`, `enemy_player`, `enemy_any`, `self`, `ally`, `self_or_ally`, `any` |
@@ -742,25 +728,22 @@ resistance = "Psionic"
 
 ```
 1. world.toml 声明 [[special_effects]] → 引擎解析注册到 SpecialEffectRegistry
-2. [[action_registry]] 通过 effect_handler = "name" 引用 → 引擎绑定 handler
+2. [[custom_actions]] 通过 special_effect = "name" 引用 → 引擎绑定 handler
 3. 引擎内置所有 handler — 无需额外插件即可使用
-4. 服主新增 [[action_registry]] 引用已有 [[special_effects]] → 无需改 Rust 代码
+4. 服主新增 [[custom_actions]] 引用已有 [[special_effects]] → 无需改 Rust 代码
 5. 需全新 handler 时通过 Bevy Plugin 注册
 ```
 
-### 7.5 ActionRegistry (`[[action_registry]]`)
+### 7.5 自定义 Action（`[[custom_actions]]`）
 
-Vanilla `Attack`/`RangedAttack`/`Heal` 与 8 个 special attack 均由 ActionRegistry 预注册；WASM wire `type` 使用具体 action 名称，引擎映射为内部 `CommandAction::Action { action_type, payload }`。`world.toml` 的 `[[action_registry]]` 只用于服主覆盖启用状态或注册 mod action；vanilla 参数、消耗、body part 与抗性以 [special-attack-table.md](../reference/special-attack-table.md) 为权威。
+Vanilla `Attack`/`RangedAttack`/`Heal` 与 8 个 special attack 均由 ActionRegistry 预注册；WASM wire `type` 使用具体 action 名称。`world.toml [[custom_actions]]` 只能追加非保留名称，不能覆盖或禁用 vanilla action；vanilla 参数以 [special-attack-table.md](../reference/special-attack-table.md) 为权威。
 
 ```toml
-[vanilla]
-special_attacks_enabled = ["Hack", "Drain", "Overload", "Debilitate", "Disrupt", "Fortify", "Leech", "Fabricate"]
-
-[[action_registry]]
+[[custom_actions]]
 name = "Scramble"
 category = "mod_action"
 body_parts = ["Work"]
-effect_handler = "scramble_commands"
+special_effect = "scramble_commands"
 range = 3
 cooldown = 100
 cost = { Energy = 250 }
@@ -807,7 +790,7 @@ fn mind_control_handler(
 }
 ```
 
-### 7.6 伤害类型 (`[[damage_types]]`)
+### 7.6 伤害类型（`[[damage_types]]`）
 
 伤害类型和抗性体系是**世界规则的一部分**——像资源类型一样可扩展：
 
@@ -944,7 +927,7 @@ onshortfall = { type = "enum", default = "degrade", values = ["degrade", "damage
 
  字段 | 类型 | 必需 | 说明 |
 |------|------|------|------|
-| `name` | string | ✅ | 唯一标识符，在 world.toml `[[mods]].name` 中引用 |
+| `name` | string | ✅ | 唯一标识符；当前引擎以此名称作为 `mods.lock` 的 `plugins.<name>` key |
 | `version` | string | ✅ | 语义化版本，git tag 必须匹配 |
 | `description` | string | ✅ | 人类可读描述 |
 | `author` | string | ✅ | 作者标识 |
@@ -988,7 +971,7 @@ onshortfall = { type = "enum", default = "degrade", values = ["degrade", "damage
 | `values` | string[] | enum 时必需 | 枚举可选值 |
 | `description` | string | ✅ | 人类可读描述 |
 
-服主在 world.toml 的 `[[mods]].config` 中覆盖这些值。引擎启动时校验配置并注入对应 Bevy Plugin 的配置资源。
+这些声明当前作为注册表元数据。运行时配置来自 `engine/mods.lock`，且只有引擎显式接线的字段会注入 Plugin；未接线的字段继续使用 Rust 默认值。当前边界见 [`mod-runtime.md`](mod-runtime.md)。
 
 ### 8.3 多语言描述
 

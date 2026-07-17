@@ -295,7 +295,7 @@ cpu.max = 250000 3000000     // 每 3s tick 周期限 0.25 CPU 秒
 pids.max = 16                // 最多 16 线程（Wasmtime + 编译器）
 ```
 
-### 4.3 网络命名空间（
+### 4.3 网络命名空间 (Network Namespace)
 
 sandbox 进程拥有**独立 netns**，无网络接口、无路由表、无 iptables 规则。与引擎通过 Unix domain socket 通信（fd 在 seccomp 锁定前传入）。
 

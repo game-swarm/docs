@@ -65,7 +65,7 @@ neutral ──Claim──→ reserved ──RCL 1──→ owned ←──→ co
                  │  │ 2. 调用 PlayerExecutor    │     │
                  │  │ 3. 超时 → 空指令列表      │     │
                  │  └─────────────────────────┘     │
-                 │  结果: Map<PlayerId, Vec<Cmd>>   │
+                 │  结果: Map<PlayerId, CommandIntent[]>   │
                  └──────────┬───────────────────────┘
                             │
                             ▼
@@ -714,7 +714,7 @@ fn replay_tick(tick_N) -> WorldState:
 
 **问题**: `wasmtime = "=30.0"` 锁定版本 → 发现 CVE 升级后替换前 tick 回放中断。
 
-**策略**: TickCommitRecord 始终记录 `Command[]` 而非 WASM 输出。回放时引擎直接执行已记录的指令序列，不重新调用 WASM。Wasmtime 版本变更不影响回放。仅当 tick 被标记为"降级模式"（WASM 执行异常）时，需匹配 Wasmtime 版本进行二次回放验证。
+**策略**: TickCommitRecord 始终记录引擎已校验的 `Command[]` 而非原始 WASM 输出。回放时引擎直接执行这些权威记录的指令序列，不重新调用 WASM。Wasmtime 版本变更不影响回放。仅当 tick 被标记为"降级模式"（WASM 执行异常）时，需匹配 Wasmtime 版本进行二次回放验证。
 
 #### 6.3.4 TickCommitRecord 与 RichTraceBlob 写入失败语义
 
@@ -828,7 +828,7 @@ assert_eq!(replayed.entity_count, recorded.entity_count);
 
 ## 8. Tick 资源预算统一模型
 
-本节定义单 tick 内所有阶段的资源预算，消除跨文档（specs/core/01、specs/core/04、specs/security/09）分散定义导致的实现分叉风险。specs/core/04 §6 的具体预算值以此表为准。
+本节汇总单 tick 内所有阶段的资源预算，并作为 tick 级预算的权威定义。世界默认值见 [`world-rules.md`](world-rules.md)，WASM 单次执行限制见 [`wasm-sandbox.md`](wasm-sandbox.md)，命令来源约束见 [`command-source.md`](../security/command-source.md)。
 
 ### 8.1 Tick Interval 语义
 
@@ -841,7 +841,7 @@ assert_eq!(replayed.entity_count, recorded.entity_count);
 
 **Worker pool 语义**：PlayerExecutor worker pool 水平可扩展——运营商根据 active_players 调整 worker_pool_max 即可消除排队。Per-player sandbox deadline（2500ms World / 200ms Arena）独立——每个 worker 上的玩家独立计时，互不影响。详见 `design/engine.md` §3.4.2。
 
-**三层资源口径（**：容量推导依赖统一的资源模型——
+**三层资源口径**：容量推导依赖统一的资源模型——
 
 | 层 | 单位 | 用途 | 确定性 |
 |----|------|------|:--:|
