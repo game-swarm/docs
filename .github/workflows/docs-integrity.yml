@@ -5,13 +5,13 @@ on:
     paths:
       - "**/*.md"
       - "specs/reference/*.idl.yaml"
-      - "scripts/check_docs.py"
+      - "scripts/*.py"
       - ".github/workflows/docs-integrity.yml"
   push:
     paths:
       - "**/*.md"
       - "specs/reference/*.idl.yaml"
-      - "scripts/check_docs.py"
+      - "scripts/*.py"
       - ".github/workflows/docs-integrity.yml"
   workflow_dispatch:
 
@@ -28,3 +28,5 @@ jobs:
           persist-credentials: false
       - name: Validate documentation
         run: python3 scripts/check_docs.py
+      - name: Test documentation scripts
+        run: python3 -m unittest discover -s scripts -p 'test_*.py'

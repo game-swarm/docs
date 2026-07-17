@@ -4,11 +4,14 @@
 from __future__ import annotations
 
 import html
+import json
 import re
 import sys
 import unicodedata
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
+
+import sync_api_registry
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -17,12 +20,31 @@ MAX_MARKDOWN_BYTES = 2 * 1024 * 1024
 REGISTRY = ROOT / "specs/reference/api-registry.md"
 ECONOMY_IDL = ROOT / "specs/reference/economy.idl.yaml"
 ACTION_TABLE = ROOT / "specs/reference/special-attack-table.md"
+RESOURCE_LEDGER = ROOT / "specs/core/resource-ledger.md"
+ECONOMY_BALANCE = ROOT / "design/economy-balance-sheet.md"
+GAMEPLAY_DESIGN = ROOT / "design/gameplay.md"
 BODY_PART_DOCS = [ROOT / "design/gameplay.md", ROOT / "specs/core/world-rules.md"]
 CORE_ACTIONS = {
     "Attack": "ATTACK",
     "RangedAttack": "RANGED_ATTACK",
     "Heal": "HEAL",
 }
+FORBIDDEN_GAP_MARKERS = [
+    "未实现",
+    "待实现",
+    "尚未接入",
+    "not implemented",
+    "not yet implemented",
+    "feature-gated",
+    "metadata only",
+    "currently no",
+    "当前没有",
+    "目前没有",
+    "尚未发布",
+    "非当前工具",
+    "当前实现边界",
+    "当前支持",
+]
 SCHEMAS = {
     "game_api": ROOT / "specs/reference/game_api.idl.yaml",
     "auth_api": ROOT / "specs/reference/auth_api.idl.yaml",
@@ -79,7 +101,7 @@ def without_code(text: str, *, strip_inline: bool = True) -> str:
                 in_comment = True
                 break
         if strip_inline:
-            cleaned = re.sub(r"(`+).*?\1", "", cleaned)
+            cleaned = re.sub(r"(`+).*?\1", "CODE", cleaned)
         output.append(cleaned)
     return "\n".join(output)
 
@@ -351,14 +373,104 @@ def check_gameplay_constants() -> list[str]:
     return errors
 
 
+def check_economy_upkeep_defaults() -> list[str]:
+    errors: list[str] = []
+    ledger_text = RESOURCE_LEDGER.read_text(encoding="utf-8")
+    balance_text = ECONOMY_BALANCE.read_text(encoding="utf-8")
+    gameplay_text = GAMEPLAY_DESIGN.read_text(encoding="utf-8")
+
+    defaults_match = re.search(
+        r"base_upkeep\s*=\s*(\d+) \(Standard\) / (\d+) \(Vanilla\) / (\d+) \(Tutorial\)\s+"
+        r"room_soft_cap\s*=\s*(\d+) \(Standard\) / (\d+) \(Vanilla\) / (\d+) \(Tutorial\)",
+        ledger_text,
+    )
+    if defaults_match is None:
+        return ["specs/core/resource-ledger.md: missing canonical Empire Upkeep defaults"]
+
+    values = tuple(int(value) for value in defaults_match.groups())
+    expected_rows = {
+        "base_upkeep": values[:3],
+        "room_soft_cap": values[3:],
+    }
+    for field, expected in expected_rows.items():
+        row_match = re.search(
+            rf"^\| `{field}` \| (\d+) \| (\d+) \| (\d+) \|$",
+            balance_text,
+            re.MULTILINE,
+        )
+        if row_match is None:
+            errors.append(f"design/economy-balance-sheet.md: missing {field} defaults row")
+            continue
+        actual = tuple(int(value) for value in row_match.groups())
+        if actual != expected:
+            errors.append(
+                f"design/economy-balance-sheet.md: {field} {actual} does not match "
+                f"resource-ledger.md {expected}"
+            )
+
+    standard_base, standard_cap = values[0], values[3]
+    for rooms in (1, 5, 20, 50):
+        expected_cost = standard_base * rooms * (standard_cap + rooms) // standard_cap
+        row_match = re.search(
+            rf"^\| {rooms} \| ([\d,]+) \| [\d,]+ \|",
+            balance_text,
+            re.MULTILINE,
+        )
+        if row_match is None:
+            errors.append(
+                f"design/economy-balance-sheet.md: missing {rooms}-room maintenance row"
+            )
+            continue
+        actual_cost = int(row_match.group(1).replace(",", ""))
+        if actual_cost != expected_cost:
+            errors.append(
+                f"design/economy-balance-sheet.md: {rooms}-room maintenance {actual_cost} "
+                f"does not match canonical formula ({expected_cost})"
+            )
+
+    gameplay_match = re.search(
+        r"Standard 默认 `base_upkeep=(\d+), room_soft_cap=(\d+)`",
+        gameplay_text,
+    )
+    expected_gameplay = (standard_base, standard_cap)
+    if gameplay_match is None:
+        errors.append("design/gameplay.md: missing Standard Empire Upkeep defaults")
+    elif tuple(int(value) for value in gameplay_match.groups()) != expected_gameplay:
+        errors.append(
+            "design/gameplay.md: Empire Upkeep defaults do not match resource-ledger.md"
+        )
+
+    return errors
+
+
+def check_registry_sync() -> list[str]:
+    try:
+        changed, message = sync_api_registry.synchronize(
+            registry=REGISTRY,
+            game_idl=SCHEMAS["game_api"],
+            auth_idl=SCHEMAS["auth_api"],
+            economy_idl=SCHEMAS["economy"],
+            engine_idl=None,
+            check=True,
+        )
+    except (OSError, ValueError, sync_api_registry.YamlSubsetError, json.JSONDecodeError) as exc:
+        return [f"specs/reference/api-registry.md: generated Registry metadata validation failed: {exc}"]
+    if not changed:
+        return []
+    return ["specs/reference/api-registry.md: generated Registry metadata is stale; run scripts/sync_api_registry.py"]
+
+
 def main() -> int:
     markdown_files = sorted(path for path in ROOT.rglob("*.md") if not is_archive_path(path))
     inputs = markdown_files + list(SCHEMAS.values()) + [ECONOMY_IDL, ACTION_TABLE, *BODY_PART_DOCS]
     errors = check_input_paths(inputs)
     if not errors:
         errors.extend(check_links(markdown_files))
+        errors.extend(check_mechanical_integrity(markdown_files))
         errors.extend(check_registry_metadata())
+        errors.extend(check_registry_sync())
         errors.extend(check_gameplay_constants())
+        errors.extend(check_economy_upkeep_defaults())
     if errors:
         print(f"docs integrity check failed with {len(errors)} error(s):", file=sys.stderr)
         for error in errors:
@@ -370,6 +482,76 @@ def main() -> int:
         f"{len(economy_structure_costs())} structure costs verified; reviews/ excluded"
     )
     return 0
+
+
+def check_mechanical_integrity(markdown_files: list[Path]) -> list[str]:
+    errors: list[str] = []
+    stale_ref_re = re.compile(r"specs/(core|security)/\d{2}")
+
+    for path in markdown_files:
+        relative = path.relative_to(ROOT)
+        content = path.read_text(encoding="utf-8")
+
+        lines = content.splitlines()
+        fence_marker = None
+        for i, line in enumerate(lines, 1):
+            stripped = line.lstrip()
+            marker_match = re.match(r"(`{3,}|~{3,})", stripped)
+            if marker_match:
+                marker = marker_match.group(1)
+                if fence_marker is None:
+                    fence_marker = (marker[0], len(marker), i)
+                elif marker[0] == fence_marker[0] and len(marker) >= fence_marker[1]:
+                    fence_marker = None
+        if fence_marker:
+            errors.append(f"{relative}:{fence_marker[2]}: unclosed fenced code block")
+
+        stripped_content = without_code(content, strip_inline=True)
+        stripped_lines = stripped_content.split("\n")
+        errors.extend(check_forbidden_gap_markers(relative, stripped_lines))
+
+        last_heading_line = -1
+        # Use content to check for empty sections (including code blocks as content)
+        for i, line in enumerate(lines, 1):
+            stripped_line = stripped_lines[i-1]
+            stale_match = stale_ref_re.search(stripped_line)
+            if stale_match:
+                errors.append(f"{relative}:{i}: stale numbered pseudo-path reference: {repr(stale_match.group(0))}")
+
+            heading_match = HEADING_RE.match(stripped_line)
+            if heading_match:
+                if last_heading_line != -1 and last_heading_line == i - 1:
+                    errors.append(f"{relative}:{last_heading_line}: immediately empty section")
+
+                heading_text = heading_match.group(2).strip()
+                if heading_text.startswith("#") or re.search(
+                    r"[\(（,，—\s/]$|[\(（]\s*[\)）]$|,\s*[\)）]$|—\s*[\)）]$|[\(（]\s*,",
+                    heading_text,
+                ):
+                    errors.append(f"{relative}:{i}: malformed or truncated heading: {repr(heading_text)}")
+
+                last_heading_line = i
+            elif line.strip():
+                last_heading_line = -1
+
+        if last_heading_line != -1:
+            errors.append(f"{relative}:{last_heading_line}: immediately empty section")
+
+    return errors
+
+
+def check_forbidden_gap_markers(relative: Path, stripped_lines: list[str]) -> list[str]:
+    errors: list[str] = []
+    lowered_markers = [(marker, marker.lower()) for marker in FORBIDDEN_GAP_MARKERS]
+    for line_number, line in enumerate(stripped_lines, 1):
+        lower_line = line.lower()
+        for marker, lower_marker in lowered_markers:
+            if lower_marker in lower_line:
+                errors.append(
+                    f"{relative}:{line_number}: forbidden implementation-gap marker {marker!r}; "
+                    "rephrase as target architecture, contract scope, or runtime state semantics"
+                )
+    return errors
 
 
 if __name__ == "__main__":
