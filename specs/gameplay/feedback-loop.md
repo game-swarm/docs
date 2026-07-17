@@ -137,7 +137,7 @@ AI agent 开发循环强化：
 | `swarm_dry_run` | 预测指令结果 | 部署前验证——不用等 tick 才知道逻辑错误 |
 | `swarm_get_events` | 按需拉取事件 | 获取 deploy_accepted、first_tick_executed 等里程碑事件 |
 
-> **采用 polling-based 反馈模型**：MCP 不提供 Agent-facing 事件订阅。AI agent 通过 `swarm_get_deploy_status` + `swarm_get_events` 轮询获取反馈；SSE 仅作为 Gateway/Engine 内部事件通道，不暴露为 MCP subscription。
+> **采用 polling-based 反馈模型**：MCP 不提供 Agent-facing 事件订阅。AI agent 通过 `swarm_get_deploy_status` + `swarm_get_events` 轮询获取反馈；Engine 的 realtime 数据通过 NATS 交给 Gateway，再转发到浏览器 WebSocket，不存在 MCP SSE subscription。
 #### 人类玩家首次 PvP 引导
 
 ```
@@ -184,7 +184,7 @@ AI agent 开发循环强化：
 4. 部署到 tutorial world（swarm_deploy → 等待 first_tick_executed）
 ```
 
-Starter bot 代码中的字段名（`sequence`, `Spawn`, `MoveTo` 等）必须遵循 IDL 契约。Engine 的教程合同测试检查已发布示例，但当前没有从文档 IDL 自动生成 starter bot 的管线。
+Starter bot 代码中的字段名（`sequence`, `Spawn`, `MoveTo` 等）必须遵循 IDL 契约。Engine 的教程合同测试检查已发布示例；docs-side `scripts/sync_api_registry.py --check` 覆盖 Registry metadata/count/version drift，但不生成 starter bot 源码。
 
 ## 3. 决策：信息与工具
 

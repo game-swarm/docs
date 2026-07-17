@@ -6,18 +6,18 @@
 
 ## PG-1: 早期经济曲线与 first-hour 承诺
 
-**校准需求**: D4 裁决了方向，但 Standard balance sheet 中 1/5/20/50 房 net flow 全为负，而 resource-ledger.md 声称 "tick 2000+ 自维持"。需要 **实际玩家数据** 来验证：
+**校准需求**: D4 裁决了方向，目前的 Standard balance sheet 模型（基于 `resource-ledger.md` 参数）预测 1/5/20/50 房间在无代码优化时的净流量。目前的实测校准旨在验证：
 
 | 需要的数据 | 说明 |
 |-----------|------|
 | tick 0/500/1500/2000/5000/10000 实际 net flow | 从 playtest 中收集各玩家在不同时间点的资源收支 |
-| 2-room/5-drone 是否可达正平衡 | 新手典型配置的可持续性验证 |
-| drone upkeep 全部配置统一后的实际影响 | 修正小房间 drone upkeep 缺失导致的假象 |
-| Harvest 效率上限的典型值 | "代码优化缩小缺口" 可量化的前提 |
+| 2-room/5-drone 是否可达正平衡 | 验证在 free_upkeep (2000 ticks) 结束后，基础代码是否能维持正盈余 |
+| drone upkeep 统一配置后的实际影响 | 验证 Resource Ledger 中定义的全量 upkeep 对小规模帝国的实际压力 |
+| Harvest 效率上限的典型值 | 验证 1.5x-2.0x 的代码优化效率是否在实际 playtest 中可达成 |
 
 **涉及文件**: `design/gameplay.md`, `specs/core/resource-ledger.md`, `design/economy-balance-sheet.md`
 
-**校准条件**: playtest 产出 tick-by-tick 经济数据 → 与文档承诺对比 → 调整参数或文档
+**校准条件**: playtest 产出 tick-by-tick 经济数据 → 与文档模型对比 → 调整参数或文档
 
 ---
 
@@ -29,12 +29,13 @@
 
 | 验证项 | 说明 |
 |-------|------|
-| 2-5 房良好代码下正流量可达性 | 自维持区间的 lower bound 是否实际可达 |
-| 20 房转入净亏损的边界精度 | 边际收益递减的转折点位置 |
-| Source 产出 × 效率乘数模型准确性 | 文档中 1.5×-2.0× 效率是否与现实代码优化产出匹配 |
-| RCL 升级带来的被动收入梯度 | Controller income 的数值是否过低或过高 |
+| 2-5 房良好代码下正流量可达性 | 验证自维持区间的下界（2-5 房）是否如模型预测般具有正盈余 |
+| 20 房转入净亏损的边界精度 | 验证边际收益递减模型在 20 房间附近的转折点 |
+| Source 产出 × 效率乘数模型准确性 | 验证 Harvester 采集效率乘数（1.0-2.0）与实际代码表现的匹配度 |
+| RCL 升级带来的被动收入梯度 | 验证 Controller passive income 的数值分布是否符合预期 |
 
-**校准条件**: playtest 收集 ≥50 active players / ≥5000 tick 的经济数据，验证自维持区间的上下界 → 调参或调整文档
+**校准条件**: playtest 收集 ≥50 active players / ≥5000 tick 的经济数据，验证模型预测的自维持区间界限 → 调参或调整文档
+
 
 ---
 
