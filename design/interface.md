@@ -6,7 +6,7 @@
 
 MCP 是 AI agent 的「屏幕和鼠标」——与人类玩家的 Web UI 完全同级。
 
-**Schema 完整性要求**：所有 MCP 工具由 `game_api.idl.yaml`（game 工具）、`auth_api.idl.yaml`（auth 工具）和 `economy.idl.yaml`（经济工具）定义，并与手工维护的 `api-registry.md` 同步。当前 CI 只执行轻量一致性检查，不生成 Registry。详见 [API Registry](../specs/reference/api-registry.md) §3。
+**Schema 完整性要求**：所有 MCP 工具由 `game_api.idl.yaml`（game 工具）、`auth_api.idl.yaml`（auth 工具）和 `economy.idl.yaml`（经济工具）定义，并与手工维护的 `api-registry.md` 同步。CI 执行轻量一致性检查；Registry 正文仍由人工维护。详见 [API Registry](../specs/reference/api-registry.md) §3。
 
 ```
 人类：Monaco 编辑器 → 编译 WASM → 上传 ─┐
@@ -25,7 +25,7 @@ AI：  MCP 看世界 → 生成 WASM → 部署 ───┘
 | **世界查看** | `swarm_get_snapshot`, `swarm_get_terrain`, `swarm_list_drones`, `swarm_get_room` | AI agent 感知世界的「眼睛」 |
 | **部署** | `swarm_deploy` (deploy_mutation), `swarm_validate_module`, `swarm_list_modules` | WASM 上传与预检 |
 | **调试** | `swarm_explain_last_tick`, `swarm_get_tick_trace`, `swarm_dry_run`, `swarm_simulate` | 开发者诊断与离线模拟 |
-| **经济** | `swarm_get_economy`, `swarm_get_economy_trend` | 资源流查询；drone diligence 为未来/非当前工具概念 |
+| **经济** | `swarm_get_economy`, `swarm_get_economy_trend` | 资源流查询；drone diligence 属于经济分析概念，不作为独立 MCP 工具分类 |
 | **认证** | 见 [auth_api.idl.yaml](../specs/reference/auth_api.idl.yaml) | 设备注册、证书管理、email 恢复 |
 | **锦标赛** | `swarm_tournament_create`, `swarm_tournament_status`, `swarm_match_result` | 竞技赛事管理 |
 
@@ -53,11 +53,11 @@ WASM 模块通过 **command intent model** 与引擎交互：
 
 ```
 部署:  上传 WASM → 验证 `wasm_module_hash` → 预编译为原生码 → 存储（按服务端派生 `compiled_artifact_hash` 索引）
-tick:  tick(snapshot) → Command[]
+tick:  tick(snapshot) → CommandIntent[]
 ```
 
 1. 引擎构建世界快照（按房间分片），根据玩家可见范围拼接子集，写入 WASM 线性内存
-2. 调用 `tick(ptr, len)` — WASM 模块接收快照，返回指令 JSON 列表
+2. 调用 `tick(ptr, len)` — WASM 模块接收快照，返回指令 JSON 列表 (`CommandIntent[]`)
 3. 引擎校验所有指令 → 应用到世界
 
 快照格式为结构化数据（非纯文本 JSON），房间分片保证拼接无歧义。SDK 侧通过 `WorldSnapshot` 类型访问，无需感知底层分片结构。
@@ -88,7 +88,7 @@ fn host_get_fuel_remaining() -> u64;
 
 ### 5.2 禁止的 Host Function
 
-以下**游戏动作不得作为 host function 暴露给 WASM**。所有 mutating 操作通过 `tick() → Command[]` JSON 延迟模型提交，引擎在校验后统一应用：
+以下**游戏动作不得作为 host function 暴露给 WASM**。所有 mutating 操作通过 `tick() → CommandIntent[]` JSON 延迟模型提交，引擎在校验后统一应用：
 
 - ❌ `host_move` / `host_move_to` — 改为 `{ "action": "Move", ... }` JSON 指令
 - ❌ `host_harvest` / `host_transfer` / `host_withdraw`
@@ -96,7 +96,7 @@ fn host_get_fuel_remaining() -> u64;
 - ❌ `host_attack` / `host_ranged_attack` / `host_heal`
 - ❌ `host_spawn` / `host_recycle`
 
-> **设计合同**: WASM 模块不直接调用 mutating host function。所有状态变更通过 `tick() → JSON` 延迟模型提交。
+> **设计合同**: WASM 模块不直接调用 mutating host function。所有状态变更通过 `tick() → CommandIntent[]` JSON 延迟模型提交。
 
 ### 5.3 swarm_sdk_fetch — AI Agent 自举入口
 
@@ -114,7 +114,7 @@ fn host_get_fuel_remaining() -> u64;
 
 Notes:
 - Move: 4方向 (N/S/E/W)。
-- Drone messaging active surface 区分 `TickResult.messages`（WASM tick 输出中的本地消息结果）与 `SendMessage` command action（若世界启用消息 action，则按 IDL/Registry 注册，不混入默认 CommandAction 文本）。
+- 当前 WASM tick wire 仅返回 `CommandIntent[]`，不包含独立 `messages` 字段。消息读取使用 Registry 中的 MCP 工具；未来若增加消息 action，必须先进入 IDL/Registry。
 
 ### 5.5 Host Function 成本模型
 

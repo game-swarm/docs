@@ -82,7 +82,7 @@ Deployment: single binary = base engine + selected mods
 
 | 层 | 机制 | 信任 | 能力 |
 |---|---|---|---|
-| 玩家代码 | WASM 沙箱（sandbox 进程） | 不可信 | 只产 `Command[]` |
+| 玩家代码 | WASM 沙箱（sandbox 进程） | 不可信 | 只产 `CommandIntent[]` |
 | 引擎 + Mod | Rust 静态编译（Engine 进程内） | 服主信任 | 完全访问 ECS、注册 system、定义建筑/action/规则 |
 
 ---

@@ -21,7 +21,7 @@ Swarm 提供两种**并行核心玩法**。引擎统一，规则可配置。
 | **关注点** | 持久性、创造力、涌现玩法 | 算法对抗、策略测试、演示观赏 |
 | **胜利条件** | 无——类似 MMO 持续沙盒，玩家自行设定目标（建造、控制、经济、社交）。不存在"游戏结束"状态 | **房间可配置**（房主在创建时选择）：`fixed_ticks`（达到 tick 上限后按剩余资产判定：drone数→建筑数→资源量→平局）、`destroy_all_structures`（摧毁敌方所有建筑）、`full_wipe`（消灭所有敌方 drone + 建筑）、`capture_points_consecutive`（连续控制据点 N tick）、`capture_points_cumulative`（累计控制据点 N tick） |
 | **PvE** | ✅ 世界生态层（中立 NPC、资源据点、世界事件、NPC 掉落） | ✅ 挑战模式（PvE scenario，计时评分） |
-| **领土平衡** | Empire upkeep 默认启用（protocol hook + Vanilla 公式），服主可关闭/替换。目标态 World 仅提供公共统计（Statistics），不设竞争排名（Rankings）；相关工具当前尚未发布 | N/A |
+| **领土平衡** | Empire upkeep 默认启用（protocol hook + Vanilla 公式），服主可关闭/替换。World 仅提供隐私过滤后的公共统计（Statistics），不设竞争排名（Rankings） | N/A |
 
 ### 9.0 World PvE 生态层
 
