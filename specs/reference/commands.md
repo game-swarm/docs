@@ -143,7 +143,7 @@ CommandAction::Action {
 
 Vanilla action 与附加 special_effect handler 清单以 IDL/Registry 的同步定义为准；本节只说明使用边界。
 
-> `TickResult.messages` 是 tick 输出中的消息结果面；`SendMessage` 若启用则作为 Registry 中的 command action 注册，不在本文手写枚举。
+> 当前 WASM tick wire 仅返回 `CommandIntent[]`，不包含 `messages` 字段。消息读取使用 Registry 中的 MCP 工具；未来若增加 `SendMessage` action，必须先进入 IDL/Registry。
 
 ## 拒绝原因 — 见 [API Registry](api-registry.md) §2
 
@@ -163,3 +163,5 @@ CommandIntent[] (WASM tick() 输出)
         → apply_command (通过 → 写入 ECS)
         → refund_for_rejection (拒绝 → 退燃料)
 ```
+
+所有指令最终通过服务端校验管线处理，详见 `specs/core/command-validation.md`。

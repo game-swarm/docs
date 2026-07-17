@@ -124,5 +124,5 @@ u64 host_get_fuel_remaining() -> u64
 
 ## 设计合同
 
-所有游戏状态变更必须通过 `tick() → Command[]` JSON 延迟模型提交。
+所有游戏状态变更必须通过 `tick() → CommandIntent[]` JSON 延迟模型提交。
 Host function 只提供**只读查询**。WASM 模块不能直接修改世界状态。

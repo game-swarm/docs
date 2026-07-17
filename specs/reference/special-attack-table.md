@@ -7,7 +7,7 @@
 
 所有战斗/效果动作通过内部 `CommandAction::Action { action_type, payload }` 派发至 `ActionRegistry`；wire `type` 为具体 action 名称。Vanilla 注册表包含 11 个内置动作：3 个 `basic_combat`，8 个 `special_attack`。Mod 可通过 world action manifest 注册额外 action，但不能覆盖 vanilla 名称。
 
-Standard/Arena 模式全量启用。Tutorial/Novice 模式可通过 `world.toml` 的 vanilla action allowlist 覆盖。TickTrace 记录 `world_action_manifest_hash` 以确保 replay 确定性。
+`SpecialAttacksModPlugin` 由 `mods.lock` typed config 控制注册范围。`special_attacks_enabled` 为总开关；Tutorial 和 Novice 模式使用 `tutorial_enabled` / `novice_enabled` allowlist；World/Arena 默认模式使用完整 8 项 special action 集。TickTrace 记录 action manifest hash，确保 replay 使用同一注册表。
 
 ## Canonical Table
 

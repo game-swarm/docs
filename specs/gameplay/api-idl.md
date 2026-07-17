@@ -8,7 +8,7 @@
 
 ## 1. 原则
 
-**IDL YAML 是 API 的机器可读权威参考。** Registry 与 YAML 当前手工同步；Engine extraction 从 Rust 类型和 runtime registries 构造另一份 `IdlDoc`。三者必须协调维护，但当前没有完整的三方自动 diff。
+**IDL YAML 是 API 的机器可读权威参考。** Registry 与 YAML 手工同步正文表格，并通过 `scripts/sync_api_registry.py` 同步生成 metadata/tool counts/API 版本；Engine extraction 从 Rust 类型和 runtime registries 构造另一份 `IdlDoc`。三者必须协调维护；三方自动 diff 的范围限定为 metadata/count/version 与明确输入的 Engine JSON 摘要。
 
 **Core IDL vs World Action Manifest 边界**：
 
@@ -21,31 +21,22 @@
 轻量检查：链接 + 版本元数据 + 关键 gameplay 常量
 ```
 
-### 2.0 TickResult
+### 2.0 WASM 导出与指令输出
 
-WASM `tick(snapshot)` export 返回 `TickResult`。`commands` 是游戏动作意图；`messages` 是纯通信 payload，不产生经济副作用。
+WASM `tick(snapshot)` export 直接返回 `CommandIntent[]` 的 JSON 序列化字节流。`TickResult` 是 SDK 内部提供的本地抽象，不作为 wire format 传输。
 
 ```yaml
-TickResult:
+# 这里的结构描述的是 WASM tick() 输出的 JSON 数组元素
+CommandIntent:
   additionalProperties: false
-  required: [commands]
+  required: [sequence, action]
   fields:
-    commands: Vec<CommandIntent>
-    messages:
-      type: Vec<DroneMessage>
-      default: []
-
-DroneMessage:
-  additionalProperties: false
-  required: [recipient_id, payload]
-  fields:
-    recipient_id: ObjectId
-    payload: Bytes[0..256]
+    sequence: u32
+    action: CommandAction
 ```
 
-消息投递结果写入下一 tick 的 `snapshot.messages`，排序键为 `(sender_id, recipient_id, sequence)`。资源交换必须通过 Transfer Gateway；消息 schema 不包含 amount settlement、escrow、fee 或 ownership mutation 字段。
+**IDL 定义的指令类型是 CommandIntent**——即 WASM 模块 `tick()` 的原始输出格式。CommandIntent 仅包含 `sequence` + `action` 两个字段。`player_id`、`source`、`tick` 等身份/时序字段由服务端 Source Gate 注入后形成 RawCommand（见 specs/core/command-validation.md §2）。IDL 不定义 RawCommand 的 envelope 字段——那些是引擎内部结构。所有校验规则（`validator` 数组）定义在 CommandIntent 的 `action` 字段上。
 
-**IDL 定义的指令类型是 CommandIntent**——即 WASM 模块 `tick()` 的可信输出格式。CommandIntent 仅包含 `sequence` + `action` 两个字段。`player_id`、`source`、`tick` 等身份/时序字段由服务端 Source Gate 注入后形成 RawCommand（见 specs/core/command-validation §2）。IDL 不定义 RawCommand 的 envelope 字段——那些是引擎内部结构。所有校验规则（`validator` 数组）定义在 CommandIntent 的 `action` 字段上。
 
 **Schema 不可扩展性**：所有 JSON schema（CommandIntent、每个 Command action、MCP tool input/output、REST API response）默认设置 `additionalProperties: false`——拒绝未知字段。唯一例外需在本文件中显式声明。此规则防止字段注入攻击和实现分叉：不同实现者看到同一 schema 不会因未知字段处理策略不同而产生分歧。
 
@@ -289,9 +280,9 @@ refund_policy:
 当前检查分为两条独立路径：
 
 1. **文档仓库**：`scripts/check_docs.py` 检查链接、版本声明和关键 gameplay 常量，不比较全部 Registry/IDL 字段。
-2. **Engine 仓库**：Engine tests 检查 runtime extraction 和 SDK 生成，不读取本仓库 YAML/Registry。
+2. **Engine 仓库**：Engine tests 检查 runtime extraction 和 SDK 生成，不读取本仓库 YAML/Registry；docs CLI 可在供应 Engine JSON 时记录计数摘要。
 
-当前没有完整的 Registry ↔ IDL ↔ Engine 三方 generator/diff。禁止使用不存在的 `cargo run -- gen-api` 等命令；详细边界见 [Codegen Pipeline](../reference/codegen.md)。
+Registry 正文表格 ↔ IDL ↔ Engine 语义三方 generator/diff 不属于 docs-side 轻量检查范围。Registry metadata/count/version 使用 `scripts/sync_api_registry.py --check` 校验；禁止使用不存在的 `cargo run -- gen-api` 等命令；详细边界见 [Codegen Pipeline](../reference/codegen.md)。
 
 ---
 
@@ -354,7 +345,14 @@ SDK 由引擎基于世界加载的模组**动态生成**，而非预先编译分
     ├─ 生成 SDK artifacts:
     │   ├─ sdk-rust:  Rust crate (types + Command enum + host function stubs)
     │   ├─ sdk-ts:    npm package (types + autocomplete)
+    │   ├─ command-intent.schema.json: 45-branch oneOf schema (44 concrete + custom wildcard)
     │   └─ sdk.json:  machine-readable manifest (供 MCP/CLI 查询)
+    │
+    ├─ 导出 Frontend contracts:
+    │   ├─ swarm-contracts.ts: ts-rs generated Rust contract types
+    │   ├─ command-intent.schema.json: schemars generated command schema
+    │   ├─ realtime.schema.json: swarm.realtime.v1 envelope schema
+    │   └─ visible-snapshot.schema.json: visibility-filtered snapshot schema
     │
     ├─ 暴露下载端点:
     │   ├─ MCP:  swarm_sdk_fetch(world_id)
@@ -363,6 +361,8 @@ SDK 由引擎基于世界加载的模组**动态生成**，而非预先编译分
     │
     └─ 缓存: 按 (mod_manifest_hash, sdk_target) 缓存，相同 hash 复用
 ```
+
+Canonical v1 recovery accepts direct `CommandIntent[]` output for existing bots. Generated `swarm.realtime.v1` contracts are the recovery and replay envelope for frontend/live clients; codegen must keep both surfaces consistent with the same Rust `CommandAction` branch source.
 
 ### 6.2 WASM 模块声明
 
