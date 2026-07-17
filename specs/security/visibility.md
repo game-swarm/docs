@@ -68,7 +68,7 @@ MARKET: 所有活跃订单对有视野房间的全体玩家可见。订单创建
 ### 2.6 统计与排行榜
 
 ```
-STATISTICS (World, target state): 启用后公开非竞争性统计。指标: GCL、房间数、drone 数；相关工具当前尚未发布。
+STATISTICS (World): `swarm_get_world_statistics` 发布非竞争性聚合统计。指标仅包含世界/玩家级安全汇总，例如房间数、drone 数、控制等级进度和公开 arena 结果；不得泄露资源总量、隐藏实体、当前策略、WASM 源码或不可见房间信息。
 RANKINGS (Arena): 公开竞争性排名。
 隐藏: 资源总量、当前策略、WASM 模块源码。
 ```
