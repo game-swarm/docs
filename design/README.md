@@ -1,6 +1,6 @@
 # Swarm — 设计文档
 
-> **Swarm** 是一个开源的、可编程的 MMO RTS 游戏引擎。它是 [Screeps](https://screeps.com/) 的精神续作，用现代技术栈从零重构，支持多语言。
+> **Swarm** 是一个开源的、可编程的 MMO RTS 游戏引擎，受 [Screeps](https://screeps.com/) 启发，使用现代技术栈从零构建，并支持多语言。
 >
 > — *「你的代码就是你的军队。Write once, fight forever.」*
 
