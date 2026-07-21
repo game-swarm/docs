@@ -311,15 +311,21 @@ Auth API errors are registered in `auth_api.idl.yaml` with `namespace_offset: 10
 | `swarm_get_code` | `{drone_id}` | `{code, hash, language, size, last_deployed}` | 20/tick | `swarm:read` | `drone_id` | `read_replay_safe` | `owner` | `per_drone` | game_api |
 | `swarm_get_docs` | `{topic?}` | `{docs, sections}` | 20/tick | `swarm:read` | `world` | `read_replay_safe` | `none` | `global` | game_api |
 | `swarm_get_schema` | `{entity_type?}` | `{schema, version}` | 20/tick | `swarm:read` | `world` | `read_replay_safe` | `none` | `global` | game_api |
-#### Auth (3)
+<a id="auth-3"></a>
+
+#### Auth (7)
 
 | 工具名 | Input Schema | Output Schema | Rate Limit | Required Scope | Subject Source | Replay Class | Visibility Filter | Rate Limit Key | 来源 IDL | schema_source | alias_of |
 |--------|-------------|---------------|------------|----------------|----------------|--------------|-------------------|----------------|----------|---------------|----------|
 | `swarm_register_challenge` | `{}` | `{challenge_id, challenge, difficulty_bits, difficulty_bits_min=20, difficulty_bits_max=32, expires_at}` | 10/min | `none` | `none` | `non_replayable` | `none` | `per_ip` | game_api | `auth_api` | `auth_api.swarm_register_challenge` |
 | `swarm_submit_csr` | `{username, csr, certificate_profile, challenge_id, nonce, csr_signature}` | `{certificate_bundle}` | 1/30s | `none` | `none` | `non_idempotent_mutation` | `none` | `per_ip` | game_api | `auth_api` | `auth_api.swarm_submit_csr` |
+| `swarm_renew_certificate` | `{certificate_id, renewal_csr, proof_signature}` | `{certificate_bundle}` | 5/min | `swarm:auth` | `player_id` | `idempotent_mutation` | `owner` | `per_player` | game_api | `auth_api` | `auth_api.swarm_renew_certificate` |
+| `swarm_revoke_certificate` | `{certificate_id, reason}` | `{revoked, revocation_time, crl_updated}` | 5/min | `swarm:auth` | `player_id` | `admin_critical` | `owner` | `per_player` | game_api | `auth_api` | `auth_api.swarm_revoke_certificate` |
+| `swarm_cert_list` | `{status?}` | `{certificates: [{cert_id, usage, label, fingerprint, issued_at, expires_at, status}]}` | 30/min | `swarm:auth` | `player_id` | `read_replay_safe` | `owner` | `per_player` | game_api | `auth_api` | `auth_api.swarm_cert_list` |
 | `swarm_cert_check` | `{certificate_id}` | `{valid, certificate_id, player_id, client_public_key, public_key_fingerprint, usage, scope, audience, expires_at, revoked}` | 100/min | `swarm:auth` | `player_id` | `read_replay_safe` | `owner` | `per_player` | game_api | `auth_api` | `auth_api.swarm_cert_check` |
+| `swarm_get_server_trust` | `{}` | `{server_id, server_ca_fingerprint, server_ca_certificate, supported_algorithms, supported_audiences}` | 30/min | `none` | `none` | `read_replay_safe` | `none` | `global` | game_api | `auth_api` | `auth_api.swarm_get_server_trust` |
 
-Auth category 使用证书模型 (swarm_register_challenge/submit_csr/cert_check)。完整 schema 见 §3.3 Auth API 工具。
+Auth category 使用证书模型，包含 7 个 CSR/certificate lifecycle aliases。完整 schema 见 §3.3 Auth API 工具。
 
 #### Play (15)
 
@@ -412,6 +418,18 @@ Auth API 提供 7 个 CSR/certificate lifecycle 工具。全部基于单层 Serv
 | `swarm_get_server_trust` | `{}` | `{server_id, server_ca_fingerprint, server_ca_certificate, supported_algorithms, supported_audiences}` | 30/min | `none` | `none` | `read_replay_safe` | `none` | `global` |
 
 > **CSR challenge PoW（S-H3）**: `swarm_register_challenge.difficulty_bits` 为当前自适应难度，默认 24 bits，并受 `difficulty_bits_min = 20`、`difficulty_bits_max = 32` 约束。`swarm_submit_csr.nonce` 必须使 challenge preimage 满足服务端返回的当前难度；低于当前难度的提交不得接受。
+
+### 3.4 MCP Capability Profiles
+
+Capability profiles group existing Registry tool sets for client onboarding and SDK exposure. Profiles do not define new schemas, scopes, rate limits, or security behavior; each tool remains governed by its canonical row above.
+
+| Profile | Existing Registry tool groups | Included tools / references |
+|---------|-------------------------------|-----------------------------|
+| `onboarding` | §3.2 Onboarding, §3.2 Auth, §3.2 SDK, §3.3 Auth API | `swarm_get_info`, `swarm_get_docs`, `swarm_get_schema`, `swarm_sdk_fetch`, and the seven Auth API lifecycle tools |
+| `play` | §3.2 Onboarding, §3.2 Play, §3.2 Resources, §3.3 Auth API | World view, player/resource queries, room/entity reads, economy reads, resource catalog reads, and auth status/trust reads |
+| `deploy` | §3.2 Deploy | Deployment submission, validation, status, module listing, and world config/rules reads |
+| `debug` | §3.2 Debug | Tick traces, engine/sandbox diagnostics, dry-run/simulation, errors, checksums, and last-tick explanations |
+| `arena` | §3.2 Arena | Tournament create/precommit/status and match result tools |
 
 
 ---
@@ -820,7 +838,7 @@ Economy resource operations are engine-side computations, not player CommandActi
 | 1 | **RecycleRefund** | lifecycle | Recycle command (index 8) | Lifespan-proportional partial refund. Formula: `max(1000, (remaining_lifespan * 5000) / total_lifespan)` bp → `(rate_bp * body_cost) / 10000`. Clamped to [10%, 50%]. |
 | 2 | **StorageTax** | taxation | Every tick, per player | Continuous marginal storage tax over global storage. Smooth curve anchors: 30% -> 0 bp, 60% -> 1 bp, 85% -> 5 bp, 100% -> 20 bp. Per `specs/core/resource-ledger.md` §2.2 authoritative formula. |
 | 3 | **UpkeepDeduction** | maintenance | Every tick, per player | Empire-wide superlinear upkeep: `base_upkeep × rooms × (1 + rooms / room_soft_cap)`. Deducted from global storage. Standard defaults are defined in `specs/core/resource-ledger.md` §Empire Upkeep. |
-| 4 | **PvEAward** | reward | On NPC entity destruction | Tiered: T1=100, T2=500, T3=2000, T4=10000, T5=50000. Entity type modifier in bp adjusts base. |
+| 4 | **PvEAward** | reward | On NPC entity destruction | NPC/entity tier maps to Resource Ledger budget ranges: T0=0 environment, T1=100-500, T2=500-2000, T3=2000-10000, T4=5000-50000, T5 defined by the Arena/Tournament rules module. Creep maps to T1 low roll; Guardian maps to T2/T3 by template strength. Final amount is `base_reward * player_multiplier` and remains bounded by Player/Global/Zone/Event PvE budgets. |
 | 5 | **BuildCost** | construction | Build command (index 9) | Structure costs: Spawn=300, Extension=200, Road=10, Wall=50, Rampart=100, Container=100, Storage=500, Depot=600, Tower=800, Link=400, Extractor=600, Lab=1000, Terminal=1200, Observer=500, PowerSpawn=1200, Factory=1500, Nuker=5000. Controller level discount: 100%→65% (L1→L8) in bp. |
 | 6 | **SpawnCost** | lifecycle | Spawn command (index 7) | Body part costs: MOVE=50, WORK=100, CARRY=50, ATTACK=80, RANGED_ATTACK=150, HEAL=250, CLAIM=600, TOUGH=10. Max 50 body parts. Total = sum of part costs. |
 | 7 | **AlliedTransfer** | transfer | AlliedTransfer command (index 14) | Allied transfer with 200 bp (2.00%) fee. 200 tick delay. 500 tick cooldown per receiver. Daily cap: `max(10_000, receiver_gcl × 20_000) × allied_daily_cap_world_multiplier / 100` units per receiver. Both players must share active alliance ≥ 100 tick. Per `specs/core/resource-ledger.md` §2.1. |
