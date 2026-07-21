@@ -37,7 +37,7 @@ WASM 模块通过 `tick(snapshot) → CommandIntent[]` JSON 返回指令。
 { "sequence": 2, "action": { "type": "Harvest", "object_id": 1001, "target_id": 4001 } }
 ```
 - 校验：drone 有 WORK + CARRY body part，target 是 Source 且有资源，相邻，fatigue = 0
-- 产出：每 WORK part 采集 2 单位资源
+- 产出：基础效率 100% 时每 WORK part 采集 1 单位资源/tick；代码 throughput multiplier 可将 Harvester 采集效率提升到 150%–200%
 
 ### Transfer
 向目标转移资源。

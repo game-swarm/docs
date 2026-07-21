@@ -151,17 +151,19 @@ AI agent 开发循环强化：
 
 ### 2.5 Onboarding 验收标准
 
-以下 golden path 必须在 CI smoke test 中自动化验证——不仅是文档承诺：
+以下 10 分钟 golden path 必须在 CI smoke test 中自动化验证——不仅是文档承诺：
 
 #### 人类玩家验收
 
-| 步骤 | 验收条件 | 目标时间 |
-|---|---|---|
-| 1. 进入教程房间 | Web 客户端加载完成后 10s 内显示教程 overlay | <30s 从打开到教程开始 |
-| 2. 修改 spawn_count | 代码修改 → 保存 → drone 数量变化在 3 tick 内可见 | <15s |
-| 3. 部署到 World | 从教程点击"部署到世界" → starter bot 在 World 中运行 | <60s |
-| 4. 首次 safe_mode 结束 | 玩家收到 soft_launch 过渡通知 | 自动（tick 500） |
-| 5. 首次 PvP 接触 | 战斗报告弹出一键可达 | 首次被攻击时 |
+| 步骤 | 操作 | 验证点 | 目标时间 |
+|---|---|---|---|
+| 1. 登录 | Web UI 登录 → 选择 Tutorial 世界 → 自动获得初始 Energy | 看到出生房间和初始 drone | <30s |
+| 2. 获取 SDK | CLI: `swarm sdk fetch tutorial` 或 Web UI 下载 SDK bundle | `swarm sdk build` 成功 | <30s |
+| 3. 编译 | 编辑 `main.ts`（harvester 模板）→ `swarm sdk build` | WASM 产出，无编译错误 | <1min |
+| 4. 部署 | `swarm deploy tutorial` → WASM 上传到 Tutorial 世界 | 返回 `DeployResult::Ok` | <30s |
+| 5. 观察反馈 | Web UI 查看 drone 采集 Energy、建筑进度、资源增长 | Energy 曲线上升，drone 正常工作 | 1-2min |
+| 6. 调试 | 若 drone idle → MCP: `swarm_explain_last_tick(drone_id)` 查原因 → 修改代码重部署 | 所有 drone 非 idle | 2-3min |
+| 7. 首个 PvE 挑战 | 中立 NPC drone 出现在视野 → 编写攻击/规避逻辑 → 完成首次 PvE 击杀 | NPC 被击杀，获得 PvE drop | 2-3min |
 
 #### AI Agent 验收
 
@@ -333,9 +335,9 @@ Drone 1003 本 tick 未行动。原因:
 - 房间制，玩家创建比赛房间，设定参数，自己或他人加入
 - 对称初始条件，双方公平
 - 独立房间/地图
-- 胜利条件：摧毁敌方 Spawn，或时限结束时分高者胜
+- 胜利条件由房主在创建时选择：`fixed_ticks`（达到 tick 上限后按剩余资产判定：drone数→建筑数→资源量→平局）、`destroy_all_structures`（摧毁敌方所有建筑）、`full_wipe`（消灭所有敌方 drone + 建筑）、`capture_points_consecutive`（连续控制据点 N tick）、`capture_points_cumulative`（累计控制据点 N tick）
 - 代码在比赛开始时锁定（赛中不可改）
-- 赛后自动发布回放
+- 赛后生成回放（房间公开则回放公开）
 - 无自动匹配、无天梯排名、无赛季
 - Tournament/League 为上层编排，通过多场 Room Match 组合实现（Extension，后续 Stage 交付）
 
