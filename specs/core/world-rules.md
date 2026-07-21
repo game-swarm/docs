@@ -32,7 +32,7 @@ cooldown = 0
 
 [code]
 update_cost = {}
-update_cooldown = 0
+update_cooldown = 5
 update_window = { every = 0, duration = 0 }
 propagation_speed = 0
 propagation_source = "Spawn"
@@ -60,7 +60,8 @@ body_part.Work = { Energy = 100 }
 body_part.Attack = { Energy = 80 }
 body_part.RangedAttack = { Energy = 150 }
 body_part.Heal = { Energy = 250 }
-code_update = { Energy = 500 }
+# code_update 默认免费；付费部署世界可显式覆盖，例如：
+# code_update = { Energy = 500 }
 
 # 资源点类型
 [[source_types]]

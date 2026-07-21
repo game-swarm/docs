@@ -38,7 +38,7 @@
          └─────────┘    └─────────┘    └───────────┘
 ```
 
-所有操作类型通过 `ResourceOperation` 枚举统一：
+核心操作与 extension-gated settlement variants 通过 `ResourceOperation` envelope 统一。Extension-gated variants 默认 inactive；只有 owning Plugin 提供预算、费率、TickTrace、授权与反滥用规则后才可进入 active Resource Ledger：
 
 | 操作 | 方向 | 说明 |
 |------|:---:|------|
@@ -54,12 +54,12 @@
 | `SpawnCost` | Owner → Drone | 生成消耗 |
 | `UpkeepDeduction` | Owner → World | 维护费扣除 |
 | `StorageTax` | Storage → World | 存储税 |
-| `ContractSettlement` | Player/Reserve/System/Sink → Player/Reserve/Sink | 合约结算 |
-| `MerchantTradeSettlement` | Player ↔ Merchant | 商人报价结算 |
-| `P2POfferSettlement` | Player/Reserve → Player | P2P 报价结算 |
-| `AuctionSettlement` | Player/Reserve → Player | 拍卖出价、退款、结算 |
-| `EscrowSettlement` | Player/Reserve → Player | 托管释放/退款 |
-| `LendingSettlement` | Player/Reserve → Player | 借贷发放、偿还、违约状态归档 |
+| `ContractSettlement` | Player/Reserve/System/Sink → Player/Reserve/Sink | Extension-gated；默认 inactive 的合约结算 |
+| `MerchantTradeSettlement` | Player ↔ Merchant | Extension-gated；默认 inactive 的商人报价结算 |
+| `P2POfferSettlement` | Player/Reserve → Player | Extension-gated；默认 inactive 的 P2P 报价结算 |
+| `AuctionSettlement` | Player/Reserve → Player | Extension-gated；默认 inactive 的拍卖出价、退款、结算 |
+| `EscrowSettlement` | Player/Reserve → Player | Extension-gated；默认 inactive 的托管释放/退款 |
+| `LendingSettlement` | Player/Reserve → Player | Extension-gated；默认 inactive 的借贷发放、偿还、违约状态归档 |
 
 ---
 
@@ -322,6 +322,8 @@ room_soft_cap = 10 (Standard) / 15 (Vanilla) / 20 (Tutorial)
 ---
 
 ## 7. Settlement Workflows
+
+本节 workflows 均为 extension-gated/inactive，不能由核心系统直接执行。Owning Plugin 必须先提供预算、费率、TickTrace、授权与反滥用规则，并通过统一 Resource Ledger envelope 结算，禁止旁路余额写入。
 
 All settlement IDs are domain-separated BLAKE3-derived IDs. ID `0` is invalid. A settlement command must authorize the actor before checking duplicate terminal receipts; duplicate receipts are idempotent only for an actor that is still authorized for that settlement phase.
 
