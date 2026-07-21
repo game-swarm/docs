@@ -61,7 +61,7 @@ Tick N COLLECT 开始:
        │   payload = {
        │     tick: N,
        │     player_id,
-       │     snapshot_json: Vec<u8>,     // 可见世界快照
+       │     snapshot: Vec<u8>,          // 结构化可见世界快照
        │     module_hash: [u8; 32],      // 应使用的 WASM 模块
        │     fuel_budget: u64,           // 本 tick fuel 配额
        │   }
@@ -125,7 +125,7 @@ struct SandboxTickRequest {
     player_id: String,
     room_id: String,
     module_hash: [u8; 32],         // WASM 模块标识
-    snapshot_json: String,         // 可见世界快照（≤256KB）
+    snapshot: Vec<u8>,             // 结构化可见世界快照（≤256KB）
     fuel_budget: u64,              // wasmtime fuel units
     collect_timeout_ms: u64,       // 本 tick COLLECT timeout
 }
