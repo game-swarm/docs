@@ -637,11 +637,11 @@ delta = compute_delta(world_state_before, world_state_after)
 ```
 1. Read committed tick result from in-memory post-commit state or redb tick head
 2. Post-commit delta fan-out:
-    Engine in-process BTreeMap cache updates from the committed snapshot
+    Engine in-process Moka cache updates from the committed snapshot
 NATS.publish("swarm.realtime.v1", envelope) → Gateway targeted realtime subscribers
 ```
 
-**实现说明**：Engine 进程内 BTreeMap cache 与 NATS 无网络级数据依赖——缓存刷新是本地内存写入，实时推送通过 NATS/Gateway 独立演化。任一失败均不 rollback committed tick。
+**实现说明**：Engine 进程内 Moka cache 与 NATS 无网络级数据依赖——缓存刷新是本地内存写入，实时推送通过 NATS/Gateway 独立演化。任一失败均不 rollback committed tick。
 
 **BROADCAST failure never rolls back committed tick**——tick 已在 EXECUTE 阶段持久化到 redb。BROADCAST 阶段的任何失败（in-process cache miss、NATS 断开、部分客户端未收到）都不影响世界状态。
 
@@ -759,7 +759,7 @@ RichTraceBlob 缺失的 tick 标记 `terminal_state = audit_gap`——replay 可
 |---------|--------|------|
 | 当前世界状态（snapshot） | Bevy World（内存） | COLLECT 阶段已构建，最新 |
 | 历史 tick 数据 | redb | 不可变记录 |
-| 高频读取（地图/资源） | Engine 进程内 BTreeMap cache | cache miss → redb |
+| 高频读取（地图/资源） | Engine 进程内 Moka cache | cache miss → redb |
 | 实时事件（delta） | NATS | 仅推送，不保证送达；gap → redb fetch |
 
 MCP_Query 不得直接读取 redb（绕过可见性过滤）。所有查询路径共享 `is_visible_to` 过滤器。
@@ -775,7 +775,7 @@ COLLECT 阶段从 Bevy World 内存读取权威状态，不访问 redb 或进程
 确定性依赖：
 - PRNG：Blake3 XOF，确定性种子 + offset → 随机流，不依赖 OS 熵源
 - Hash：Blake3 固定实现，不用 `std::hash`（跨版本可变）
-- 排序：`(priority_class, shuffle_index, source_rank, sequence, command_hash)` — 相同 seed + 相同玩家集 + 相同指令 → 相同顺序。详见 §9.1。
+- 排序：`(priority_class, shuffle_index, source_rank, sequence, command_hash)` — gameplay source 仅包含 Admin/WASM；相同 seed + 相同玩家集 + 相同指令 → 相同顺序。详见 §9.1。
 - ECS：`.chain()` 严格串行，`.before()/.after()` 部分并行
 - 数值：整数 + 定点数，禁用 `f64`（跨平台/编译器非确定）。禁止 IEEE 754 浮点数——所有数值计算使用 `u64`/`i64` 定点整数（basis points, ×10000 精度），禁止任何浮点类型出现在游戏状态中。定点数 JSON 序列化使用整数表示（非小数），避免 JSON 数字解析的跨语言精度差异。
 - **canonical JSON**：`canonical_serialize()` 遵循 **[RFC 8785 JSON Canonicalization Scheme (JCS)](https://www.rfc-editor.org/rfc/rfc8785)**。禁止 IEEE 754 浮点数编码（JCS §3.2.2 定义的数字格式仅限整数，引擎侧不使用 `f64`/`f32`，输出端无浮点 JSON 数字）。对象键按 JCS 规则排序，字符串转义按 JCS §3.2.2.2/§3.2.3 输出；禁止多余空白字符。除 JCS 规定外，canonical codec **不额外执行 Unicode NFC normalization**。`canonical_codec_version` 与 `serde_swarm`/`swarm-codec-go` 双实现 hash fixture 见 `specs/core/persistence-contract.md` §2.1。
@@ -911,11 +911,11 @@ redb commit 失败 (retry 3，放弃): 退还 consumed_fuel[tick]
 sort_key = (priority_class, shuffle_index, source_rank, sequence, command_hash)
 ```
 
-**第一层 `priority_class`**：命令优先级类别。取值：`0` = Admin, `1` = WASM, `2` = MCP_Deploy, `3` = MCP_Query。Admin 命令始终最先（紧急冻结/审计操作），WASM 在 MCP 命令之前（沙箱内联执行），MCP_Deploy 在 MCP_Query 之前（写优先于读）。
+**第一层 `priority_class`**：gameplay `RawCommand` 优先级类别。取值：`0` = Admin，`1` = WASM。Admin 仅用于经授权的紧急冻结/审计操作；普通玩家 gameplay action 只来自 WASM。`swarm_deploy` 与 MCP query 属于 control plane，不进入本排序键。
 
 **第二层 `shuffle_index`**（Player 类内）：使用 Fisher-Yates 种子洗牌确定玩家顺序。种子 = `Blake3("shuffle" || world_seed || tick.to_le_bytes())`，TickCommitRecord 记录 `seed_epoch` 和活跃玩家集快照以支持回放。
 
-**第三层 `source_rank`**：per-source 排序，在相同 shuffle slot 内按 source 类别排序（WASM > MCP_Deploy > MCP_Query）。
+**第三层 `source_rank`**：per-source 排序，仅区分可产生 gameplay `RawCommand` 的授权 source（Admin / WASM）；不得把 MCP deploy/query 注入 gameplay queue。
 
 **第四层 `sequence`**：同一玩家内同一 tick 内按 `sequence` 升序排列（per-player 单调递增序号）。
 
@@ -952,7 +952,7 @@ tick N+1:  若 redb deploy manifest 存在且 compiled artifact 匹配 → COLLE
 
 **关键不变量**：WASM `tick()` 和 MCP `swarm_get_snapshot` 始终看到同一份权威快照——不存在"WASM 执行中世界已变化"的时差。WebSocket 推送的 delta 基于同一份已提交状态计算。
 
-Bevy World 是 tick 内的权威执行状态；redb 是跨 tick 的持久化权威；Engine 进程内 BTreeMap 是读缓存；NATS 是 Gateway 的 delta 推送通道。Gateway 仅转发带目标身份的 `swarm.realtime.v1` payload，前端支持该版本化 tick envelope。
+Bevy World 是 tick 内的权威执行状态；redb 是跨 tick 的持久化权威；Engine 进程内 Moka 是读缓存；NATS 是 Gateway 的 delta 推送通道。Gateway 仅转发带目标身份的 `swarm.realtime.v1` payload，前端支持该版本化 tick envelope。
 
 ### 9.4 TickCommitRecord 完整性
 
@@ -1009,7 +1009,7 @@ RNG 流按 namespace 隔离：
 | `npc_spawn` | `world_seed + tick + room_id` | NPC 生成 |
 | `event` | `world_seed + tick` | 世界事件触发 |
 
-每个 namespace 使用独立派生流的 Blake3 XOF——`Blake3(domain_sep || world_seed || tick.to_le_bytes())`——种子确定性导出。任何 WASM host function 不暴露 RNG 或熵源——WASM 代码必须使用 `swarm_get_random(sequence)` 从 host 获取确定性随机数。
+每个 namespace 使用独立派生流的 Blake3 XOF——`Blake3(domain_sep || world_seed || tick.to_le_bytes())`——种子确定性导出。WASM host function 不暴露 OS RNG 或熵源；WASM 代码必须使用 `host_get_random(sequence)` 从 host deterministic PRNG 获取确定性随机数。
 
 ### 9.6 ECS 调度权威顺序
 
