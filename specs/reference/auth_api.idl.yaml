@@ -1,348 +1,433 @@
 # =============================================================================
-# Auth API IDL — Machine-Readable Single Source of Truth
+# Auth API IDL - Machine-Readable REST Operation Source
 # =============================================================================
-# Machine-readable auth documentation reference. Keep it synchronized manually
-# with api-registry.md; the docs checker validates metadata but does not generate
-# Markdown tables.
-#
-# Per design/auth.md: CSR -> certificate -> credential -> session, Ed25519
-# canonical request signatures, and scope labels.
+# Wire-schema reference for design/auth.md. API semantics, boundaries and
+# security behavior are owned by design/auth.md and design/interface.md.
+# Auth lifecycle is exposed only as explicit REST action routes.
 # =============================================================================
 
-api_version: "0.2.0"
+api_version: "0.3.0"
 
-csr_lifecycle_tools:
+version_domains:
+  AUTH_API_VERSION: "0.3.0"
+  CANONICAL_REQUEST_VERSION: "SWARM-REQUEST-V1"
+  DEPLOY_SIGNATURE_VERSION: "SWARM-DEPLOY-V1"
+  CERTIFICATE_CHAIN_VERSION: "single-layer-server-ca"
+  BROWSER_KEY_EXPORT_VERSION: "ed25519-argon2id-aes-256-gcm-v1"
+  independence: "Independent from GAME_API_VERSION, ECONOMY_API_VERSION, PLUGIN_ABI_VERSION, SDK package versions, and implementation crate versions."
+
+excluded_surfaces:
+  alternate_auth_lifecycle: "Auth lifecycle MUST NOT be exposed outside the explicit REST action routes."
+  browser_cookie_auth: "Browser cookie or browser request-header checks are not auth trust branches. Ordinary CORS may exist but is not identity."
+
+auth_control_plane:
   description: >
-    Core CSR registration and certificate lifecycle tools. All clients register
-    via PoW challenge -> CSR submit -> certificate issuance before accessing
-    protected resources. Application-layer certificates signed by the
-    single-layer Server CA are the sole trust root. No bearer tokens, OAuth2,
-    TLS/mTLS client certificates.
-  total_tools: 7
-  tools:
-    - name: swarm_register_challenge
-      index: 1
+    CSR registration and certificate lifecycle REST operations. All clients,
+    including Browser, CLI and AI Agent, use application-layer certificates and
+    Ed25519 signatures for authenticated requests. The server never stores user
+    private keys, export bundles, KEKs or passwords.
+  total_operations: 7
+  operations:
+    - operation_id: auth_register_challenge
+      method: POST
+      route: /auth/register/challenge
       category: csr_lifecycle
-      input_schema: {}
-      output_schema:
-        challenge_id: string
-        challenge: string
-        difficulty_bits: u32
-        expires_at: u64
+      auth_required: false
+      input_schema: RegisterChallengeRequest
+      output_schema: RegisterChallengeResponse
       rate_limit: "10/min"
-      required_scope: "none"
       subject_source: none
       replay_class: non_replayable
       visibility_filter: none
       rate_limit_key: per_ip
-      transport: "agent-mcp, cli-rest, wasm-sdk"
-      description: "Request a one-use PoW challenge for CSR registration."
+      description: "Create a one-use PoW challenge for CSR registration."
 
-    - name: swarm_submit_csr
-      index: 2
+    - operation_id: auth_csr_submit
+      method: POST
+      route: /auth/csr/submit
       category: csr_lifecycle
-      input_schema:
-        username: string
-        csr: string
-        certificate_profile: string
-        challenge_id: string
-        nonce: string
-        csr_signature: string
-      output_schema:
-        certificate_bundle:
-          client_auth_cert: string
-          code_signing_cert: string
-          cert_id: string
-          player_id: PlayerId
-          public_key_fingerprint: string
-          issued_at: u64
-          expires_at: u64
+      auth_required: false
+      input_schema: CsrSubmitRequest
+      output_schema: CsrSubmitResponse
       rate_limit: "1/30s"
-      required_scope: "none"
-      subject_source: none
+      subject_source: csr_public_key
       replay_class: non_idempotent_mutation
       visibility_filter: none
       rate_limit_key: per_ip
-      transport: "agent-mcp, cli-rest, wasm-sdk"
       description: >
-        Submit a CSR with PoW proof and Ed25519 csr_signature. Server validates
-        admission, atomically consumes the challenge, creates or updates the
-        player record, and issues ClientAuthCertificate plus
-        CodeSigningCertificate via the Server CA.
+        Submit a CSR, requested usages, requested audience, PoW nonce and CSR
+        signature. The server validates admission, consumes the challenge and
+        issues ClientAuthCertificate plus CodeSigningCertificate through the
+        single-layer Server CA.
 
-    - name: swarm_renew_certificate
-      index: 3
-      category: csr_lifecycle
-      input_schema:
-        certificate_id: string
-        renewal_csr: string
-        proof_signature: string
-      output_schema:
-        certificate_bundle:
-          client_auth_cert: string
-          code_signing_cert: string
-          cert_id: string
-          issued_at: u64
-          expires_at: u64
+    - operation_id: auth_cert_renew
+      method: POST
+      route: /auth/cert/renew
+      category: certificate_lifecycle
+      auth_required: true
+      required_certificate_usage: client_auth
+      input_schema: CertRenewRequest
+      output_schema: CertRenewResponse
       rate_limit: "5/min"
-      required_scope: "swarm:auth"
-      subject_source: player_id
-      replay_class: idempotent_mutation
+      subject_source: certificate_player_id
+      replay_class: non_idempotent_mutation
       visibility_filter: owner
       rate_limit_key: per_player
-      transport: "agent-mcp, cli-rest, wasm-sdk"
-      description: "Renew certificates by proving possession of the same Ed25519 private key."
+      description: "Renew same-purpose certificates by proving possession of a valid application certificate key."
 
-    - name: swarm_revoke_certificate
-      index: 4
-      category: csr_lifecycle
-      input_schema:
-        certificate_id: string
-        reason: string
-      output_schema:
-        revoked: bool
-        revocation_time: u64
-        crl_updated: bool
+    - operation_id: auth_cert_revoke
+      method: POST
+      route: /auth/cert/revoke
+      category: certificate_lifecycle
+      auth_required: true
+      required_certificate_usage: client_auth
+      input_schema: CertRevokeRequest
+      output_schema: CertRevokeResponse
       rate_limit: "5/min"
-      required_scope: "swarm:auth"
-      subject_source: player_id
+      subject_source: certificate_player_id
       replay_class: admin_critical
       visibility_filter: owner
       rate_limit_key: per_player
-      transport: "agent-mcp, cli-rest, wasm-sdk"
-      description: "Self-service certificate revocation; admin revocation uses the audited admin path."
+      description: "Revoke a certificate and write the revocation audit record."
 
-    - name: swarm_cert_list
-      index: 5
-      category: csr_lifecycle
-      input_schema:
-        status: string
-      output_schema:
-        certificates: "[{cert_id, usage, label, fingerprint, issued_at, expires_at, status}]"
+    - operation_id: auth_cert_list
+      method: GET
+      route: /auth/cert/list
+      category: certificate_lifecycle
+      auth_required: true
+      required_certificate_usage: client_auth
+      input_schema: CertListRequest
+      output_schema: CertListResponse
       rate_limit: "30/min"
-      required_scope: "swarm:auth"
-      subject_source: player_id
+      subject_source: certificate_player_id
       replay_class: read_replay_safe
       visibility_filter: owner
       rate_limit_key: per_player
-      transport: "agent-mcp, cli-rest, wasm-sdk"
-      description: "List certificates for the authenticated player."
+      description: "List certificates visible to the authenticated player."
 
-    - name: swarm_cert_check
-      index: 6
-      category: csr_lifecycle
-      input_schema:
-        certificate_id: string
-      output_schema:
-        valid: bool
-        certificate_id: string
-        player_id: PlayerId
-        client_public_key: string
-        public_key_fingerprint: string
-        usage: string
-        scope: string
-        audience: string
-        expires_at: u64
-        revoked: bool
+    - operation_id: auth_cert_check
+      method: POST
+      route: /auth/cert/check
+      category: certificate_lifecycle
+      auth_required: true
+      required_certificate_usage: client_auth
+      input_schema: CertCheckRequest
+      output_schema: CertCheckResponse
       rate_limit: "100/min"
-      required_scope: "swarm:auth"
-      subject_source: player_id
+      subject_source: certificate_player_id
       replay_class: read_replay_safe
       visibility_filter: owner
       rate_limit_key: per_player
-      transport: "agent-mcp, cli-rest, wasm-sdk"
-      description: "Validate an application-layer certificate and return issuer-verified stored certificate metadata, including the trusted client public key."
+      description: "Check certificate chain, revocation state, audience and usage."
 
-    - name: swarm_get_server_trust
-      index: 7
-      category: csr_lifecycle
-      input_schema: {}
-      output_schema:
-        server_id: string
-        server_ca_fingerprint: string
-        server_ca_certificate: string
-        supported_algorithms: "[string]"
-        supported_audiences: "[string]"
-      rate_limit: "30/min"
-      required_scope: "none"
+    - operation_id: auth_server_trust
+      method: GET
+      route: /auth/server/trust
+      category: server_trust
+      auth_required: false
+      input_schema: ServerTrustRequest
+      output_schema: ServerTrustResponse
+      rate_limit: "60/min"
       subject_source: none
       replay_class: read_replay_safe
       visibility_filter: none
       rate_limit_key: global
-      transport: "agent-mcp, cli-rest, wasm-sdk"
-      description: "Return Server CA trust anchor information for TOFU or explicit pinning."
+      description: "Return Server CA fingerprint, algorithm and operator label for explicit client confirmation."
 
-certificate_types:
-  description: >
-    Swarm uses exactly two application-layer certificate types signed by a
-    single-layer Server CA. Admin authorization is a scope flag on
-    ClientAuthCertificate, not a separate certificate type.
-  types:
-    - type: ClientAuthCertificate
-      usage: "client_auth"
-      audience_scope: "bound to cert_id, player_id, transport, and signed request payload"
-      ttl: "default 24h; configurable 15min-7d"
-      renewal: "swarm_renew_certificate"
-      description: "Carries authenticated MCP, REST, and WebSocket requests using the frontend canonical request payload."
-    - type: CodeSigningCertificate
-      usage: "code_signing"
-      audience_scope: "bound to cert_id, player_id, wasm-sdk usage, and signed deploy payload"
-      ttl: "30-180d (default 30d)"
-      renewal: "swarm_renew_certificate"
-      description: "Signs SWARM-DEPLOY-V1 payloads for module deployment."
-  per_certificate_metadata:
-    - cert_id: string
-    - usage: string
-    - audience: string
-    - scope: string
-    - public_key_fingerprint: string
-    - label: string
-    - issued_at: u64
-    - expires_at: u64
-    - revoked_at: u64
-  per_player_limits:
-    max_active_certificates: 10
-    max_active_client_auth_certificates: 10
+schemas:
+  RegisterChallengeRequest:
+    type: object
+    additional_properties: false
+    properties: {}
+    required: []
+
+  RegisterChallengeResponse:
+    type: object
+    additional_properties: false
+    required: [challenge_id, challenge, difficulty_bits, expires_at]
+    properties:
+      challenge_id: string
+      challenge: string
+      difficulty_bits: u32
+      expires_at: u64
+
+  CsrSubmitRequest:
+    type: object
+    additional_properties: false
+    required: [username, csr, requested_usages, requested_audience, challenge_id, nonce, csr_signature]
+    properties:
+      username: string
+      csr: string
+      requested_usages: [client_auth, code_signing]
+      requested_audience: [Audience]
+      challenge_id: string
+      nonce: string
+      csr_signature: string
+
+  CsrSubmitResponse:
+    type: object
+    additional_properties: false
+    required: [certificate_bundle]
+    properties:
+      certificate_bundle:
+        client_auth_cert: ClientAuthCertificate
+        code_signing_cert: CodeSigningCertificate
+        cert_id: string
+        player_id: PlayerId
+        public_key_fingerprint: string
+        issued_at: u64
+        expires_at: u64
+
+  CertRenewRequest:
+    type: object
+    additional_properties: false
+    required: [certificate_id, renewal_csr, proof_signature]
+    properties:
+      certificate_id: string
+      renewal_csr: string
+      proof_signature: string
+
+  CertRenewResponse:
+    type: object
+    additional_properties: false
+    required: [certificate_bundle]
+    properties:
+      certificate_bundle:
+        client_auth_cert: ClientAuthCertificate
+        code_signing_cert: CodeSigningCertificate
+        cert_id: string
+        issued_at: u64
+        expires_at: u64
+
+  CertRevokeRequest:
+    type: object
+    additional_properties: false
+    required: [certificate_id, reason]
+    properties:
+      certificate_id: string
+      reason: RevocationReason
+
+  CertRevokeResponse:
+    type: object
+    additional_properties: false
+    required: [revoked, revocation_time, crl_updated]
+    properties:
+      revoked: bool
+      revocation_time: u64
+      crl_updated: bool
+
+  CertListRequest:
+    type: object
+    additional_properties: false
+    properties:
+      status: string
+    required: []
+
+  CertListResponse:
+    type: object
+    additional_properties: false
+    required: [certificates]
+    properties:
+      certificates: [CertificateSummary]
+
+  CertCheckRequest:
+    type: object
+    additional_properties: false
+    required: [certificate_id, transport, usage]
+    properties:
+      certificate_id: string
+      transport: Audience
+      usage: CertificateUsage
+
+  CertCheckResponse:
+    type: object
+    additional_properties: false
+    required: [valid, certificate_id, player_id, public_key_fingerprint, usage, allowed_audience, expires_at, revoked]
+    properties:
+      valid: bool
+      certificate_id: string
+      player_id: PlayerId
+      public_key_fingerprint: string
+      usage: CertificateUsage
+      allowed_audience: [Audience]
+      expires_at: u64
+      revoked: bool
+
+  ServerTrustRequest:
+    type: object
+    additional_properties: false
+    properties: {}
+    required: []
+
+  ServerTrustResponse:
+    type: object
+    additional_properties: false
+    required: [server_ca_fingerprint, algorithm, operator_label]
+    properties:
+      server_ca_fingerprint: string
+      algorithm: ed25519
+      operator_label: string
+      issued_at: u64
+
+  ClientAuthCertificate:
+    fields:
+      cert_id: string
+      player_id: PlayerId
+      public_key: Ed25519PublicKey
+      usage: client_auth
+      scopes: [string]
+      allowed_audience: [Audience]
+      issued_at: u64
+      expires_at: u64
+      issuer: ServerCaFingerprint
+
+  CodeSigningCertificate:
+    fields:
+      cert_id: string
+      player_id: PlayerId
+      public_key: Ed25519PublicKey
+      usage: code_signing
+      scopes: [string]
+      allowed_audience: [Audience]
+      issued_at: u64
+      expires_at: u64
+      issuer: ServerCaFingerprint
+
+  CertificateSummary:
+    fields:
+      cert_id: string
+      usage: CertificateUsage
+      label: string
+      fingerprint: string
+      allowed_audience: [Audience]
+      issued_at: u64
+      expires_at: u64
+      status: string
+
+  Audience:
+    description: "Canonical actual transport audience value. The verifier checks membership against the received request transport."
+    variants: [rest, mcp, ws, replay]
+
+  CertificateUsage:
+    variants: [client_auth, code_signing]
+
+  RevocationReason:
+    variants: [key_compromise, device_lost, admin_action, server_ca_compromise, code_signing_verifier_bug]
 
 canonical_request_signature:
-  description: >
-    Every authenticated request carries a canonical Ed25519 signature over a
-    frontend canonical payload. The signature covers Swarm-Cert-Id; Gateway
-    rejects requests where the header id does not match the certificate body.
+  domain: SWARM-REQUEST-V1
   headers:
-    - "Swarm-Certificate: <base64 ClientAuthCertificate or CodeSigningCertificate>"
-    - "Swarm-Cert-Id: <certificate_id>"
-    - "Swarm-Timestamp: <unix_ms>"
-    - "Swarm-Nonce: <random 128-bit>"
-    - "Swarm-Signature: <ed25519 signature by user private key>"
-  signature_payload:
-    format: "METHOD\nPATH\nTIMESTAMP\nNONCE\nCERTIFICATE_ID\nPLAYER_ID\nTICK\nBLAKE3(stable_json(body))"
-    fields:
-      - "METHOD: uppercase HTTP method"
-      - "PATH: HTTP path or MCP endpoint path"
-      - "TIMESTAMP: unix_ms as decimal string"
-      - "NONCE: random 128-bit hex"
-      - "CERTIFICATE_ID: Swarm-Cert-Id header and certificate body cert_id"
-      - "PLAYER_ID: authenticated player ID"
-      - "TICK: request tick header value or empty string"
-      - "BLAKE3(stable_json(body)): hex BLAKE3 over recursive key-sorted stable JSON"
-    encoding: "UTF-8, LF line endings, no BOM"
-    algorithm: Ed25519
-  validation_order:
-    - "1. Certificate signed by Server CA, not expired, not revoked"
-    - "2. Swarm-Cert-Id header equals cert_id in certificate body"
-    - "3. Certificate usage covers current operation"
-    - "4. Swarm-Signature verifies with certificate public key"
-    - "5. Timestamp within allowed window"
-    - "6. Nonce not previously consumed"
-    - "7. Scope covers operation and audience/world_id match"
-  transport_labels:
-    agent-mcp: "AI agent via MCP session"
-    cli-rest: "Human CLI or REST client"
-    wasm-sdk: "WASM SDK for deploy and code signing"
+    - Swarm-Certificate
+    - Swarm-Cert-Id
+    - X-Swarm-Transport
+    - Swarm-Timestamp
+    - Swarm-Nonce
+    - Swarm-Signature
+  payload_lines:
+    - SWARM-REQUEST-V1
+    - TRANSPORT
+    - METHOD
+    - SCHEME
+    - AUTHORITY
+    - PATH_AND_QUERY
+    - TIMESTAMP
+    - NONCE
+    - CERTIFICATE_ID
+    - PLAYER_ID
+    - BLAKE3(stable_json(body))
+  verifier_requirements:
+    - "Verify certificate chain to the configured single-layer Server CA."
+    - "Verify certificate usage, expiry and revocation state."
+    - "Verify Ed25519 signature over the canonical payload."
+    - "Verify signed TRANSPORT matches X-Swarm-Transport and the actual received entrypoint."
+    - "Verify signed TRANSPORT is a member of certificate allowed_audience."
+    - "Verify SCHEME + AUTHORITY + PATH_AND_QUERY exactly match the received request."
+    - "Verify TIMESTAMP is parseable and within the fixed 60-second freshness window."
+    - "Atomically record NONCE in the (cert_id, transport) replay scope and reject duplicates."
+    - "Fail closed when timestamp/nonce parsing or replay-store read/atomic-write fails."
 
-deploy_canonical_signature:
-  description: >
-    SWARM-DEPLOY-V1 is signed by CodeSigningCertificate and binds the canonical
-    deploy body, module hash, player identity, transport binding, deploy_id, and
-    per-slot version_counter.
-  signature_payload:
-    format: "SWARM-DEPLOY-V1\nmethod: swarm_deploy\npath: /deploy\nbody_hash: <v>\ntimestamp: <v>\nnonce: <v>\ncertificate_id: <v>\nplayer_id: <v>\ntransport_binding: <v>\ndeploy_id: <v>\nmodule_hash: <v>\nversion_counter: <v>\n"
-    fields:
-      - "method: swarm_deploy"
-      - "path: /deploy"
-      - "body_hash: blake3 canonical deploy body hash"
-      - "timestamp: unix_ms"
-      - "nonce: random 128-bit hex"
-      - "certificate_id: CodeSigningCertificate cert_id"
-      - "player_id: deploying player"
-      - "transport: wasm-sdk usage is bound by the certificate and deploy payload"
-      - "deploy_id: unique deploy identifier"
-      - "module_hash: blake3 of WASM module bytes"
-      - "version_counter: per-player/per-slot deploy counter"
-    encoding: "UTF-8, LF line endings, no BOM"
-    algorithm: Ed25519
-  validation:
-    - "1. Certificate is CodeSigningCertificate, not expired, not revoked"
-    - "2. SWARM-DEPLOY-V1 signature verifies with certificate public key"
-    - "3. module_hash matches submitted module bytes"
-    - "4. deploy_id is unique for the player"
-    - "5. version_counter is greater than the stored slot counter"
-    - "6. Timestamp within window and nonce not consumed"
-    - "7. certificate usage, player, and wasm-sdk transport binding match the deploy payload"
-  replay_protection:
-    mechanism: "redb manifest transaction + per-slot version_counter + deploy_id uniqueness"
-    description: "The accepted deploy manifest is written atomically with the version counter update."
+deploy_signature:
+  domain: SWARM-DEPLOY-V1
+  required_fields:
+    - domain
+    - wasm_hash
+    - metadata_hash
+    - player_id
+    - world_id
+    - module_slot
+    - version_counter
+    - transport
+    - signed_at
+  certificate_requirement: CodeSigningCertificate
+  audience_check: "Certificate allowed_audience is checked separately against the actual deploy transport."
+  server_derived_fields:
+    - compiled_artifact_hash
+    - deploy_payload_hash
 
-rejection_reason:
-  description: >
-    Auth-specific rejection reasons. These 9 canonical codes form the stable
-    wire enum for certificate authentication failures.
-  total_canonical_codes: 9
-  namespace_offset: 1000
-  variants:
-    - { code: InvalidCertificate, index: 1001, description: "Certificate invalid, untrusted, malformed, or header/body mismatch" }
-    - { code: CertExpired, index: 1002, description: "Certificate has expired" }
-    - { code: CertRevoked, index: 1003, description: "Certificate has been revoked" }
-    - { code: NotAuthorized, index: 1004, description: "Principal lacks required authorization" }
-    - { code: ScopeInsufficient, index: 1005, description: "Certificate scope narrower than required" }
-    - { code: CertificateLimitReached, index: 1006, description: "Per-player active certificate cap reached" }
-    - { code: InvalidCSR, index: 1007, description: "CSR signature, PoW proof, or payload validation failed" }
-    - { code: RateLimited, index: 1008, description: "Auth endpoint rate limit exceeded" }
-    - { code: InternalAuthError, index: 1009, description: "Internal auth subsystem error" }
-  debug_detail:
-    max_length: 512
-    unit: "bytes"
+browser_private_key_export:
+  key_algorithm: Ed25519
+  exportability: manual_export_import_only
+  encryption: AES-256-GCM
+  kek_derivation: Argon2id
+  server_storage: none
+  requirements:
+    - "Browser requires explicit Server CA fingerprint confirmation before CSR."
+    - "Confirmed fingerprint is persisted locally."
+    - "Fingerprint changes fail closed until the user explicitly confirms the new fingerprint."
+    - "Export requires a user-supplied password."
+    - "Password derives KEK with Argon2id; KEK encrypts the private key with AES-256-GCM."
+    - "Server stores no private key, password, KEK or encrypted private-key bundle."
+
+auth_error_envelope:
+  format: json
+  schema:
+    error:
+      code: AuthError
+      message: string
+      debug_detail: "string | null"
+  rules:
+    - "Auth REST does not use JSON-RPC error.data.rejection_reason."
+    - "code is one of errors.canonical[].code."
+    - "debug_detail is optional, non-canonical, and subject to the same visibility and secret-redaction rules as successful responses."
+
+errors:
+  total_canonical_codes: 6
+  canonical:
+    - code: InvalidTransportBinding
+      http_status: 401
+      semantics: "Signature payload transport does not match the actual request transport, or a required transport binding field is missing."
+    - code: AudienceMismatch
+      http_status: 403
+      semantics: "Signature is valid, but the certificate allowed_audience does not cover the actual transport."
+    - code: InvalidCertificate
+      http_status: 401
+      semantics: "Certificate chain, signature, required usage, expiry or revocation check failed."
+    - code: RateLimited
+      http_status: 429
+      semantics: "Operation rate limit exceeded."
+    - code: RequestExpired
+      http_status: 401
+      semantics: "Request timestamp is invalid or outside the fixed 60-second freshness window."
+    - code: ReplayDetected
+      http_status: 409
+      semantics: "Nonce was already used, or the nonce replay store could not be read or updated safely."
 
 auth_trace_events:
-  description: "Auth-specific audit events emitted into the tick trace stream."
-  total_event_types: 7
+  total_event_types: 8
   events:
-    - { name: auth_csr_submit, index: 1, replay_class: non_replayable, description: "Emitted on swarm_submit_csr" }
-    - { name: auth_cert_issue, index: 2, replay_class: admin_critical, description: "Emitted when a certificate is issued" }
-    - { name: auth_cert_renew, index: 3, replay_class: idempotent_mutation, description: "Emitted on swarm_renew_certificate" }
-    - { name: auth_cert_revoke, index: 4, replay_class: admin_critical, description: "Emitted on certificate revocation" }
-    - { name: auth_recovery_bind, index: 5, replay_class: non_replayable, description: "Emitted on optional recovery binding" }
-    - { name: auth_rate_limit_hit, index: 6, replay_class: non_replayable, description: "Emitted when an auth endpoint rate limit is exceeded" }
-    - { name: auth_security_alert, index: 7, replay_class: non_replayable, description: "Emitted on security-relevant auth anomaly" }
-
-auth_rate_limits:
-  description: "Authoritative rate limits for all auth endpoints."
-  csr_limits:
-    challenge: { limit: "10/min", key: per_ip, burst: 15 }
-    submit_csr: { limit: "1/30s", key: per_ip, burst: 2 }
-    renew: { limit: "5/min", key: per_player, burst: 8 }
-    revoke: { limit: "5/min", key: per_player, burst: 8 }
-    cert_list: { limit: "30/min", key: per_player, burst: 45 }
-    cert_check: { limit: "100/min", key: per_player, burst: 150 }
-    server_trust: { limit: "30/min", key: global, burst: 45 }
-  global_limits:
-    max_concurrent_sessions_per_player: 5
-    session_idle_timeout: "30m"
-    session_absolute_timeout: "24h"
-    client_auth_certificate_default_ttl: "24h"
-    client_auth_certificate_min_ttl: "15min"
-    client_auth_certificate_max_ttl: "7d"
-    code_signing_certificate_default_ttl: "30d"
-    csr_challenge_ttl: "300s"
-    csr_challenge_default_difficulty: 20
-
-security_columns:
-  description: "Every auth tool declaration includes these security columns."
-  columns:
-    - name: required_scope
-      values:
-        - "none"
-        - "swarm:auth"
-        - "swarm:read"
-        - "swarm:deploy"
-        - "swarm:debug"
-        - "swarm:admin"
-    - name: subject_source
-      values: ["none", "player_id", "admin_id", "world", "drone_id"]
-    - name: replay_class
-      values: ["non_replayable", "read_replay_safe", "idempotent_mutation", "non_idempotent_mutation", "admin_critical", "deploy_mutation"]
-    - name: visibility_filter
-      values: ["none", "owner", "admin_scope", "fog_of_war", "owner_or_visible", "arena_only"]
-    - name: transport
-      values: ["agent-mcp", "cli-rest", "wasm-sdk", "browser-http", "agent-ws", "spectator-ws"]
+    - name: auth.challenge_issued
+      operation_id: auth_register_challenge
+    - name: auth.csr_submitted
+      operation_id: auth_csr_submit
+    - name: auth.cert_issued
+      operation_id: auth_csr_submit
+    - name: auth.cert_renewed
+      operation_id: auth_cert_renew
+    - name: auth.cert_revoked
+      operation_id: auth_cert_revoke
+    - name: auth.cert_checked
+      operation_id: auth_cert_check
+    - name: auth.server_trust_read
+      operation_id: auth_server_trust
+    - name: auth.transport_rejected
+      operation_id: verifier
