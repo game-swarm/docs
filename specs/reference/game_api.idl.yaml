@@ -7,6 +7,15 @@
 
 api_version: "0.4.0"
 
+version_domains:
+  GAME_API_VERSION: "0.4.0"
+  AUTH_API_VERSION: "0.3.0"
+  ECONOMY_API_VERSION: "0.1.1"
+  PLUGIN_ABI_VERSION: "2"
+  independence: >
+    These domains are explicit and independent. Do not infer Auth, Economy,
+    Plugin ABI, SDK package, or implementation crate versions from GAME_API_VERSION.
+
 # =============================================================================
 # Type Registry — fixed-point integer types replacing f64
 # =============================================================================
@@ -22,6 +31,167 @@ api_version: "0.4.0"
 #   micro_cost         — u64, units of 1e-6 resource units        (cost)
 #
 type_registry:
+  scalar_types:
+    ObjectId:
+      base: EntityId
+      constraints: "actor-scoped entity identifier"
+    ResourceName:
+      base: string
+      constraints: "case-sensitive configured resource identifier; Vanilla canonical value is Energy"
+    OmittedCategoryBucket:
+      type: enum
+      values: ["0", few, some, many, extreme]
+    OmittedCategories:
+      type: object
+      fields:
+        entities: OmittedCategoryBucket
+        terrain: OmittedCategoryBucket
+        resources: OmittedCategoryBucket
+        events: OmittedCategoryBucket
+        messages: OmittedCategoryBucket
+    OverloadPressure:
+      type: object
+      fields:
+        total: "u32 (optional; omitted unless caller is target owner or contributing attacker)"
+        contributions: "[{source_entity_id: EntityId, amount: u32}]"
+        tick_snapshot: u64
+      visibility: "optional; filtered per caller. Target owner and contributing attacker see total; third parties see visible-source contributions only and no total; omitted when nothing relevant is visible."
+    ActionPayload:
+      type: discriminated_payload
+      selected_by: "CommandAction::Action.action_type"
+      wire_discriminator: type
+      flatten_wire: true
+      additional_properties: false
+      schema_sources:
+        vanilla: "command_action.action_registry.vanilla_actions.actions[].parameters"
+        custom: "enabled signed-plugin WorldActionManifest.actions[].payload_schema"
+      codec: "IDL-generated Swarm codec concrete payload selected by action_type; JSON and free-form maps are forbidden"
+    CombatConfig:
+      type: object
+      fields:
+        pvp_enabled: bool
+        friendly_fire: bool
+        damage_multiplier: BasisPoints
+        repair_hp_per_work_part: "u32 (>0; Vanilla default 5)"
+        repair_energy_per_hp: "u32 (>0; Vanilla default 1 Energy per accepted HP)"
+      hash_semantics: "Resolved after profile defaults/overrides and included in replay-critical world_config_hash."
+    HackActionConfig:
+      type: object
+      fields:
+        enabled: bool
+        body_parts: "[BodyPart] (Vanilla Claim)"
+        damage_type: "DamageType (Vanilla Psionic)"
+        resistance: "DamageType (Vanilla Psionic)"
+        energy_cost: "u32 (Vanilla 1000)"
+        player_global_cooldown: "u32 (Vanilla 200 ticks)"
+        range: "u32 (Vanilla 1)"
+        channel_time: "u32 (Vanilla 5 ticks; interruptible control-lock channel)"
+        control_lock_ticks: "u32 (Vanilla 5)"
+    DrainActionConfig:
+      type: object
+      fields:
+        enabled: bool
+        body_parts: "[BodyPart] (Vanilla Work, Carry)"
+        damage_type: "DamageType (Vanilla EMP)"
+        resistance: "DamageType (Vanilla EMP)"
+        energy_cost_per_tick: "u32 (Vanilla 200)"
+        source_drone_cooldown: "u32 (Vanilla 50 ticks)"
+        range: "u32 (Vanilla 1)"
+        channel_time: "u32 (Vanilla 0)"
+        transfer_per_tick: "enum (Vanilla carry_capacity)"
+    OverloadActionConfig:
+      type: object
+      fields:
+        enabled: bool
+        body_parts: "[BodyPart] (Vanilla RangedAttack)"
+        damage_type: "DamageType (Vanilla EMP)"
+        resistance: "DamageType (Vanilla EMP)"
+        source_drone_cooldown: "u32 (Vanilla 200 ticks)"
+        target_player_global_cooldown: "u32 (Vanilla 50 ticks)"
+        range: "u32 (Vanilla 5)"
+        channel_time: "u32 (Vanilla 0)"
+        energy_cost: "u32 (Vanilla 300)"
+        fuel_pressure: "u64 (Vanilla 500000)"
+        min_budget_bps: "BasisPoints (Vanilla 2000)"
+    DebilitateActionConfig:
+      type: object
+      fields:
+        enabled: bool
+        body_parts: "[BodyPart] (Vanilla Work)"
+        damage_type: "DamageType (Vanilla Corrosive)"
+        resistance: "DamageType (Vanilla Corrosive)"
+        energy_cost: "u32 (Vanilla 200)"
+        source_drone_cooldown: "u32 (Vanilla 150 ticks)"
+        range: "u32 (Vanilla 3)"
+        channel_time: "u32 (Vanilla 0)"
+        resistance_multiplier_bps: "u32 fixed-bps multiplier (Vanilla 20000 = 2.0)"
+        duration: "u32 (Vanilla 50 ticks)"
+    DisruptActionConfig:
+      type: object
+      fields:
+        enabled: bool
+        body_parts: "[BodyPart] (Vanilla Attack)"
+        damage_type: "DamageType (Vanilla Sonic)"
+        resistance: "DamageType (Vanilla Sonic)"
+        energy_cost: "u32 (Vanilla 100)"
+        source_drone_cooldown: "u32 (Vanilla 50 ticks)"
+        range: "u32 (Vanilla 1)"
+        channel_time: "u32 (Vanilla 0)"
+        interrupt_channel: bool
+    FortifyActionConfig:
+      type: object
+      fields:
+        enabled: bool
+        body_parts: "[BodyPart] (Vanilla Tough)"
+        damage_type: "DamageType (Vanilla None)"
+        resistance: "DamageType (Vanilla None)"
+        energy_cost: "u32 (Vanilla 400)"
+        source_drone_cooldown: "u32 (Vanilla 300 ticks)"
+        target_recipient_cooldown: "u32 (Vanilla 300 ticks)"
+        range: "u32 (Vanilla 1)"
+        channel_time: "u32 (Vanilla 0)"
+        resistance_multiplier_bps: "BasisPoints (Vanilla 5000)"
+        cleanse_negative_status: bool
+        duration: "u32 (Vanilla 100 ticks)"
+    LeechActionConfig:
+      type: object
+      fields:
+        enabled: bool
+        body_parts: "[BodyPart] (Vanilla Attack)"
+        damage_type: "DamageType (Vanilla Kinetic)"
+        resistance: "DamageType (Vanilla Kinetic)"
+        energy_cost: "u32 (Vanilla 300)"
+        source_drone_cooldown: "u32 (Vanilla 100 ticks)"
+        range: "u32 (Vanilla 1)"
+        channel_time: "u32 (Vanilla 0)"
+        base_damage: "u32 (Vanilla 15)"
+        heal_from_actual_hp_damage_bps: "BasisPoints (Vanilla 5000)"
+    FabricateActionConfig:
+      type: object
+      fields:
+        enabled: bool
+        body_parts: "[BodyPart] (Vanilla Work, Carry)"
+        damage_type: "DamageType (Vanilla None)"
+        resistance: "DamageType (Vanilla None)"
+        allowed_output_structures: "[StructureType] (ordered, non-empty; Vanilla Tower, Storage, Wall)"
+        canonical_default: "StructureType (Vanilla Tower)"
+        source_drone_cooldown: "u32 (Vanilla 500 ticks)"
+        range: "u32 (Vanilla 1)"
+        energy_cost: "u32 (Vanilla 5000)"
+        channel_time: "u32 (Vanilla 5 ticks)"
+    SpecialAttacksConfig:
+      type: object
+      fields:
+        special_attacks_enabled: bool
+        hack: HackActionConfig
+        drain: DrainActionConfig
+        overload: OverloadActionConfig
+        debilitate: DebilitateActionConfig
+        disrupt: DisruptActionConfig
+        fortify: FortifyActionConfig
+        leech: LeechActionConfig
+        fabricate: FabricateActionConfig
+      hash_semantics: "Resolved strict action config is included in replay-critical world_config_hash."
   fixed_point_types:
     ResourceRate_i64:
       base_type: i64
@@ -52,7 +222,32 @@ type_registry:
       scale: 1_000_000  # 1e6
       description: "Cost in micro resource units (1.0 = 1_000_000)"
 
-  enum_types: {}
+  enum_types:
+    StructureType:
+      description: >
+        Vanilla structure allowlist. The 13 core types are enabled by default;
+        the 4 optional types are enabled only when world.toml
+        optional_structure_types explicitly lists the name. Plugin-defined
+        structures are registered through a plugin-owned typed StructureType extension
+        schema and surfaced by runtime IDL. PluginSettlement is used only for the
+        resulting economy ledger legs, not for structure registration.
+      core:
+        - Spawn
+        - Extension
+        - Tower
+        - Storage
+        - Link
+        - Extractor
+        - Lab
+        - Terminal
+        - Observer
+        - PowerSpawn
+        - Factory
+        - Nuker
+        - Depot
+      optional_allowlist:
+        default: []
+        allowed_values: [Road, Wall, Rampart, Container]
 
 # =============================================================================
 # 1. CommandAction — 14 variants (+ Action system)
@@ -60,6 +255,16 @@ type_registry:
 # All 11 combat actions (Attack, RangedAttack, Heal, Hack, Drain,
 # Overload, Debilitate, Disrupt, Fortify, Leech, Fabricate) moved to
 # ActionRegistry. CommandAction retains only non-combat fundamental operations.
+command_intent:
+  type: object
+  additional_properties: false
+  required: [sequence, idempotency_key, action]
+  fields:
+    sequence: u32
+    idempotency_key: string
+    client_trace_id: "string | null"
+    action: CommandAction
+
 command_action:
   description: "Core CommandAction enum. WASM tick() output CommandIntent action types. Combat/effect actions dispatched via ActionRegistry."
   total_variants: 14
@@ -75,7 +280,7 @@ command_action:
         - name: direction
           type: Direction
           required: true
-      description: "Move one cell in a hex-grid direction"
+      description: "Move one cell in a cardinal grid direction"
 
     - name: Harvest
       index: 2
@@ -88,7 +293,7 @@ command_action:
           type: EntityId
           required: true
         - name: resource
-          type: ResourceType
+          type: ResourceName
           required: false
       description: "Harvest a resource from target"
 
@@ -103,7 +308,7 @@ command_action:
           type: EntityId
           required: true
         - name: resource
-          type: ResourceType
+          type: ResourceName
           required: true
         - name: amount
           type: u32
@@ -121,7 +326,7 @@ command_action:
           type: EntityId
           required: true
         - name: resource
-          type: ResourceType
+          type: ResourceName
           required: true
         - name: amount
           type: u32
@@ -139,14 +344,11 @@ command_action:
         - name: object_id
           type: ObjectId
           required: true
-        - name: target_id
-          type: EntityId
-          required: false
         - name: payload
           type: ActionPayload
           required: true
-          description: "Type-specific action parameters"
-      description: "Execute a registered action via ActionRegistry dispatch. Custom-action wire serialization uses the action_type string as the command type."
+          description: "Closed type-specific payload selected by action_type; concrete fields are flattened after type/object_id on the wire"
+      description: "Execute a registered action via ActionRegistry dispatch. Custom-action wire serialization uses the action_type string as the command type and the signed manifest payload schema."
 
     - name: ClaimController
       index: 6
@@ -180,7 +382,7 @@ command_action:
       category: core
       parameters:
         - name: object_id
-          type: EntityId
+          type: ObjectId
           required: true
       description: "Recycle own drone (self-action — no spawn proximity required)"
 
@@ -232,7 +434,7 @@ command_action:
       category: global_storage
       parameters:
         - name: resource
-          type: ResourceType
+          type: ResourceName
           required: true
         - name: amount
           type: u32
@@ -244,7 +446,7 @@ command_action:
       category: global_storage
       parameters:
         - name: resource
-          type: ResourceType
+          type: ResourceName
           required: true
         - name: amount
           type: u32
@@ -260,7 +462,7 @@ command_action:
           type: PlayerId
           required: true
         - name: resource
-          type: ResourceType
+          type: ResourceName
           required: true
         - name: amount
           type: u32
@@ -271,15 +473,19 @@ command_action:
   # ActionRegistry — 11 vanilla + mod-extensible combat/effect actions
   # =============================================================================
   action_registry:
-    description: "All combat and effect actions. 11 vanilla actions built-in (immutable). World mods register additional actions without touching CommandAction enum."
+    description: "All combat and effect actions. 11 vanilla actions built-in (immutable). Enabled signed plugins register additional actions without touching CommandAction enum."
     total_vanilla: 11
     registration:
-      description: "World mods register new actions via world.toml [[action_registry]] and Bevy Plugin ActionRegistry installers."
-      authority: "World Action Manifest (world.toml [[action_registry]]) + Bevy Plugin registration"
+      description: "Enabled signed plugins declare non-reserved actions and closed payload schemas in their package World Action Manifest, then install matching handlers through fixed ActionRegistry hooks."
+      authority: "verified .swarm-mod package + mods.lock + signed World Action Manifest + fixed-hook handler registration"
       conflict_resolution: "Vanilla names are reserved and cannot be overridden by mods."
 
     vanilla_actions:
-      description: "11 built-in combat/effect actions. Canonical parameters and effects in specs/reference/special-attack-table.md."
+      description: >
+        11 built-in combat/effect actions. Canonical wire fields are listed here;
+        gameplay parameters come from typed world config with Vanilla
+        design-profile defaults, and are summarized in specs/reference/special-attack-table.md.
+        Implementations must not define conflicting fixed resistance or effect values here.
       actions:
         - type: Attack
           index: 14
@@ -289,6 +495,8 @@ command_action:
               type: EntityId
               required: true
           description: "Melee attack target"
+          config_schema_ref: "mods.combat-core.actions.Attack"
+          hp_effect: "Writes PendingDamage only; damage_multiplier applies only to actual HP damage."
 
         - type: RangedAttack
           index: 15
@@ -298,6 +506,8 @@ command_action:
               type: EntityId
               required: true
           description: "Ranged attack target"
+          config_schema_ref: "mods.combat-core.actions.RangedAttack"
+          hp_effect: "Writes PendingDamage only; damage_multiplier applies only to actual HP damage."
 
         - type: Heal
           index: 16
@@ -306,7 +516,9 @@ command_action:
             - name: target_id
               type: EntityId
               required: true
-          description: "Repair or heal target"
+          description: "Heal or repair HP only; does not reduce drone age."
+          config_schema_ref: "mods.combat-core.actions.Heal"
+          hp_effect: "Writes PendingHeal only. Healer body parts cannot repair age."
 
         - type: Hack
           index: 17
@@ -316,6 +528,7 @@ command_action:
               type: EntityId
               required: true
           description: "5-stage intrusion attack"
+          config_schema_ref: "mods.special-attacks.actions.Hack"
 
         - type: Drain
           index: 18
@@ -325,6 +538,7 @@ command_action:
               type: EntityId
               required: true
           description: "Continuously drain resources from target"
+          config_schema_ref: "mods.special-attacks.actions.Drain"
 
         - type: Overload
           index: 19
@@ -334,6 +548,7 @@ command_action:
               type: PlayerId
               required: true
           description: "Reduce target player fuel budget"
+          config_schema_ref: "mods.special-attacks.actions.Overload"
 
         - type: Debilitate
           index: 20
@@ -342,7 +557,11 @@ command_action:
             - name: target_id
               type: EntityId
               required: true
-          description: "Reduce target combat throughput"
+            - name: damage_type
+              type: DamageType
+              required: true
+          description: "Apply damage-type resistance vulnerability: configured resistance multiplier 20000 bps for 50 ticks"
+          config_schema_ref: "mods.special-attacks.actions.Debilitate"
 
         - type: Disrupt
           index: 21
@@ -352,6 +571,7 @@ command_action:
               type: EntityId
               required: true
           description: "Interrupt target operation"
+          config_schema_ref: "mods.special-attacks.actions.Disrupt"
 
         - type: Fortify
           index: 22
@@ -361,6 +581,7 @@ command_action:
               type: EntityId
               required: true
           description: "Strengthen own defenses"
+          config_schema_ref: "mods.special-attacks.actions.Fortify"
 
         - type: Leech
           index: 23
@@ -370,6 +591,8 @@ command_action:
               type: EntityId
               required: true
           description: "Life-drain attack — deal Kinetic damage and heal self for 50% of damage dealt"
+          config_schema_ref: "mods.special-attacks.actions.Leech"
+          hp_effect: "Self-heal is based only on actual HP damage after armor/resistance/shield mitigation."
 
         - type: Fabricate
           index: 24
@@ -378,7 +601,9 @@ command_action:
             - name: target_id
               type: EntityId
               required: true
-          description: "Convert enemy drone into friendly structure (Tower/Storage/Wall) — requires 5-tick channel"
+          description: "Convert enemy drone into a configured friendly structure — requires 5-tick channel"
+          config_schema_ref: "mods.special-attacks.actions.Fabricate"
+          output_structure_resolution: "No wire parameter. Deterministic from typed world config ordered allowlist [Tower, Storage, Wall]; canonical default is first enabled type Tower. Invalid/empty config rejected during world-config validation; resolved type enters world_config_hash, FabricateState, TickTrace/replay."
 
 # 2. RejectionReason — canonical wire enum + debug_detail
 # =============================================================================
@@ -407,9 +632,9 @@ rejection_reason:
       - value: competitive
         description: "Minimal detail — only canonical code, no debug_detail. Tournament/ladder mode."
       - value: practice
-        description: "Moderate detail — debug_detail includes cooldown/timer values, bot-facing hints."
+        description: "Moderate actor-authorized detail with actionable hints; never reveals hidden state."
       - value: training
-        description: "Full detail — debug_detail includes exact state diffs, path traces, internal diagnostics."
+        description: "Detailed actor-authorized state and path traces; never reveals RNG state, secrets, hidden entities, or another player's private state."
     default: competitive
 
   variants:
@@ -455,6 +680,7 @@ rejection_reason:
       layer: validation
       index: 8
       description: "Target is not in field of view"
+      visibility_note: "Internal/admin classification only; player-facing mapping is NotVisibleOrNotFound."
     - code: SpawnOnCooldown
       layer: validation
       index: 9
@@ -488,14 +714,17 @@ rejection_reason:
       layer: validation
       index: 16
       description: "Target is in safe mode"
+      visibility_note: "Internal/admin classification when safe mode is target-side; player-facing mapping is NotVisibleOrNotFound."
     - code: TargetOverloadCooldown
       layer: validation
       index: 17
       description: "Target has an active overload cooldown"
+      visibility_note: "Internal/admin trace only for target-side cooldown; player-facing mapping is NotVisibleOrNotFound with no remaining ticks."
     - code: TargetFortifyCooldown
       layer: validation
       index: 18
       description: "Target has an active fortify cooldown"
+      visibility_note: "Internal/admin trace only for target-side cooldown; player-facing mapping is NotVisibleOrNotFound with no remaining ticks."
     - code: NotEnoughBodyParts
       layer: validation
       index: 19
@@ -581,15 +810,17 @@ rejection_reason:
 # 3. MCP Tools — active tool registry with security columns
 # =============================================================================
 mcp_tools:
-  description: "All MCP tools available to clients. Grouped by capability profile."
-  total_tools: 50
+  description: >
+    Game MCP tools available to clients. Auth endpoints and SDK fetch are outside
+    MCP: Auth uses auth_api REST endpoints, and SDK retrieval uses signed REST
+    GET /sdk/:lang.
+  total_tools: 47
   rate_limits:
     query: "50/tick"
     debug: "30/tick"
     dev_aux: "20/tick"
     deploy: "10/h"
     admin: "10/h"
-    sdk_fetch: "5/min"
 
   tools:
     # =========================================================================
@@ -616,17 +847,41 @@ mcp_tools:
         player_id: PlayerId
       output_schema:
         tick: u64
+        player_id: PlayerId
+        actor_context: "{active_drones: [DroneId], primary_drone: DroneId | null}"
         entities: "[Entity]"
         terrain: TerrainGrid
         resources: "[Resource]"
+        events: "[VisibleEvent]"
         truncated: bool
-        omitted_categories: OmittedCategoryBucket
+        over_budget: "bool (optional; present and true only on deterministic minimal snapshot path)"
+        messages: "[PlayerMessage]"
+        omitted_categories: OmittedCategories
+        omitted_messages: OmittedCategoryBucket
       rate_limit: "1/tick"
       required_scope: "swarm:read"
       subject_source: player_id
       replay_class: read_replay_safe
       visibility_filter: fog_of_war
       rate_limit_key: per_player
+
+    - name: swarm_get_world_statistics
+      category: Play
+      input_schema: {}
+      output_schema:
+        tick: u64
+        world_id: WorldId
+        room_count: u32
+        drone_count: u32
+        controller_level_histogram: "Map<u32,u32>"
+        public_arena_results: "[PublicArenaResult]"
+      rate_limit: "10/tick"
+      required_scope: "swarm:read"
+      subject_source: world
+      replay_class: read_replay_safe
+      visibility_filter: public_aggregate_no_hidden_resources_or_entities
+      rate_limit_key: global
+      notes: "World mode publishes non-competitive aggregate statistics only; no hidden resource totals, entities, strategies, or private room results."
 
     - name: swarm_get_resources
       category: Onboarding
@@ -695,13 +950,15 @@ mcp_tools:
         body: "[BodyPart]"
         lifespan: u32
         status: DroneStatus
-        code_hash: string
-        fuel_used: u64
+        code_hash: "string (owner-only; omitted for visible non-owner)"
+        fuel_used: "u64 (owner-only; omitted for visible non-owner)"
+        overload_pressure: "OverloadPressure (optional; omitted when caller has no pressure-relevant visible information)"
       rate_limit: "10/tick"
       required_scope: "swarm:read"
       subject_source: drone_id
       replay_class: read_replay_safe
-      visibility_filter: owner_or_visible
+      visibility_filter: owner_or_visible_with_owner_fields
+      field_visibility: "code_hash and fuel_used are owner-only and omitted for visible non-owner. overload_pressure is optional and visibility-filtered: target owner always sees total; contributing attacker sees total; contributions include caller-owned plus visible sources; third parties get visible-source contributions only and no total; omit only when caller is neither owner/contributor and sees no contribution."
       rate_limit_key: per_drone
 
     - name: swarm_get_code
@@ -750,82 +1007,13 @@ mcp_tools:
       rate_limit_key: global
 
     # =========================================================================
-    # Auth (3 tools) — 证书链模型
-    # =========================================================================
-    - name: swarm_register_challenge
-      category: Auth
-      input_schema: {}
-      output_schema:
-        challenge_id: string
-        challenge: string
-        difficulty_bits: u32
-        difficulty_bits_min: u32
-        difficulty_bits_max: u32
-        expires_at: u64
-      rate_limit: "10/min"
-      required_scope: "none"
-      subject_source: none
-      replay_class: non_replayable
-      visibility_filter: none
-      rate_limit_key: per_ip
-      schema_source: auth_api
-      alias_of: auth_api.swarm_register_challenge
-      notes: "CSR 注册 PoW challenge"
-
-    - name: swarm_submit_csr
-      category: Auth
-      input_schema:
-        username: string
-        csr: string
-        certificate_profile: string
-        challenge_id: string
-        nonce: string
-        csr_signature: string
-      output_schema:
-        certificate_bundle: CertificateBundle
-      rate_limit: "1/30s"
-      required_scope: "none"
-      subject_source: none
-      replay_class: non_idempotent_mutation
-      visibility_filter: none
-      rate_limit_key: per_ip
-      schema_source: auth_api
-      alias_of: auth_api.swarm_submit_csr
-      notes: "CSR 提交 + 证书签发"
-
-    - name: swarm_cert_check
-      category: Auth
-      input_schema:
-        certificate_id: string
-      output_schema:
-        valid: bool
-        certificate_id: string
-        player_id: PlayerId
-        client_public_key: string
-        public_key_fingerprint: string
-        usage: string
-        scope: string
-        audience: string
-        expires_at: u64
-        revoked: bool
-      rate_limit: "100/min"
-      required_scope: "swarm:auth"
-      subject_source: player_id
-      replay_class: read_replay_safe
-      visibility_filter: owner
-      rate_limit_key: per_player
-      schema_source: auth_api
-      alias_of: auth_api.swarm_cert_check
-      notes: "证书验证"
-
-    # =========================================================================
-    # Play (13 tools)
+    # Play (16 tools)
     # =========================================================================
     - name: swarm_get_replay
       category: Play
       input_schema:
         tick_range: TickRange
-        player_id: PlayerId
+        room_id: "RoomId | null"
       output_schema:
         ticks: "[TickData]"
         entities: "[Entity]"
@@ -833,10 +1021,10 @@ mcp_tools:
         events: "[Event]"
       rate_limit: "5/min"
       required_scope: "swarm:read"
-      subject_source: world
+      subject_source: certificate_player_id
       replay_class: read_replay_safe
-      visibility_filter: fog_of_war
-      rate_limit_key: global
+      visibility_filter: replay_privacy_and_participant
+      rate_limit_key: per_player
 
     - name: swarm_get_events
       category: Play
@@ -860,12 +1048,12 @@ mcp_tools:
       output_schema:
         terrain_grid: TerrainGrid
         size: Size
-      rate_limit: null  # host fn only
+      rate_limit: "10/tick"
       required_scope: "swarm:read"
       subject_source: world
       replay_class: read_replay_safe
-      visibility_filter: none
-      rate_limit_key: host_only
+      visibility_filter: fog_of_war
+      rate_limit_key: per_room
 
     - name: swarm_get_path
       category: Play
@@ -877,12 +1065,12 @@ mcp_tools:
         path: "[Position]"
         distance: i64  # milli_distance units (1e-3 cells)
         cost: u64  # micro_cost units (1e-6 resource units)
-      rate_limit: null  # host fn only
+      rate_limit: "10/tick"
       required_scope: "swarm:read"
       subject_source: player_id
       replay_class: read_replay_safe
       visibility_filter: fog_of_war
-      rate_limit_key: host_only
+      rate_limit_key: per_player
 
     - name: swarm_get_visibility
       category: Play
@@ -903,12 +1091,13 @@ mcp_tools:
       input_schema:
         player_id: PlayerId
       output_schema:
-        controllers: "[{room, level, progress, owner}]"
+        controllers: "[{room, level, owner, progress?: owner-only}]"
       rate_limit: "10/tick"
       required_scope: "swarm:read"
       subject_source: player_id
       replay_class: read_replay_safe
-      visibility_filter: fog_of_war
+      visibility_filter: fog_of_war_and_owner_fields
+      field_visibility: "progress is owner-only; room, level and owner follow fog_of_war"
       rate_limit_key: per_player
 
     - name: swarm_get_controller
@@ -918,14 +1107,15 @@ mcp_tools:
       output_schema:
         room: RoomId
         level: u32
-        progress: ProgressBps_i64
+        progress: "ProgressBps_i64 (owner-only; omitted for non-owner queries)"
         owner: PlayerId
-        downgrade_timer: u32
+        downgrade_timer: "u32 (owner-only; omitted for non-owner queries)"
       rate_limit: "10/tick"
       required_scope: "swarm:read"
       subject_source: world
       replay_class: read_replay_safe
-      visibility_filter: fog_of_war
+      visibility_filter: fog_of_war_and_owner_fields
+      field_visibility: "progress and downgrade_timer are owner-only; room, level and owner follow fog_of_war"
       rate_limit_key: per_room
 
     - name: swarm_list_structures
@@ -952,12 +1142,14 @@ mcp_tools:
         pos: Position
         hits: u32
         capacity: u32
-        cooldown: u32
+        cooldown: "u32 (owner-only; omitted for non-owner queries)"
+        overload_pressure: "OverloadPressure (optional; omitted when caller has no pressure-relevant visible information)"
       rate_limit: "10/tick"
       required_scope: "swarm:read"
       subject_source: world
       replay_class: read_replay_safe
-      visibility_filter: fog_of_war
+      visibility_filter: fog_of_war_and_owner_fields
+      field_visibility: "cooldown is owner-only; id, type, pos, hits and capacity follow fog_of_war; overload_pressure is optional and visibility-filtered with the same OverloadPressure rules as swarm_get_drone."
       rate_limit_key: per_structure
 
     - name: swarm_get_messages
@@ -1010,13 +1202,13 @@ mcp_tools:
       output_schema:
         drone_id: DroneId
         owner: PlayerId
-        efficiency: u32
+        efficiency: EfficiencyBps
         factors: "{string: i64}"
       rate_limit: "10/tick"
       required_scope: "swarm:read"
       subject_source: drone_id
       replay_class: read_replay_safe
-      visibility_filter: owner_or_visible
+      visibility_filter: owner
       rate_limit_key: per_drone
 
     - name: swarm_profile
@@ -1055,26 +1247,25 @@ mcp_tools:
     - name: swarm_deploy
       category: Deploy
       input_schema:
-        player_id: PlayerId
-        drone_id: DroneId
+        wasm_bytes: bytes
+        mod_toml: string
         deploy_payload: DeployPayload
         code_signature: Ed25519Signature
         certificate_id: string
-        version_counter: u64
-        metadata: Metadata
       output_schema:
         deploy_id: DeployId
         accepted: bool
+        status: "enum { accepted, already_deployed }"
         validation_errors: "[string]"
-        redb_version_counter: u64
+        redb_version_counter: "u64; already_deployed returns the original committed value without increment"
       rate_limit: "10/h"
       required_scope: "swarm:deploy"
-      subject_source: player_id
+      subject_source: certificate_player_id
       replay_class: deploy_mutation
       visibility_filter: owner
       rate_limit_key: per_player
       notes: >
-        Uses deploy_mutation pattern: deploy_payload, code_signature, certificate_id, version_counter, and metadata are validated and committed to redb manifest atomically. Activation depends only on redb manifest plus compiled artifact.
+        wasm_bytes and mod_toml are submitted synchronously. Their hashes must match the signed DeployPayload; only the validated payload/hash metadata and compiled artifact identity enter the redb manifest.
 
     - name: swarm_validate_module
       category: Deploy
@@ -1127,6 +1318,8 @@ mcp_tools:
         rules: "[WorldRulePlugin]"
         mods: "[ModInfo]"
         limits: Limits
+        combat: CombatConfig
+        special_attacks: SpecialAttacksConfig
         tick_rate: u32
       rate_limit: "10/tick"
       required_scope: "swarm:read"
@@ -1265,14 +1458,13 @@ mcp_tools:
         module_bytes: bytes
         tick_count: u32
       output_schema:
-        trace: TickTrace
-        fuel_used: u64
-        errors: "[string]"
+        result: "Ok | RejectionReason"
+        rejection_reason: "RejectionReason | null"
       rate_limit: "50/tick"
       required_scope: "swarm:debug"
       subject_source: player_id
       replay_class: read_replay_safe
-      visibility_filter: owner
+      visibility_filter: owner_safe
       rate_limit_key: per_player
 
     - name: swarm_explain_last_tick
@@ -1290,27 +1482,6 @@ mcp_tools:
       replay_class: read_replay_safe
       visibility_filter: owner
       rate_limit_key: per_drone
-
-    # =========================================================================
-    # SDK (1 tool)
-    # =========================================================================
-    - name: swarm_sdk_fetch
-      category: SDK
-      input_schema:
-        language: string
-        include_examples: bool
-      output_schema:
-        sdk_code: string
-        type_definitions: string
-        examples: string
-        abi_version: string
-        min_engine_version: string
-      rate_limit: "5/min"
-      required_scope: "swarm:read"
-      subject_source: world
-      replay_class: read_replay_safe
-      visibility_filter: none
-      rate_limit_key: global
 
     # =========================================================================
     # Arena (4 tools)
@@ -1340,7 +1511,11 @@ mcp_tools:
     - name: swarm_tournament_precommit
       category: Arena
       input_schema:
+        tournament_id: TournamentId
+        match_id: TournamentMatchId
+        slot_id: TournamentSlotId
         module_id: string
+        expected_module_hash: Blake3Hash
       output_schema:
         status: string
         locked_module: TournamentLockedModule
@@ -1350,7 +1525,7 @@ mcp_tools:
       replay_class: idempotent_mutation
       visibility_filter: owner
       rate_limit_key: per_player
-      notes: "Locks a player's deployed module hash and version before tournament start."
+      notes: "Fail closed unless certificate player is assigned to this exact tournament/match/slot, owns module_id/hash, precommit is open, and the slot has no conflicting lock. Idempotent only for the identical binding."
 
     - name: swarm_tournament_status
       category: Arena
@@ -1360,16 +1535,16 @@ mcp_tools:
         player_id: PlayerId
         mode: string
         deploy_locked: bool
-        locked_module: TournamentLockedModule?
+        locked_module: "TournamentLockedModule? (owner-only)"
         preparation_tools: "[ToolInfo]"
         direct_gameplay_tools_enabled: bool
-        tournaments: "[TournamentBracketStatus]"
+        tournaments: "[TournamentBracketStatus] filtered by room visibility and participant membership"
       rate_limit: "50/tick"
       required_scope: "swarm:read"
-      subject_source: world
+      subject_source: player_id
       replay_class: read_replay_safe
-      visibility_filter: none
-      rate_limit_key: global
+      visibility_filter: arena_room_visibility_and_owner_fields
+      rate_limit_key: per_player
       notes: "Returns the current tournament phase, player count, tick, and bracket state."
 
     - name: swarm_match_result
@@ -1410,9 +1585,9 @@ mcp_tools:
     - name: resources/read
       category: Resources
       input_schema:
-        resource_type: ResourceType
+        resource_type: ResourceName
       output_schema:
-        type: ResourceType
+        type: ResourceName
         name: string
         category: string
         base_value: u64
@@ -1424,28 +1599,10 @@ mcp_tools:
       visibility_filter: none
       rate_limit_key: global
 
-  # ---------------------------------------------------------------------------
-  # extension tools — not in active tool count
-  # ---------------------------------------------------------------------------
-  gated_tools:
-    description: "Tools reserved for extension publication. Not active and not included in total_tools count."
-    tools:
-      - name: swarm_list_market_orders
-        category: Play
-        rfc_status: rfc
-        rfc_tracking: "extension-MARKET-001"
-        input_schema:
-          room_id: RoomId
-        output_schema:
-          orders: "[{id, type, resource, amount, price}]"
-        notes: >
-          Market subsystem is an extension feature. This tool is defined for forward
-          compatibility but is NOT active. Do not emit in SDK codegen until
-          extension-MARKET-001 is accepted and implemented.
-
   capability_profiles:
     onboarding:
-      categories: [Onboarding, Auth, SDK, Resources]
+      tools: [swarm_get_info, swarm_get_docs, swarm_get_schema, resources/list, resources/read]
+      external_routes: ["GET /sdk/:lang"]
       default_assignment: "all authenticated clients"
     play:
       categories: [Play]
@@ -1470,11 +1627,77 @@ mcp_tools:
     replay_ws:
       model: "read-only + seek"
       description: "Replay clients can request historical tick ranges but cannot inject new commands."
-    agent_ws_signature:
-      header: "Swarm-Request-Signature"
-      covers: "(method, uri, timestamp, seq, body_hash)"
-      seq_rule: "monotonically increasing; server validates and updates last_seq"
-      violation: "invalid request authentication or sequence rollback -> disconnect + audit log"
+    agent_ws_ticket:
+      model: "Gateway certificate-signed WebSocket ticket"
+      covers: [room, session_id, cert_id, expires, transport]
+      transport: ws
+      violation: "invalid signature, expired ticket, audience mismatch, or non-ws transport -> disconnect + audit log"
+
+# =============================================================================
+# 3.1 REST SDK Route — outside MCP
+# =============================================================================
+rest_sdk:
+  canonical_route: "GET /sdk/:lang"
+  description: >
+    Signed REST route for SDK retrieval. :lang is a SDK language identifier such
+    as typescript or rust. This route uses application-layer certificate request
+    signing, rate limit, and audience checks. It is not an MCP tool.
+  input_schema:
+    lang: string
+  output_schema:
+    sdk_code: string
+    type_definitions: string
+    examples: string
+    abi_version: string
+    min_engine_version: string
+  errors:
+    unsupported_language: SchemaViolation
+    rate_limited: RateLimited
+  rate_limit: "5/min"
+
+# =============================================================================
+# 3.2 WASM ABI v2 — Swarm codec tick and host wire
+# =============================================================================
+wasm_abi_v2:
+  version: 2
+  breaking_policy: "immediate"
+  codec: "IDL-generated, versioned, little-endian, length-prefixed Swarm codec"
+  json_scope: "Debug display only; not ABI v2 tick or host wire format."
+  tick_export:
+    signature: "tick(input_ptr: i32, input_len: i32, output_ptr: i32, output_len: i32) -> i32"
+    input: TickInput
+    output: TickResult
+    return_value: "bytes_written when non-negative; negative values are ABI failures before a complete TickResult is written"
+  tick_input:
+    required_fields:
+      - tick
+      - player_id
+      - world_id
+      - visible_snapshot
+      - world_config_view
+      - fuel_budget_hints
+      - message_inbox_cursor
+  tick_result:
+    required_fields: [commands]
+    optional_fields: [messages]
+    semantics:
+      commands: "CommandIntent[]; untrusted intents decoded and validated by the engine before world mutation"
+      messages: "Owner-only player/debug messages delivered to the private player message queue; never applied as world mutation and never included in public replay or spectator output"
+  command_intent:
+    required_fields: [sequence, action]
+    server_injected_fields: [player_id, source, tick]
+  host_result:
+    description: "Guest-buffer tagged result header followed by Swarm codec payload."
+    header:
+      tag: u16
+      code: i32
+      payload_len: u32
+      payload: "[u8; payload_len]"
+    return_value: "Non-negative host return is bytes_written; negative return is ABI-level failure."
+    domain_errors: "Encoded in HostResult header/payload, not as negative ABI returns."
+  host_error:
+    independence: "HostError is separate from REST/MCP RejectionReason and separate from negative ABI failures."
+    hidden_or_absent_queries: "Successful empty result; do not reveal whether the target is hidden or absent."
 
 # =============================================================================
 # 4. Host Functions — ABI signatures, budgets, fuel costs, error priority
@@ -1632,10 +1855,11 @@ limits:
     pathfinding_result_path_max: 500
     pathfinding_result_path_max_unit: "nodes"
 
-  tick_trace_retention:
-    hot: "7d"
-    warm: "30d"
-    cold: "180d"
+  trace_retention:
+    replay_critical_redb: permanent
+    rich_artifact_retention_ticks: 864000
+    keyframe_acceleration_retention_ticks: 5184000
+    unit: ticks
 
   replay:
     keyframe_interval: 100
@@ -1645,14 +1869,14 @@ limits:
     code_update_cooldown_note: "World minimum; configurable via world.toml"
 
   hardware_baseline:
-    target_active_players: 500
+    target_active_players: 400
     target_hardware: "64 GB RAM, 32 cores"
-    hard_cap_players: 1000
-    hard_cap_behavior: "exceeding triggers degraded mode with admission gating"
+    hard_cap_players: 500
+    hard_cap_behavior: "reaching the cap rejects new active-player admission"
     worker_pool_size: "min(max_pool, active_players)"
     worker_pool_max: 256  # runtime default
     worker_pool_hard_cap: 1000  # compile-time hard cap
-    degraded_mode: "refuse new WASM execution when over hard cap; already-ticking players continue"
+    degraded_mode: "refuse new active-player admission at hard cap; already-ticking players continue"
 
   fair_share_admission:
     pathfinding:
@@ -1695,7 +1919,7 @@ tick_trace_envelope:
     - { name: world_action_manifest_hash, type: "[u8; 32]", description: "World Action Manifest hash" }
     - { name: validator_version, type: u32, description: "Validator version" }
     - { name: rejection_reason_registry_version, type: u32, description: "RejectionReason registry version" }
-    - { name: system_manifest_hash, type: "[u8; 32]", description: "Stage 2b System Manifest hash" }
+    - { name: system_manifest_hash, type: "[u8; 32]", description: "Fixed 31-entry execution manifest hash (S01-S29; excludes A01)" }
     - { name: limits_manifest_hash, type: "[u8; 32]", description: "Limits Manifest hash" }
     - { name: host_abi_version, type: u32, description: "Host Function ABI version" }
     - { name: canonical_codec_version, type: u32, description: "Canonical Codec version" }
@@ -1733,15 +1957,13 @@ tick_trace_envelope:
 # 7. Direction — enum
 # =============================================================================
 direction:
-  description: "6-direction hex-grid enum used by Move command. Names match Engine `Direction` serialization."
+  description: "4-direction cardinal-grid enum used by Move command. Names match Engine `Direction` serialization."
   type: enum
   values:
-    - { name: Top, value: 0 }
-    - { name: TopRight, value: 1 }
-    - { name: BottomRight, value: 2 }
-    - { name: Bottom, value: 3 }
-    - { name: BottomLeft, value: 4 }
-    - { name: TopLeft, value: 5 }
+    - { name: North, value: 0 }
+    - { name: South, value: 1 }
+    - { name: East, value: 2 }
+    - { name: West, value: 3 }
 
 # =============================================================================
 # 8. SwarmError JSON-RPC Envelope
@@ -1758,6 +1980,9 @@ swarm_error_envelope:
         rejection_reason: "RejectionReason (canonical enum string)"
         command_index: "u32 (optional)"
         debug_detail: "max 512 bytes — non-canonical contextual detail (see rejection_reason.debug_detail)"
+        retry_allowed: "bool (optional)"
+        idempotency_key: "string | null (optional)"
+        retry_after_tick: "u64 | null (optional)"
     id: "<request_id>"
   reserved_code:
     code: -32000
@@ -1808,9 +2033,28 @@ resource_operation:
 # =============================================================================
 # 10. Deploy — deploy_mutation + redb_version_counter
 # =============================================================================
+DeployPayload:
+  type: object
+  additional_properties: false
+  required: [domain, wasm_hash, metadata_hash, player_id, world_id, module_slot, version_counter, transport, signed_at]
+  fields:
+    domain: "const SWARM-DEPLOY-V1"
+    wasm_hash: Blake3Hash
+    metadata_hash: Blake3Hash
+    player_id: PlayerId
+    world_id: WorldId
+    module_slot: string
+    version_counter: u64
+    transport: "enum { mcp, rest, ws, replay }"
+    signed_at: u64
+  domain: SWARM-DEPLOY-V1
+
 deploy:
   description: >
-    Deploy subsystem architecture. Deployments use a deploy_mutation pattern: deploy_payload, code_signature, certificate_id, version_counter, metadata, and redb_version_counter are committed as a small redb manifest. Activation depends on this manifest and the compiled artifact.
+    Deployments synchronously validate wasm_bytes, mod_toml, signed DeployPayload,
+    code_signature and certificate_id. A small manifest containing the validated
+    hashes, identity, slot, version counters and compiled artifact identity is
+    committed to redb. Raw bytes are not duplicated in redb.
   mechanism: deploy_mutation
   redb_version_counter:
     description: >
@@ -1823,14 +2067,20 @@ deploy:
     replay_contract: "deploy events MUST be replayed in redb_version_counter ascending order"
 
   flow:
-    step_1_validate:
-      description: "Client calls swarm_validate_module or submits deploy_payload in swarm_deploy"
+    step_1_authenticate:
+      description: "Verify certificate usage, signature, DeployPayload domain/transport/audience, and request replay protections"
+      actor: engine
+    step_2_validate:
+      description: "Client calls swarm_validate_module or submits wasm_bytes + mod_toml + signed DeployPayload in swarm_deploy"
       actor: client
-    step_2_commit_manifest:
-      description: "redb transaction commits manifest record: {deploy_id, drone_id, deploy_payload_hash, metadata, redb_version_counter}"
+    step_3_compile_attestation:
+      description: "Engine sends raw WASM to Sandbox; Sandbox compiles and returns authenticated DeployAck with compiled_artifact_hash and pinned versions. Engine verifies HMAC attestation."
+      actor: sandbox_and_engine
+    step_4_commit_manifest:
+      description: "redb transaction atomically commits manifest plus accounting: {deploy_id, player_id, world_id, module_slot, wasm_module_hash, metadata_hash, deploy_payload_hash, compiled_artifact_hash, certificate_id, version_counter, redb_version_counter, activation_tick, code_update_cost_debit, cooldown_previous_tick, cooldown_next_tick, refund_credit_reset_amount}"
       actor: engine
       note: "This is the only redb write — small, fast, deterministic"
-    step_3_activate:
+    step_5_activate:
       description: "On next tick boundary, engine activates compiled artifact matching the manifest"
       actor: engine
       note: "Activation occurs at tick boundary for deterministic scheduling"
@@ -1838,8 +2088,9 @@ deploy:
   swarm_deploy_output:
     deploy_id: DeployId
     accepted: bool
+    status: "enum { accepted, already_deployed }"
     validation_errors: "[string]"
-    redb_version_counter: u64
+    redb_version_counter: "u64; already_deployed returns original value without increment"
 
 # =============================================================================
 # 11. Persistence — async_object_store_upload
@@ -1852,39 +2103,35 @@ persistence:
     I/O throughput from transaction latency.
   async_object_store_upload:
     description: >
-      Asynchronous upload of binary blobs (WASM modules, replay recordings,
-      snapshot archives) to the object store. The upload runs in a background
+      Asynchronous upload of non-deploy replay recordings and snapshot archives.
+      Deploy WASM/compiled artifacts use the attested synchronous deploy flow.
       task pool; the caller receives an immediate acknowledgment with an
       archive_key that can be polled for completion status.
     storage_backend: "pluggable (default: local filesystem; production: S3-compatible)"
     blob_types:
-      - type: wasm_module
-        max_size: "64 MB"
-        retention: "permanent (until all referencing drones are recycled)"
-        content_hash: Blake3
       - type: replay_recording
         max_size: "1 GB"
-        retention: "per tick_trace_retention policy"
+        retention: "per rich_artifact_retention_ticks policy; non-authoritative"
         content_hash: Blake3
       - type: snapshot_archive
         max_size: "256 MB"
-        retention: "per tick_trace_retention policy"
+        retention: "per keyframe_acceleration_retention_ticks policy; genesis replay remains authoritative"
         content_hash: Blake3
     upload_contract:
       invocation: "fire-and-forget for non-deploy archives"
       acknowledgment: "immediate — returns archive_key"
-      completion_polling: "use swarm_get_deploy_status to check upload completion"
+      completion_polling: "operator/internal artifact status keyed by archive_key; not swarm_get_deploy_status"
       failure_mode: "retry with exponential backoff; permanent failure marks archive failed"
     redb_manifest:
       description: >
-        redb stores only a small manifest record per blob: {deploy_payload_hash, archive_key,
-        size, uploaded_at, status}. This record is part of the deploy_mutation redb
-        transaction and is covered by redb_version_counter ordering.
+        redb stores non-authoritative artifact metadata: {blob_hash, archive_key,
+        size, uploaded_at, status}. It is not deploy_mutation/replay-critical state
+        and does not consume redb_version_counter.
       fields:
-        - deploy_payload_hash: "[u8; 32]"
+        - blob_hash: "[u8; 32]"
         - archive_key: string
         - size: u64
         - uploaded_at: u64
-        - status: "enum { pending, uploaded, failed }"
+        - status: "enum { pending, complete, failed }"
 
 # =============================================================================

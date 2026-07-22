@@ -5,7 +5,7 @@
 1. **文档 YAML 与 Registry 是手工同步的参考发布物**：`game_api.idl.yaml`、`auth_api.idl.yaml`、`economy.idl.yaml` 和 `api-registry.md` 都位于本仓库，用于发布机器可读参考与人类可读参考。修改 schema 时必须在同一变更中更新相应 YAML、Registry 表格和 Registry 生成元数据。
 2. **当前文档检查执行有界生成校验**：`scripts/check_docs.py` 验证仓库相对链接、GitHub-style heading anchors、Schema input 链接、生成的 Registry metadata/tool counts/API 版本和关键 gameplay 常量；它不从 YAML 生成完整 Markdown Registry、SDK 或其他文件，也不声称验证 Registry 表格逐项相等。
 3. **Engine extraction 是另一条独立生成管线**：Engine 仓库的 `src/idl.rs` 从 Rust 维护的 extraction tables 和运行时 mod registries 构造 JSON `IdlDoc`。它不读取本仓库的 `*.idl.yaml`，也不生成本仓库的 Markdown Registry。
-4. **Engine SDK 生成器消费运行时 IDL**：Engine 仓库的 `src/sdk_gen.rs` 通过 `generate_typescript(&idl)` 和 `generate_rust(&idl)` 从 `IdlDoc` 生成 SDK 文本。
+4. **Engine SDK 生成器消费运行时 IDL**：Engine 仓库的 `src/sdk_gen.rs` 通过 `generate_typescript(&idl)` 和 `generate_rust(&idl)` 从 `IdlDoc` 生成 SDK 文本，并必须生成 ABI v2 `TickInput`/`TickResult` Swarm codec bindings。
 5. **Frontend 合同由 Engine Rust 类型生成**：Engine 仓库的 `src/contract_exports.rs` 使用 `schemars` 与 `ts-rs` 从 `CommandIntent`、`CommandAction`、`RealtimeEnvelope`、`VisibleWorldSnapshot` 等 Rust 类型导出 `swarm-contracts.ts`、`command-intent.schema.json`、`realtime.schema.json` 和 `visible-snapshot.schema.json`。Frontend `contracts:check` 比较这些生成物，防止手写 schema 漂移。
 
 因此，文档 YAML、Registry 和 Engine `IdlDoc` 是需要协调维护的不同表示；当前 docs-side CLI 只覆盖 Registry metadata/count/version 同步，不应把正文表格或 SDK 描述为可由当前 Engine extraction 或文档检查完整重建的生成产物。
@@ -18,7 +18,7 @@
 | 文档 `auth_api.idl.yaml` + Registry | Auth API 参考发布 | `scripts/sync_api_registry.py` 同步生成 metadata/count/version；正文表格手工维护 |
 | 文档 `economy.idl.yaml` + Registry | Economy API 参考发布 | `scripts/sync_api_registry.py` 同步生成 metadata/count/version；正文表格手工维护 |
 | Engine Rust 类型 + runtime registries | JSON `IdlDoc` | Engine `extract_idl(...)` 和 Engine tests |
-| Engine JSON `IdlDoc` | TypeScript/Rust SDK 文本 | Engine `generate_typescript(...)` / `generate_rust(...)` 和 Engine tests |
+| Engine JSON `IdlDoc` | TypeScript/Rust SDK 文本 + ABI v2 Swarm codec bindings | Engine `generate_typescript(...)` / `generate_rust(...)` 和 Engine tests |
 | Engine Rust contract types | Frontend generated contracts/schema | Engine `export-contracts` + Frontend `contracts:check` |
 
 ## 文档仓库检查
@@ -70,6 +70,8 @@ cargo run -p swarm-engine -- generate-sdk [world.toml] [out_dir]
 cargo run -p swarm-engine -- export-contracts [frontend/src/generated]
 ```
 
+SDK 发布的 canonical distribution surface 是 signed REST `GET /sdk/:lang`。MCP 不提供 `swarm_sdk_fetch`；MCP tools、REST SDK route 与 Auth REST endpoints 是独立下游 wire surfaces。
+
 对应的 library 入口为：
 
 ```text
@@ -81,7 +83,7 @@ engine::contract_exports::export_contract_artifacts(...)
 
 ### Command Schema Branch Contract
 
-Engine command schemas share a single Rust branch source. The generated SDK command-intent schema and MCP action schema expose 45 `oneOf` branches: 44 concrete command/action branches plus one custom-action wildcard. The wildcard rejects reserved built-in names so a concrete command matches exactly one branch. Canonical v1 clients that emit bare `CommandIntent[]` remain valid; richer realtime recovery uses the generated `swarm.realtime.v1` envelope contracts.
+Generated SDK command-intent schemas expose the 14 design-defined `CommandAction` variants. The `Action` variant carries an `action_type` resolved through the 11-action Vanilla `ActionRegistry` or a plugin-owned namespaced extension; custom names must not collide with reserved Vanilla names. ABI v2 is immediate breaking: generated SDKs encode `TickInput` and decode/write `TickResult` with the IDL-generated Swarm codec. Generated `swarm.realtime.v1` contracts remain the frontend/live-client envelope and must use the same downstream IDL types.
 
 ## 版本同步
 

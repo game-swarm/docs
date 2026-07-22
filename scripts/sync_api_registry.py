@@ -31,7 +31,7 @@ TOOL_COUNT_ROW_RE = re.compile(
     re.MULTILINE,
 )
 GAME_TOOL_HEADING_RE = re.compile(
-    r"^### 3\.2 Game API 工具清单 \(`all_declared=\d+`, `active_only=\d+`, `rfc_gated=\d+`\)$",
+    r"^### 3\.2 Game API 工具清单 \(`all_declared=\d+`, `active_only=\d+`, `gated=\d+`\)$",
     re.MULTILINE,
 )
 SYNC_REQUIREMENT_RE = re.compile(
@@ -57,7 +57,7 @@ class RegistryMetadata:
     rejection_reasons: int
     game_tools_active: int
     game_tools_gated: int
-    auth_tools: int
+    auth_rest_operations: int
     host_functions: int
     economy_operations: int
     engine_summary: str
@@ -68,11 +68,11 @@ class RegistryMetadata:
 
     @property
     def all_tools_declared(self) -> int:
-        return self.game_tools_all_declared + self.auth_tools
+        return self.game_tools_all_declared
 
     @property
     def all_tools_active(self) -> int:
-        return self.game_tools_active + self.auth_tools
+        return self.game_tools_active
 
     @property
     def all_tools_gated(self) -> int:
@@ -290,10 +290,10 @@ def validate_declared_total(mapping: dict[str, Any], key: str, actual: int, name
 
 
 def gated_tool_list(mcp_tools: dict[str, Any]) -> list[Any]:
-    gated = mcp_tools.get("gated_tools", [])
+    gated = mcp_tools.get("gated", [])
     if isinstance(gated, dict):
-        return require_list(gated.get("tools", []), "game_api.mcp_tools.gated_tools.tools")
-    return require_list(gated, "game_api.mcp_tools.gated_tools")
+        return require_list(gated.get("tools", []), "game_api.mcp_tools.gated.tools")
+    return require_list(gated, "game_api.mcp_tools.gated")
 
 
 def count_engine_idl(path: Path | None) -> str:
@@ -340,8 +340,8 @@ def collect_metadata(
         "game_api.command_action.action_registry.vanilla_actions",
     )
     tick_trace_envelope = require_mapping(game.get("tick_trace_envelope"), "game_api.tick_trace_envelope")
-    auth_tools = require_mapping(auth.get("csr_lifecycle_tools"), "auth_api.csr_lifecycle_tools")
-    auth_rejection_reason = require_mapping(auth.get("rejection_reason"), "auth_api.rejection_reason")
+    auth_control_plane = require_mapping(auth.get("auth_control_plane"), "auth_api.auth_control_plane")
+    auth_errors = require_mapping(auth.get("errors"), "auth_api.errors")
     auth_trace_events = require_mapping(auth.get("auth_trace_events"), "auth_api.auth_trace_events")
     economy_ops = require_mapping(economy.get("resource_operation"), "economy.resource_operation")
 
@@ -352,10 +352,13 @@ def collect_metadata(
         "game_api.command_action.action_registry.vanilla_actions.actions",
     )
     tick_trace_fields = require_list(tick_trace_envelope.get("fields"), "game_api.tick_trace_envelope.fields")
-    auth_tool_list = require_list(auth_tools.get("tools"), "auth_api.csr_lifecycle_tools.tools")
-    auth_rejection_variants = require_list(
-        auth_rejection_reason.get("variants"),
-        "auth_api.rejection_reason.variants",
+    auth_operation_list = require_list(
+        auth_control_plane.get("operations"),
+        "auth_api.auth_control_plane.operations",
+    )
+    auth_error_list = require_list(
+        auth_errors.get("canonical"),
+        "auth_api.errors.canonical",
     )
     auth_event_list = require_list(auth_trace_events.get("events"), "auth_api.auth_trace_events.events")
     host_function_list = require_list(host_functions.get("functions"), "game_api.host_functions.functions")
@@ -377,12 +380,17 @@ def collect_metadata(
         "game_api.rejection_reason",
     )
     validate_declared_total(mcp_tools, "total_tools", len(game_tools), "game_api.mcp_tools")
-    validate_declared_total(auth_tools, "total_tools", len(auth_tool_list), "auth_api.csr_lifecycle_tools")
     validate_declared_total(
-        auth_rejection_reason,
+        auth_control_plane,
+        "total_operations",
+        len(auth_operation_list),
+        "auth_api.auth_control_plane",
+    )
+    validate_declared_total(
+        auth_errors,
         "total_canonical_codes",
-        len(auth_rejection_variants),
-        "auth_api.rejection_reason",
+        len(auth_error_list),
+        "auth_api.errors",
     )
     validate_declared_total(
         auth_trace_events,
@@ -406,7 +414,7 @@ def collect_metadata(
         rejection_reasons=len(rejection_variants),
         game_tools_active=len(game_tools),
         game_tools_gated=len(gated_tools),
-        auth_tools=len(auth_tool_list),
+        auth_rest_operations=len(auth_operation_list),
         host_functions=len(host_function_list),
         economy_operations=len(operation_list),
         engine_summary=count_engine_idl(engine_idl),
@@ -425,9 +433,10 @@ def generated_block(metadata: RegistryMetadata) -> str:
         f"| economy version | `{metadata.economy_version}` | economy.idl.yaml |",
         f"| CommandAction variants | {metadata.command_variants} | game_api.idl.yaml |",
         f"| RejectionReason canonical codes | {metadata.rejection_reasons} | game_api.idl.yaml |",
-        f"| MCP tools all_declared | {metadata.all_tools_declared} | game_api.idl.yaml + auth_api.idl.yaml |",
-        f"| MCP tools active_only | {metadata.all_tools_active} | game_api.idl.yaml + auth_api.idl.yaml |",
+        f"| MCP tools all_declared | {metadata.all_tools_declared} | game_api.idl.yaml |",
+        f"| MCP tools active_only | {metadata.all_tools_active} | game_api.idl.yaml |",
         f"| MCP tools gated | {metadata.all_tools_gated} | game_api.idl.yaml |",
+        f"| Auth REST operations | {metadata.auth_rest_operations} | auth_api.idl.yaml |",
         f"| Host functions | {metadata.host_functions} | game_api.idl.yaml |",
         f"| Economy operations | {metadata.economy_operations} | economy.idl.yaml |",
         f"| Engine-extracted IDL | {metadata.engine_summary} | optional `--engine-idl` JSON |",
@@ -468,9 +477,9 @@ def update_registry_text(text: str, metadata: RegistryMetadata) -> str:
     def tool_row(match: re.Match[str]) -> str:
         name = match.group("name")
         if name == "all_declared":
-            values = (metadata.game_tools_all_declared, metadata.auth_tools, metadata.all_tools_declared)
+            values = (metadata.game_tools_all_declared, 0, metadata.all_tools_declared)
         elif name == "active_only":
-            values = (metadata.game_tools_active, metadata.auth_tools, metadata.all_tools_active)
+            values = (metadata.game_tools_active, 0, metadata.all_tools_active)
         else:
             values = (metadata.game_tools_gated, 0, metadata.all_tools_gated)
         return f"| `{name}` | {values[0]} | {values[1]} | {values[2]} |{match.group('tail')}"
@@ -482,7 +491,7 @@ def update_registry_text(text: str, metadata: RegistryMetadata) -> str:
     expected_heading = (
         "### 3.2 Game API 工具清单 "
         f"(`all_declared={metadata.game_tools_all_declared}`, "
-        f"`active_only={metadata.game_tools_active}`, `rfc_gated={metadata.game_tools_gated}`)"
+        f"`active_only={metadata.game_tools_active}`, `gated={metadata.game_tools_gated}`)"
     )
     text, heading_count = GAME_TOOL_HEADING_RE.subn(expected_heading, text, count=1)
     if heading_count != 1:
