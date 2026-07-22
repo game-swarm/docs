@@ -7,6 +7,10 @@
 
 api_version: "0.1.1"
 
+version_domains:
+  ECONOMY_API_VERSION: "0.1.1"
+  independence: "Independent from GAME_API_VERSION, AUTH_API_VERSION, PLUGIN_ABI_VERSION, SDK package versions, and implementation crate versions."
+
 # =============================================================================
 # 1. Fixed-Point Types
 # =============================================================================
@@ -15,6 +19,10 @@ types:
     All economy types use fixed-point integer arithmetic. Floating-point (f64)
     is prohibited for deterministic replay. BasisPoints provide hundredths-of-a-percent
     precision (1 bp = 0.01% = 1/10000).
+
+  ResourceName:
+    base: string
+    constraints: "case-sensitive configured identifier; Vanilla canonical value is Energy"
 
   BasisPoints:
     description: >
@@ -31,7 +39,8 @@ types:
       Used for per-tick delta calculations that can be negative (e.g., net income
       after deductions).
     underlying: i64
-    unit: "resource units per tick"
+    scale: 1_000_000
+    unit: "micro resource units per tick"
     range: "-2^63 .. 2^63-1"
 
   MilliUnits:
@@ -51,6 +60,8 @@ resource_operation:
   description: >
     Economy resource operations. These are engine-side computations, not player
     CommandActions. All amounts are integer (u64/u32), all rates are BasisPoints.
+    This IDL defines economy types, operations, and formulas only; it does not
+    define MCP tools, Auth surfaces, SDK routes, or plugin-specific market commands.
 
   operations:
     # -------------------------------------------------------------------------
@@ -93,15 +104,14 @@ resource_operation:
         refund_amount: 3000   # (3000 * 10000) / 10000 = 3000 units
 
     # -------------------------------------------------------------------------
-    # 2.2 StorageTax — tiered tax on global storage holdings
+    # 2.2 StorageTax — smooth marginal tax on global storage holdings
     # -------------------------------------------------------------------------
     - name: StorageTax
       category: taxation
       description: >
-        Per-tick tax assessed on resources held in global storage. Tax rate
-        depends on storage utilization as a percentage of capacity (percentage-based
-        tiers, per specs/core/resource-ledger.md §2.2).
-        Assessed before any other per-tick deductions.
+        Per-tick tax assessed on resources held in global storage. The marginal
+        rate is a continuous cubic Hermite smoothstep through design-defined
+        utilization anchors. In S29 it runs after UpkeepDeduction and before later recurring faucet/settlement operations.
       trigger: "every tick, per player"
       parameters:
         - name: stored_total
@@ -113,36 +123,19 @@ resource_operation:
           unit: resource units
           description: "Player's current global storage capacity"
       tax_schedule:
-        description: "Tiered tax rates as percentage of capacity. Per resource-ledger.md §2.1."
-        tiers:
-          - tier: 0
-            label: "tax-free"
-            threshold_pct: 30
-            rate_bp: 0
-            description: "0–30% capacity: tax-free"
-          - tier: 1
-            label: "low"
-            threshold_pct: 60
-            rate_bp: 1
-            description: "30–60% capacity: 0.01% per tick"
-          - tier: 2
-            label: "medium"
-            threshold_pct: 85
-            rate_bp: 5
-            description: "60–85% capacity: 0.05% per tick"
-          - tier: 3
-            label: "high"
-            threshold_pct: 100
-            rate_bp: 20
-            description: "85–100% capacity: 0.20% per tick"
+        interpolation: quadratic_smoothstep
+        anchors:
+          - { utilization_ppm: 300000, marginal_rate_bp: 0 }
+          - { utilization_ppm: 600000, marginal_rate_bp: 1 }
+          - { utilization_ppm: 850000, marginal_rate_bp: 5 }
+          - { utilization_ppm: 1000000, marginal_rate_bp: 20 }
+        integration_step_ppm: 1000
       computation:
         tax_deduction:
-          formula: "Σ over each tier i: taxable_in_tier × rate_bp[i] / 10000, where taxable_in_tier = min(storage_pct - threshold_pct[i], tier_width[i]) × capacity"
-          description: "Per resource-ledger.md §2.2 tiered formula. Floor division; minimum deduction of 1 unit if rate > 0 and stored_total > 0."
+          formula: "floor(integral_0^stored_total smoothstep_marginal_rate_bp(x / storage_capacity) dx / 10000)"
+          description: "Evaluate with integer utilization ppm, s(t)=3t^2-2t^3 between adjacent anchors, fixed 1000 ppm left-closed/right-open steps, u128 intermediates, and final floor."
           output_type: u64
-      minimum_deduction:
-        description: "If applicable_rate_bp > 0 and stored_total > 0, min deduction is 1 unit"
-      authority: "specs/core/resource-ledger.md §2.2 — authoritative tiered formula"
+      derived_from: "design/gameplay.md global_storage_tax_curve"
 
     # -------------------------------------------------------------------------
     # 2.3 UpkeepDeduction — per-tick empire maintenance cost
@@ -173,9 +166,9 @@ resource_operation:
         deficit_handling:
           description: >
             If global storage insufficient, deduct to 0 and record UpkeepDeficit.
-            Consecutive 3-tick deficit → drone hunger (-50% diligence).
+            Consecutive 3-tick deficit → drone hunger (efficiency multiplier 5000 bps = -50%).
             Consecutive 10-tick deficit → forced drone death (age ×10 acceleration).
-      authority: "specs/core/resource-ledger.md §Empire Upkeep — authoritative formula"
+      derived_from: "design/gameplay.md empire upkeep defaults"
 
     # -------------------------------------------------------------------------
     # 2.4 PvEAward — resource grant for defeating NPC entities
@@ -183,13 +176,15 @@ resource_operation:
     - name: PvEAward
       category: reward
       description: >
-        Resource award granted when a player defeats a PvE (NPC) entity.
-        Award amount depends on entity type and difficulty.
-      trigger: "on NPC entity destruction by player action"
+        Resource award settled from PvE content owned by the pve-spawning plugin.
+        Award amount depends on configured event/entity tier and difficulty.
+        Swarmling-style NPCs do not create per-kill drops or shared event awards
+        unless the owning plugin emits a configured PvE settlement event.
+      trigger: "pve-spawning event settlement"
       parameters:
         - name: entity_type
           type: string
-          description: "Type of the defeated NPC entity"
+          description: "NPC/entity or plugin event type reported by pve-spawning"
         - name: entity_tier
           type: u32
           description: "Difficulty tier of the NPC (1-5)"
@@ -235,6 +230,11 @@ resource_operation:
           description: "Type of structure being built"
       cost_schedule:
         description: "Base build costs per structure type in resource units"
+        structure_allowlist:
+          core_count: 13
+          optional_count: 4
+          optional_default: []
+          optional_allowed_values: [Road, Wall, Rampart, Container]
         structures:
           - type: Spawn
             cost: 300
@@ -242,15 +242,6 @@ resource_operation:
           - type: Extension
             cost: 200
             description: "Capacity extension"
-          - type: Road
-            cost: 10
-            description: "Movement infrastructure"
-          - type: Wall
-            cost: 50
-            description: "Defensive wall"
-          - type: Rampart
-            cost: 100
-            description: "Fortified wall"
           - type: Storage
             cost: 500
             description: "Local resource storage"
@@ -272,9 +263,6 @@ resource_operation:
           - type: Observer
             cost: 500
             description: "Observation post"
-          - type: Container
-            cost: 100
-            description: "Small local resource container"
           - type: Depot
             cost: 600
             description: "Forward maintenance and logistics depot"
@@ -291,6 +279,11 @@ resource_operation:
         build_cost:
           formula: "structure_base_cost * controller_level_discount_factor"
           description: "Controller level may reduce build cost (implemented as a multiplier in bp)"
+          output_type: u64
+        mode_b_burn:
+          fee_bp: 500
+          formula: "floor(build_cost * 500 / 10000)"
+          description: "Mode-B extra 5% explicit sink leg; builder debit = build_cost + mode_b_burn"
           output_type: u64
       controller_discount:
         description: "Per controller level, build costs are multiplied by a discount factor in bp"
@@ -311,6 +304,19 @@ resource_operation:
             discount_factor_bp: 7000   # 70%
           - level: 8
             discount_factor_bp: 6500   # 65%
+      optional_structures:
+        - type: Road
+          cost: 10
+          description: "Movement infrastructure; requires optional_structure_types allowlist"
+        - type: Wall
+          cost: 50
+          description: "Defensive wall; requires optional_structure_types allowlist"
+        - type: Rampart
+          cost: 100
+          description: "Fortified wall; requires optional_structure_types allowlist"
+        - type: Container
+          cost: 100
+          description: "Small local resource container; requires optional_structure_types allowlist"
 
     # -------------------------------------------------------------------------
     # 2.6 SpawnCost — resource cost to spawn drones
@@ -379,7 +385,7 @@ resource_operation:
           type: PlayerId
           description: "Player receiving resources"
         - name: resource_type
-          type: ResourceType
+          type: ResourceName
           description: "Type of resource being transferred"
         - name: amount
           type: u64
@@ -412,7 +418,77 @@ resource_operation:
           formula: "(amount * 200) / 10000"
           description: "2.00% fee on transferred amount, deducted separately from sender"
           output_type: u64
-      authority: "specs/core/resource-ledger.md §2.1 — authoritative fee schedule"
+      derived_from: "design/gameplay.md allied transfer fee"
+
+    # -------------------------------------------------------------------------
+    # 2.8-2.12 Remaining core ResourceOperation variants
+    # -------------------------------------------------------------------------
+    - name: LocalTransfer
+      category: transfer
+      trigger: "Transfer or Withdraw command"
+      description: "Conservative local resource movement between visible in-range entities."
+      parameters: [source_id, target_id, resource_type, amount]
+
+    - name: GlobalDeposit
+      category: global_storage
+      trigger: "TransferToGlobal command"
+      description: "Local to global transfer with 100 bp Mode-B burn and 10-tick delay."
+      parameters: [player_id, resource_type, amount]
+
+    - name: GlobalWithdraw
+      category: global_storage
+      trigger: "TransferFromGlobal command"
+      description: "Global to local transfer with 100 bp Mode-B burn and 100-tick delay."
+      parameters: [player_id, resource_type, amount]
+
+    - name: ControllerPassiveIncome
+      category: faucet
+      trigger: "S29 every tick per claimed controller"
+      description: "Budgeted Vanilla Energy income derived from Controller level."
+      parameters: [player_id, controller_id, controller_level]
+
+    - name: WreckageSalvage
+      category: faucet
+      trigger: "S29 when owned drone wreckage is salvaged"
+      description: "Budgeted, tick-decaying Energy salvage below RecycleRefund value."
+      parameters: [player_id, wreckage_id, remaining_value]
+
+    - name: WorldStartupSubsidy
+      category: faucet
+      trigger: "first world/player entry only"
+      description: "One-time Vanilla starting package {Energy: 5000}; recorded in TickTrace/audit outside recurring S29."
+      parameters: [player_id, world_id, starting_resources]
+
+    - name: CodeUpdateCost
+      category: deploy
+      trigger: "accepted new swarm_deploy only; AlreadyDeployed is exempt"
+      description: "Typed world-config deploy fee, default {Energy: 0}; debited atomically with deploy manifest/cooldown/refund-credit reset."
+      parameters: [player_id, world_id, module_slot, cost_by_resource]
+
+    # -------------------------------------------------------------------------
+    # 2.15 PluginSettlement — namespaced plugin resource settlement
+    # -------------------------------------------------------------------------
+    - name: PluginSettlement
+      category: plugin
+      description: >
+        Namespaced settlement record for economy-affecting plugins such as markets
+        or PvE events. Core Economy IDL does not define concrete market variants;
+        plugins report typed settlement data under their plugin namespace and are
+        still checked by the Resource Ledger.
+      parameters:
+        - name: plugin_id
+          type: string
+          description: "Namespaced plugin identifier from mods.lock"
+        - name: settlement_kind
+          type: string
+          description: "Plugin-defined typed settlement kind"
+        - name: resource_delta
+          type: ResourceDelta
+          description: "Signed resource delta legs checked by Resource Ledger conservation"
+      computation:
+        ledger_validation:
+          formula: "sum(settlement.resource_delta legs) + explicit faucet/sink legs == 0"
+          description: "Plugin settlements must balance through explicit ledger accounts."
 
 # =============================================================================
 # 3. Formulas — canonical computation references
@@ -436,24 +512,16 @@ formulas:
         rounding: floor
 
   storage_tax:
-    description: "Tiered per-tick tax on global storage (percentage-based)"
+    description: "Continuous smoothstep marginal per-tick tax on global storage"
     steps:
       - step: 1
-        operation: "Determine storage_pct = stored_total / storage_capacity × 100"
+        operation: "u_ppm = floor(stored_total * 1000000 / storage_capacity)"
       - step: 2
-        operation: "For each tier i: taxable = min(storage_pct - threshold_pct[i], tier_width[i]) × capacity; tax += taxable × rate_bp[i] / 10000"
-        tier_thresholds:
-          - { threshold_pct: 30, rate_bp: 0 }
-          - { threshold_pct: 60, rate_bp: 1 }
-          - { threshold_pct: 85, rate_bp: 5 }
-          - { threshold_pct: 100, rate_bp: 20 }
-        tier_width:
-          - "tier 0: 30, tier 1: 30, tier 2: 25, tier 3: 15"
+        operation: "Interpolate marginal_rate_bp with integer quadratic smoothstep between anchors (300000,0), (600000,1), (850000,5), (1000000,20)"
       - step: 3
-        operation: "total_tax = sum of all tier taxes"
-        types: "u64"
+        operation: "Integrate marginal rate with fixed 1000 ppm left-closed/right-open steps; tax = floor(integral / 10000)"
+        types: "u128 intermediates → u64"
         rounding: floor
-        minimum: "1 unit if any rate_bp > 0 and stored_total > 0"
 
   build_cost_discounted:
     description: "Controller-level discounted build cost"
@@ -488,20 +556,10 @@ limits:
       description: "World-wide total resource cap across all players"
       note: "engine-enforced; new resource creation is rejected when cap is reached"
 
-  taxable_thresholds:
-    description: "Storage tax tier thresholds as percentage of capacity. Per resource-ledger.md §2.1."
-    storage_tax_tier_1_pct:
-      value: 30
-      unit: "capacity %"
-      description: "Threshold at which tier-1 storage tax (1 bp) begins (30% capacity)"
-    storage_tax_tier_2_pct:
-      value: 60
-      unit: "capacity %"
-      description: "Threshold at which tier-2 storage tax (5 bp) begins (60% capacity)"
-    storage_tax_tier_3_pct:
-      value: 85
-      unit: "capacity %"
-      description: "Threshold at which tier-3 storage tax (20 bp) begins (85% capacity)"
+  storage_tax_curve:
+    description: "Smoothstep marginal-rate anchors in utilization ppm; not discrete tiers."
+    anchors: ["300000ppm→0bp", "600000ppm→1bp", "850000ppm→5bp", "1000000ppm→20bp"]
+    integration_step_ppm: 1000
 
   resource_flow_limits:
     max_single_transfer:

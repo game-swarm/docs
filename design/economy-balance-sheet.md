@@ -4,7 +4,7 @@
 
 ## 1. Maintenance Curve
 
-维护费公式由 `specs/core/resource-ledger.md` §Empire Upkeep 权威定义。经济报表引用此公式，不重新声明。
+维护费公式由本设计定义，经济报表在本文中直接声明并用于数值验证。
 
 ```
 upkeep = base_upkeep × rooms × (1 + rooms / room_soft_cap)
@@ -15,7 +15,7 @@ upkeep = base_upkeep × rooms × (1 + rooms / room_soft_cap)
 | `base_upkeep` | 50 | 30 | 10 |
 | `room_soft_cap` | 10 | 15 | 20 |
 
-维护费对应 Resource Ledger 的 `UpkeepDeduction` 操作（执行顺序第 1 步）。
+维护费对应 recurring ledger 的 `UpkeepDeduction` 操作（执行顺序第 1 步）。
 
 | 房间数 | 维护费/tick (Standard) | 累计维护费/1500tick | 说明 |
 |:------:|:----------:|:------------------:|------|
@@ -26,12 +26,13 @@ upkeep = base_upkeep × rooms × (1 + rooms / room_soft_cap)
 
 维护费随房间数呈 **超线性增长**（O(n²) 趋势）。50 房间的维护费是 5 房间的 40 倍（而非 10 倍线性）。
 
-存储税使用 Resource Ledger §2.2 连续边际税率公式，以下场景中的存储税数值均由固定步长整数积分导出。
+存储税使用连续边际税率公式，以下场景中的存储税数值均由固定步长整数积分导出。
 
 ## 2. 收支平衡表
 
 > **显式假设：** 以下数值基于以下前提：
-> - **free_upkeep**：前 1 controller + 3 drone 免维护费（`free_upkeep_ticks` 内，默认 2000 tick）。
+> - **WorldStartupSubsidy**：玩家首次进入 world/player entry 时一次性执行，发放初始资源包；该操作在 recurring ledger 外，不参与每 tick 收支表。
+> - **free_upkeep**：前 1 controller + 3 drone 免维护费（`free_upkeep_ticks` 内，默认 2000 tick）。Upkeep 仍是 recurring ledger 第 1 步，只是该窗口内符合条件的实体计费为 0。
 > - **source income**：每 Source 基础产出 10/tick（L1 无 throughput 加成）。Source 升级（L2/L3/L4）提升产出。
 > - **Controller passive income**：Controller 被动收入基础 40/tick + RCL bonus，使 1-3 房间基础代码保持正流。
 > - **code throughput multiplier**：代码质量影响 Harvester 采集效率——基础效率 100%（每 WORK part 采集 1 单位/tick），优化后可达到 150%–200%（更优路径、更少 idle、并行采集）。以下分别展示无优化（throughput ×1.0）和优化（throughput ×1.5）两种情景。
@@ -49,7 +50,7 @@ upkeep = base_upkeep × rooms × (1 + rooms / room_soft_cap)
 | 支出项 | 量/tick | 说明 |
 |--------|:------:|------|
 | 维护费（free_upkeep cover） | 0 | 免维护期内 |
-| 存储税 | 0 | 存储 < 30% 免税（tier 0，见 Resource Ledger §2.2） |
+| 存储税 | 0 | 存储 < 30% 免税（tier 0） |
 | **总支出** | **0** | |
 
 | 净流量 | 量/tick |
@@ -108,7 +109,7 @@ upkeep = base_upkeep × rooms × (1 + rooms / room_soft_cap)
 |--------|:------:|------|
 | 23 Source Harvesters | 920 | L2-3 sources, 30/tick avg × 1.33 效率 (= ×2.0 总计) |
 | Controller passive income | 500 | RCL 4-5 avg |
-| PvE drop (global cap share) | 50 | global 30% cap × room share |
+| PvE award (global cap share) | 50 | global 30% cap × room share |
 | Wreckage salvage | 40 | world faucet budget, decaying wreckage |
 | **总收入（优化）** | **1,560** | |
 | **总收入（基础）** | **1,150** | throughput ×1.0 |
@@ -132,7 +133,7 @@ upkeep = base_upkeep × rooms × (1 + rooms / room_soft_cap)
 |--------|:------:|------|
 | 46 Source Harvesters | 1,840 | L2-3 sources, avg 25/tick × 1.6 效率 |
 | Controller passive income | 1,100 | RCL 5-6 avg |
-| PvE drop (global cap share) | 100 | global 30% cap × room share |
+| PvE award (global cap share) | 100 | global 30% cap × room share |
 | Wreckage salvage | 120 | world faucet budget, decaying wreckage |
 | **总收入（优化）** | **4,700** | |
 | **总收入（基础）** | **3,060** | throughput ×1.0 |
@@ -157,7 +158,7 @@ upkeep = base_upkeep × rooms × (1 + rooms / room_soft_cap)
 |--------|:------:|------|
 | 115 Source Harvesters | 4,600 | L3-4 sources, avg 25/tick × 1.6 效率 |
 | Controller passive income | 2,800 | RCL 6-7 avg |
-| PvE drop | 500 | |
+| PvE award | 500 | |
 | Wreckage salvage | 300 | |
 | **总收入（优化）** | **12,600** | |
 | **总收入（基础）** | **7,700** | throughput ×1.0 |
@@ -178,7 +179,7 @@ upkeep = base_upkeep × rooms × (1 + rooms / room_soft_cap)
 
 ### 2.7 收支平衡汇总表 (Standard 模式)
 
-以下汇总表提供 1/2/3/5/10/20/50 房间的收支对比。**所有数值为 canonical target curve 的初始参数化（illustrative estimates）；后续 playtest 仅用于校准 Resource Ledger 参数。** 存储税由 `storage_capacity`、`stored_total` 与 Resource Ledger 连续边际公式逐行重算。
+以下汇总表提供 1/2/3/5/10/20/50 房间的收支对比。**所有数值为 design target curve 的初始参数化（illustrative estimates）；后续 playtest 仅用于校准 world profile 参数。** 存储税由 `storage_capacity`、`stored_total` 与连续边际公式逐行重算。
 
 | 房间数 | 收入/tick (基础) | 收入/tick (优化) | 维护费/tick | storage_capacity | stored_total | 存储税/tick | storage tax formula | 净流量趋势 | 说明 |
 |:------:|:--------:|:--------:|:---------:|:---------:|:---------:|:---------:|------|:---------:|------|
@@ -194,13 +195,13 @@ upkeep = base_upkeep × rooms × (1 + rooms / room_soft_cap)
 
 > `¹` 1 房间 free_upkeep 期内；free_upkeep 结束后维护费恢复仍为基础正流。free_upkeep 默认 2000 tick，初始资源包 `{Energy: 5000}` 提供建造缓冲。
 >
-> **可重算公式**：`upkeep = base_upkeep × rooms × (1 + rooms / room_soft_cap)`；`tax = floor(∫ marginal_rate_bp(u) d stored_units / 10000)`，其中 `marginal_rate_bp` 由 Resource Ledger §2.2 的 smoothstep 锚点定义。所有参数 world.toml 可配置——修改 `base_upkeep`、`room_soft_cap`、`storage_tax_curve`、`storage_capacity` 或 `stored_total` 后本表数值相应变化。
+> **可重算公式**：`upkeep = base_upkeep × rooms × (1 + rooms / room_soft_cap)`；`tax = floor(∫ marginal_rate_bp(u) d stored_units / 10000)`，其中 `marginal_rate_bp` 由本设计的 smoothstep 锚点定义。所有参数 world.toml 可配置——修改 `base_upkeep`、`room_soft_cap`、`storage_tax_curve`、`storage_capacity` 或 `stored_total` 后本表数值相应变化。
 >
 > **代码效率乘数含义**：1.5×-2.0× 表示减少 idle 时间、优化路径、减少拥堵——随着房间扩张，效率从 1.5× 逐渐提升到 2.0× 需要持续优化投入。200% (2×) 仅在完美路径 + 无拥堵 + 最优 body 组合下可达。
 >
 > **1→2 房间 transition**：free_upkeep 结束后，1 房基础收入约 65/tick、维护费 55/tick，仍为正流。玩家通过第二 Controller、额外 source 和 RCL 2-3 收入提升到 2 房基础 180/tick；优化代码后达 220/tick，对应 2 房维护费 120/tick。
 >
-> **设计目标**：**新手经济平滑、扩张由代码效率决定**。1-3 房基础代码正流；5-10 房普通代码可维持但扩张趋缓；15+ 房需要顶级调度、路径、物流和战斗代码消化 O(n²) 惩罚。本文给出 canonical target curve 的初始参数化；playtest 仅用于校准 `base_upkeep`、`room_soft_cap`、效率曲线等参数。
+> **设计目标**：**新手经济平滑、扩张由代码效率决定**。1-3 房基础代码正流；5-10 房普通代码可维持但扩张趋缓；15+ 房需要顶级调度、路径、物流和战斗代码消化 O(n²) 惩罚。本文给出 design target curve 的初始参数化；playtest 仅用于校准 `base_upkeep`、`room_soft_cap`、效率曲线等参数。
 
 ## 3. 模式差异
 
@@ -224,9 +225,9 @@ upkeep = base_upkeep × rooms × (1 + rooms / room_soft_cap)
 | `controller_repair_limit` | range/capacity/queue | range/capacity/queue | range/capacity/queue |
 | `depot_repair_cost` | local depot resources | local depot resources | local depot resources |
 
-Controller/Depot age repair 的权威模型见 `specs/core/resource-ledger.md` §2.4：无全局 repair cap，Controller 免费，Depot 消耗本地资源，维修吞吐只受物理范围、每设施容量和队列约束。
+Controller/Depot age repair 模型：无全局 repair cap，Controller 免费，Depot 消耗本地资源，维修吞吐只受物理范围、每设施容量和队列约束。
 
-> **存储税权威源**：曲线锚点见 `design/gameplay.md` §8「累进存储税」和 `specs/core/resource-ledger.md` §StorageTax。Tutorial 全免，Vanilla/Standard 使用相同 曲线锚点（税率由 `storage_tax_curve` 配置）。
+> **存储税曲线**：曲线锚点由本设计的「累进存储税」定义。Tutorial 全免，Vanilla/Standard 使用相同曲线锚点（税率由 `storage_tax_curve` 配置）。
 >
 > **Allied Transfer 模式差异**：Standard 默认启用 Restricted Allied Transfer（fee=200bp, delay=200 tick, cooldown=500 tick, daily_cap=10000, intercept enabled）。Novice/Tutorial 可通过 world.toml 禁用 (`allied_transfer_enabled = false`)。Arena 模式禁用 Allied Transfer（竞技公平）。
 
@@ -241,7 +242,7 @@ r(n) = expected_income(n)
      = source_income(n) × code_throughput(n) + controller_income(n) + pve_award(n)
 ```
 
-`source_income(n)` 受房间 source 密度与 harvester 通行拥堵约束，按近似线性增长；`code_throughput(n)` 有上界 `E_max`；`pve_award(n)` 受 Resource Ledger 的 Global/Zone/Player/Event 四维 budget 约束。故存在常数 `A`、`B`，使 `r(n) <= A × n + B`。
+`source_income(n)` 受房间 source 密度与 harvester 通行拥堵约束，按近似线性增长；`code_throughput(n)` 有上界 `E_max`；`pve_award(n)` 受 Global/Zone/Player/Event 四维 budget 约束。故存在常数 `A`、`B`，使 `r(n) <= A × n + B`。
 
 边际成本函数：
 
@@ -263,17 +264,17 @@ r(n) <= A × n + B
 
 No Teleport 物流成本通过 `conversion_loss(n)` 与延迟约束提高大帝国边际成本，但不是证明有限均衡点的必要条件；维护费二次项已足以保证 `n*` 存在且有限。
 
-## 5. 与 Resource Ledger 的关系
+## 5. 与 Recurring Ledger 的关系
 
-**Resource Ledger (`specs/core/resource-ledger.md`) 为所有收支计算的单一权威源。** 本文档只做数值验证和模式对比，不重新定义费率或公式。
+本文档定义 Vanilla/Tutorial/Standard 的设计费率、公式和数值验证。Recurring ledger 执行每 tick 操作；`WorldStartupSubsidy` 是 world/player entry 的一次性操作，不进入 recurring step 序列。
 
-| 经济概念 | 权威定义位置 | 本表角色 |
+| 经济概念 | 设计定义 | 本表角色 |
 |---------|------------|---------|
-| 维护费 (UpkeepDeduction) | Resource Ledger §Empire Upkeep | 验证数值合理性 |
-| 回收 (RecycleRefund) | Resource Ledger §6 (lifespan 10%–50%) | 引用 |
-| 存储税 (StorageTax) | Resource Ledger §2 + gameplay.md §8 曲线锚点 | 引用 |
-| 费率模型 (basis points) | Resource Ledger §2 | 不重复 |
+| 维护费 (UpkeepDeduction) | 本文 §1 Maintenance Curve | 验证数值合理性；recurring step 1 |
+| 回收 (RecycleRefund) | lifespan-proportional 10%–50% | 引用 |
+| 存储税 (StorageTax) | 本设计连续边际税率曲线 | 引用 |
+| 费率模型 (basis points) | 本设计使用 basis points 表达 burn/fee | 不重复 |
 
 ## 6. 存储税均衡证明 (Storage Tax Equilibrium Proof)
 
-存储税使用 Resource Ledger §2.2 连续边际税率公式，以下场景中的存储税数值均由固定步长整数积分导出。
+存储税使用连续边际税率公式，以下场景中的存储税数值均由固定步长整数积分导出。

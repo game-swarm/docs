@@ -1,6 +1,6 @@
 # Empirical Calibration Requirements
 
-以下项目依赖 playtest 数据或数学模型验证；文档定义目标机制，实测数据用于校准参数
+当前 defaults 已作为 release baseline 接受；以下是发布后的 non-blocking empirical calibration，不是 spec/design 对齐 gate，也不得改变冻结机制。
 
 ---
 
@@ -34,14 +34,14 @@
 | Source 产出 × 效率乘数模型准确性 | 验证 Harvester 采集效率乘数（1.0-2.0）与实际代码表现的匹配度 |
 | RCL 升级带来的被动收入梯度 | 验证 Controller passive income 的数值分布是否符合预期 |
 
-**校准条件**: playtest 收集 ≥50 active players / ≥5000 tick 的经济数据，验证模型预测的自维持区间界限 → 调参或调整文档
+**校准条件**: playtest 收集 ≥50 active players / ≥5000 tick 的经济数据，验证模型预测的自维持区间界限 → 只调整明确标记为可校准的数值；Move、单 action slot、命令时序等核心机制不进入 playtest reversal
 
 
 ---
 
 ## PG-2: 特殊攻击完整状态机
 
-**状态机模型**: 已规范化，待 playtest 验证平衡性。权威参数见 `specs/reference/special-attack-table.md`；命令校验与状态机见 `specs/core/command-validation.md` §3.10-3.19。
+**状态机模型**: 已由 `design/gameplay.md` 定义并下沉到 special-attack table 与 command-validation；playtest 只验证平衡性，不补写机制。
 
 | 攻击 | 已规范化项 | 需 playtest 验证 |
 |------|------|-----------------|
@@ -53,33 +53,34 @@
 
 **涉及文件**: `specs/reference/special-attack-table.md`, `specs/core/command-validation.md` §3.10-3.19, `design/gameplay.md`
 
-**校准条件**: playtest 验证 8 个 special attack 的博弈深度 → 补齐缺失的状态转换 → 调参
+**校准条件**: playtest 验证 8 个 special attack 的博弈深度和已定义状态转换 → 仅调节允许校准的参数
 
 ---
 
 ## PG-3: Storage tax 与 PvE faucet 量化
 
-**校准需求**: 缺少玩家可理解的时间尺度和 PvE 定位：
+**校准需求**: 机制定位已由 design 固定；playtest 补充玩家可理解的时间尺度并校准数值：
 
 | 目标 | 需要 | 原因 |
 |------|------|------|
 | `bp/tick` 单位 | per-hour / per-day 人类可读单位 | 玩家无法直观理解 bp/tick 的经济影响 |
-| PvE 收益 = 独立数值 | 阶段收入表（early/mid/late game） | 玩家需要知道 PvE 的定位：catch-up / skill test / risk reward |
-| global↔local 费率不对称 (1% vs 5%) | 数学理由或玩家可接受的解释 | 6% round-trip 成本需要被理解而非被抱怨 |
-| Storage tax 0.1%/tick | 实际 playtest 中的资源流失曲线 | 验证是否过于惩罚长期存储 |
+| PvE 收益 = 独立数值 | 阶段收入表（early/mid/late game） | World PvE 是与 PvP 平行的常驻生态/catch-up+风险收益层；Arena PvE 是 skill-test challenge。playtest 只调 payout |
+| global↔local 双向 1% + BuildCost 额外 5% burn | 数学理由与玩家可接受的解释 | 验证物流 round-trip 与建造 sink 的组合摩擦是否合理 |
+| Storage marginal tax curve (`30%→0bp, 60%→1bp, 85%→5bp, 100%→20bp`) | 实际 playtest 中的分段资源流失曲线 | 验证高占用边际税是否抑制囤积但不过度惩罚中低占用 |
 
 **涉及文件**: `specs/core/resource-ledger.md`, `design/economy-balance-sheet.md`
 
-**校准条件**: playtest 收集实际经济数据 → 将 bp/tick 转换为人类时间尺度 → 明确 PvE 定位
+**校准条件**: playtest 收集实际经济数据 → 将 bp/tick 转换为人类时间尺度 → 在既定 PvE 定位内调节 payout 参数
 
 ---
 
 ## 追踪状态
 
-| ID | 项 | 校准条件 | 预计来源 |
-|----|-----|---------|---------|
-| PG-1 | 早期经济曲线 | tick-by-tick 经济数据 | World playtest (≥50 active players, ≥5000 tick) |
-| PG-2 | 特殊攻击状态机 | 8 个 special attack 博弈验证 | Arena playtest + 针对性测试场景 |
-| PG-3 | Storage tax / PvE 量化 | 经济数学模型 + 玩家反馈 | 经济参数 sweep simulation |
+| ID | 项 | Release status | 后续来源 |
+|----|-----|----------------|---------|
+| PG-1 | 早期经济曲线 | baseline accepted; non-blocking calibration | World playtest |
+| PG-2 | 特殊攻击状态机 | mechanism accepted; balance-only calibration | Arena playtest |
+| PG-3 | Storage tax / PvE 量化 | baseline accepted; numeric calibration only | sweep simulation |
+| PG-4 | Standard 中期自维持区间 | baseline accepted; numeric calibration only | World playtest |
 
 这些是经验校准项；机制已在目标文档中定义，参数随实测数据调整。
