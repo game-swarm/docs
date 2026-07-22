@@ -29,7 +29,8 @@ ROADMAP.md           Optional per-repository gap checklist, when present
 ```
 
 - **design/** is aspirational. It describes what the system should look like, not what's currently built.
-- **specs/** is the implementable contract. Every spec must trace to a design decision.
+- **design/** owns every externally observable behavior, default, protocol boundary, trust decision, and compatibility policy. It must be self-contained and must not use specs, IDL, Registry, or current code as an authority.
+- **specs/** is the implementable contract. Every spec must trace to a design decision. Specs may add internal encoding, data-structure, storage-layout, and execution detail only when that detail does not change external behavior.
 - **ROADMAP.md** is optional and repository-local. When present, it contains only gaps (critical/high/moderate) grouped into waves.
 
 ## ROADMAP Rules
@@ -42,33 +43,36 @@ ROADMAP.md           Optional per-repository gap checklist, when present
 
 ## Domain Authority Map
 
-| Domain | Authority |
-|--------|-----------|
-| API tools / RejectionReason / CommandAction / Host Functions | IDL YAML + manually maintained API Registry publication |
-| Economy parameters / formulas | `specs/core/resource-ledger.md` + economy IDL schema |
-| Body/structure costs | economy IDL + Registry reference table |
-| Special attacks | `specs/reference/special-attack-table.md` |
-| Tick schedule / ECS R/W | `specs/core/phase2b-system-manifest.md` + mod plugin policy |
-| Snapshot truncation | `specs/core/snapshot-contract.md` + visibility oracle |
-| Persistence/replay retention | `specs/core/persistence-contract.md` + `world.toml` config |
-| Security transport/authz/rate | security specs + machine-readable Registry fields |
+| Domain | Design authority | Derived contract |
+|--------|------------------|------------------|
+| API semantics / tools / errors / ABI behavior | `design/interface.md` + `design/auth.md` | IDL YAML + API Registry publication |
+| Economy parameters / formulas | `design/gameplay.md` + `design/economy-balance-sheet.md` | Resource Ledger + economy IDL |
+| Body / structure sets and costs | `design/gameplay.md` | economy IDL + Registry reference tables |
+| Special actions and configurable parameters | `design/gameplay.md` | special-attack table + world-rules schemas |
+| Tick schedule / command order / ECS R/W | `design/engine.md` + gameplay plugin scheduling decisions | phase2b system manifest + command/tick specs |
+| Snapshot, truncation, and ABI codec | `design/engine.md` + `design/interface.md` | snapshot contract + visibility contract + game IDL |
+| Persistence / replay / shard migration | `design/architecture.md` + `design/engine.md` + `design/tech-choices.md` | persistence, incremental snapshot, and shard contracts |
+| Security transport / Auth REST / certificate behavior | `design/auth.md` + `design/interface.md` + `design/architecture.md` | security specs + Auth IDL + Gateway fields |
+| World / Arena / PvE mode behavior | `design/modes.md` + `design/gameplay.md` | gameplay specs + world-rules and mod schemas |
 
 ## Working with Design Docs
 
 1. **design/ is the north star** — do not "simplify" design to match missing implementation.
 2. **Specs must agree with design** — if design changes, update the corresponding specs.
-3. **ROADMAP gaps come from spec audits** — discover gaps by comparing specs to code.
-4. **Never mark design items as "done"** — only ROADMAP items can be completed/removed.
-5. **When fixing a tracked gap, update the affected code repository and its local ROADMAP if one exists** — close the gap entry after merging.
+3. **Never repair design from a spec** — resolve design conflicts first, then regenerate or edit downstream contracts.
+4. **ROADMAP gaps come from spec audits** — discover gaps by comparing specs to code.
+5. **Never mark design items as "done"** — only ROADMAP items can be completed/removed.
+6. **When fixing a tracked gap, update the affected code repository and its local ROADMAP if one exists** — close the gap entry after merging.
 
 ## Audit Workflow
 
 When asked "does code match docs?":
 
-1. Identify the affected self-contained repositories: docs, engine, sandbox, gateway, frontend, or mod repositories.
-2. Audit in parallel: the relevant code repository against the docs/specs that govern it.
-3. Write findings into that repository's local ROADMAP if present; otherwise report them in the review output.
-4. Use `grep -rn` or ripgrep for searches.
+1. Verify that the relevant specs first agree with their upstream design decisions.
+2. Identify the affected self-contained repositories: docs, engine, sandbox, gateway, frontend, or mod repositories.
+3. Audit in parallel: the relevant code repository against the derived specs that govern it.
+4. Write findings into that repository's local ROADMAP if present; otherwise report them in the review output.
+5. Use `grep -rn` or ripgrep for searches.
 
 ## Commit Conventions
 

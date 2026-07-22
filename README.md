@@ -50,18 +50,16 @@ docs/
 └── README.md               本文件
 ```
 
-## Domain Authority Map
+## Design-First Authority Map
 
-| Domain | Authority |
-|--------|-----------|
-| API tools / RejectionReason / CommandAction / Host Functions | IDL YAML + manually maintained API Registry publication |
-| Economy parameters / formulas | Resource Ledger + economy IDL schema |
-| Body/structure costs | IDL/Registry reference tables |
-| Special attacks | `specs/reference/special-attack-table.md` |
-| Tick schedule / ECS R/W | `specs/core/phase2b-system-manifest.md` + mod plugin policy |
-| Snapshot truncation | `specs/core/snapshot-contract.md` + visibility oracle |
-| Persistence/replay retention | `specs/core/persistence-contract.md` + world.toml config |
-| Security transport/authz/rate | security specs + machine-readable Registry fields |
+`design/` is the sole upstream for target-state semantics. Specs and machine-readable IDLs are derived contracts: they may make the design executable, but they may not introduce external behavior that design has not decided.
+
+| Domain | Design authority | Derived contract |
+|--------|------------------|------------------|
+| API/Auth/ABI semantics | `design/interface.md` + `design/auth.md` | IDL YAML + API Registry + security protocol fields |
+| Economy / structures / special actions | `design/gameplay.md` + `design/economy-balance-sheet.md` | Resource Ledger + economy IDL + reference tables |
+| Tick / snapshots / persistence / shards | `design/architecture.md` + `design/engine.md` + `design/tech-choices.md` | core execution, snapshot, persistence, and shard specs |
+| World / Arena / PvE | `design/modes.md` + `design/gameplay.md` | gameplay specs + world-rules and mod schemas |
 
 ## 代码仓库
 
@@ -85,7 +83,7 @@ Swarm 没有单一主仓库。每个代码仓库自包含自己的源码、构�
 |------|:----:|------|
 | mod-empire-upkeep | ✅ on | 帝国维护费 + Controller Repair + Recycle |
 | mod-fog-of-war | ✅ on | 可见性 + 感知 + Oracle 防线 |
-| mod-resource-decay | ✅ on | 存储资源自然衰减 |
+| mod-resource-decay | ❌ off | 可选存储资源自然衰减；Vanilla 默认禁用 |
 | mod-pve-spawning | ✅ on | NPC 出生 + PvE 难度梯度 |
 | mod-combat-core | ✅ on | 战斗 + 死亡 + 再生 |
 | mod-special-attacks | ✅ on | Hack/Drain/Overload/Debilitate/Disrupt/Fortify/Leech/Fabricate |
