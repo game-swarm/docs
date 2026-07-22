@@ -24,7 +24,7 @@
 ```c
 i32 host_get_terrain(room_id: u32, out_ptr: i32, out_len: i32) -> i32
 ```
-返回 room_id 对应房间的完整地形数据，写入 `out_ptr` 缓冲区（最大 `out_len` 字节）。
+返回 room_id 对应房间的完整地形数据，按 Swarm codec `HostResult` 写入 `out_ptr` 缓冲区（最大 `out_len` 字节）。
 - 返回字节数 ≤ 8KB
 - 返回值：实际写入字节数（≥0），负数=错误码
 
@@ -32,9 +32,9 @@ i32 host_get_terrain(room_id: u32, out_ptr: i32, out_len: i32) -> i32
 ```c
 i32 host_get_objects_in_range(x: i32, y: i32, range: u32, out_ptr: i32, out_len: i32) -> i32
 ```
-返回以 (x,y) 为中心、range 半径内的实体 JSON 列表。
+返回以 (x,y) 为中心、range 半径内的实体列表。
 写入 `out_ptr` 指向的 WASM 线性内存缓冲区（最大 `out_len` 字节）。
-返回值：>=0 = bytes_written，<0 = canonical ABI error code（见 API Registry §4.5）。
+返回值：>=0 = bytes_written，<0 = ABI-level failure（见 API Registry §4.5）。隐藏或不存在的实体查询返回成功的空结果，不通过错误码泄露存在性。
 - 每 tick 最多调用 5 次（计入 host call budget）
 
 ### host_path_find
@@ -42,7 +42,7 @@ i32 host_get_objects_in_range(x: i32, y: i32, range: u32, out_ptr: i32, out_len:
 i32 host_path_find(from_x: i32, from_y: i32, to_x: i32, to_y: i32, opts_ptr: i32, opts_len: i32, out_ptr: i32, out_len: i32) -> i32
 ```
 从 (from_x, from_y) 到 (to_x, to_y) 的最短路径。
-`opts_ptr`/`opts_len` 传递寻路选项（JSON，可为空：`opts_len=0` 使用默认设置）。
+`opts_ptr`/`opts_len` 传递 Swarm codec 寻路选项（可为空：`opts_len=0` 使用默认设置）。
 写入 `out_ptr` 缓冲区。
 - 每 tick 最多调用 10 次（计入 host call budget）
 
@@ -80,6 +80,21 @@ u64 host_get_fuel_remaining() -> u64
 - 无单独次数上限，按基础 fuel cost 计入 Host call 总预算
 
 ## Host Call Budget
+
+## ABI v2 输出格式
+
+所有 host payload 使用 IDL-generated、versioned、little-endian、length-prefixed Swarm codec。Host result bytes 先写 guest-buffer tagged header，再写 payload：
+
+```text
+tag: u16
+code: i32
+payload_len: u32
+payload: [u8; payload_len]
+```
+
+非负返回值表示完整写入的字节数。负返回值只表示 ABI-level failure（无效 guest pointer、输出 buffer 不足、decode failure、fuel 在完整 header 写入前耗尽等）。查询语义错误写入 tagged `HostResult` header/payload；`HostError` 是独立 enum，不等同于 REST/MCP `RejectionReason`。
+
+隐藏或不存在的实体查询必须返回成功的空结果，不能暴露目标是不可见还是不存在。
 
 所有 host function 调用计入总预算：
 - **总计**: 1000 次/tick
@@ -124,5 +139,5 @@ u64 host_get_fuel_remaining() -> u64
 
 ## 设计合同
 
-所有游戏状态变更必须通过 `tick() → CommandIntent[]` JSON 延迟模型提交。
+所有游戏状态变更必须通过 ABI v2 `tick(input_ptr, input_len, output_ptr, output_len) -> TickResult` 延迟模型提交。
 Host function 只提供**只读查询**。WASM 模块不能直接修改世界状态。

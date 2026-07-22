@@ -1,6 +1,6 @@
 # Swarm 技术选型
 
-> 技术选型的落地规范见 [WASM Sandbox](../specs/core/wasm-sandbox.md)、[Persistence Contract](../specs/core/persistence-contract.md)、[Snapshot Contract](../specs/core/snapshot-contract.md)、[Command Source](../specs/security/command-source.md)。
+> 本文裁定 Swarm 的目标技术选型。core/security/reference specs 是本文输出的落地合同，不是本文的决策来源。
 
 **设计原则：设计即终态。技术选型按目标状态一次性裁定；不得用分期实现、暂缓决定或保留替换前方案并存来逃避取舍。实现顺序只记录在 ROADMAP，不进入设计和规范。**
 
@@ -25,7 +25,7 @@
 
 ## 2. 玩家沙箱: WASM + Wasmtime
 
-> 沙箱实现详见 [WASM Sandbox](../specs/core/wasm-sandbox.md)。
+> 沙箱目标状态：Wasmtime long-lived stateless workers，由 NATS request-reply + queue-group 统一调度。
 
 ### 备选
 
@@ -41,7 +41,7 @@
 
 三个硬需求决定了选择：(1) fuel metering 原生支持——能精确计费每 tick 的 CPU 消耗；(2) epoch interruption——超时即杀，配合 2500ms 硬截止；(3) long-lived worker pool + per-tick clean Store/Instance reset——预编译模块池复用，每 tick 重置 WASM 状态，tick 间无状态泄漏。这三个在 Wasmtime 中是一等公民 API，其他备选需要自己实现至少一项。
 
-**WASM worker pool 跨所有 shard 共享**——worker 无状态、无 shard 亲和性。通过 NATS queue-group 自动负载均衡。
+**WASM worker pool 跨所有 shard 共享**——worker 无状态、无 shard 亲和性。所有环境使用 NATS queue-group 自动负载均衡，包括本地开发、CI、单机部署和生产。
 
 ---
 
@@ -57,8 +57,10 @@ Mod = Rust crate implementing Bevy Plugin trait
 pub struct EmpireUpkeepMod;
 impl Plugin for EmpireUpkeepMod {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, empire_upkeep_system);
         app.insert_resource(EmpireUpkeepConfig::default());
+        app.world_mut()
+            .resource_mut::<PluginHookRegistry>()
+            .register_handler(FixedHook::S29ResourceLedger, "empire_upkeep", empire_upkeep_handler);
     }
 }
 
@@ -66,12 +68,14 @@ Engine build: cargo build --features "mod_empire_upkeep,mod_fog_of_war"
 Deployment: single binary = base engine + selected mods
 ```
 
+Plugin 不能调用 `add_systems` 改变 gameplay schedule；只能向 System Manifest 预定义的 fixed hook 注册 handler/buffer access。
+
 ### 选型理由
 
 | 对比 | Rhai（已移除） | Bevy Plugin 静态编译（当前） |
 |------|--------------|---------------------------|
 | 语言 | 服主学 Rhai 语法 | 服主写 Rust（与引擎同语言） |
-| 集成深度 | 通过注册 API，受限于暴露的函数 | 完全访问 Bevy ECS，直接注册 system |
+| 集成深度 | 通过注册 API，受限于暴露的函数 | 原生 Rust typed config/registries + System Manifest fixed hooks；不开放 schedule mutation |
 | 安全隔离 | 脚本 panic = 错误返回 | 编译时类型安全，无运行时隔离需求（服主信任） |
 | 发布 | `.rhai` 文件 | 源码 crate，服主编译 |
 | 性能 | AST 解释 | 原生编译 |
@@ -82,14 +86,14 @@ Deployment: single binary = base engine + selected mods
 
 | 层 | 机制 | 信任 | 能力 |
 |---|---|---|---|
-| 玩家代码 | WASM 沙箱（sandbox 进程） | 不可信 | 只产 `CommandIntent[]` |
-| 引擎 + Mod | Rust 静态编译（Engine 进程内） | 服主信任 | 完全访问 ECS、注册 system、定义建筑/action/规则 |
+| 玩家代码 | WASM 沙箱（sandbox 进程） | 不可信 | 读取 Swarm codec `TickInput` bytes，返回 Swarm codec `TickResult` bytes `{ commands, messages }` |
+| 引擎 + Mod | Rust 静态编译（Engine 进程内） | 服主信任 | 通过 fixed hooks/typed buffers 定义建筑/action/规则；不得直接 mutate gameplay ECS 或注册 schedule node |
 
 ---
 
 ## 4. 持久化: redb
 
-> 持久化合同详见 [Persistence Contract](../specs/core/persistence-contract.md)，快照模型详见 [Snapshot Contract](../specs/core/snapshot-contract.md)。
+> 持久化目标状态：redb 是 per-shard 权威持久化层，永久保留 replay-critical history，足以从 genesis replay 到任意 tick。
 
 ### 备选
 
@@ -103,9 +107,11 @@ Deployment: single binary = base engine + selected mods
 
 ### 选择: redb
 
-Swarm 的权威点是单实例 Engine（per shard）：tick 在内存 Bevy World 中执行，持久化层只需要在 tick 末尾把 replay-critical 的多个 key 作为一个 batch 原子写入。redb 的 `WriteTransaction` 保证这些 key 同生共死。
+Swarm 的权威点是单实例 Engine（per shard）：tick 在内存 Bevy World 中执行，持久化层在 tick 末尾把 replay-critical 的多个 key 作为一个 batch 原子写入。redb 的 `WriteTransaction` 保证这些 key 同生共死，并永久保留从 genesis replay 所需的 TickCommitRecord、canonical command hashes、tick input envelopes、state checksum、migration records、world config hash 和 mods lock hash lineage。
 
 因此真实需求不是分布式 KV 的严格可序列化，而是**单节点原子多 key batch write**。redb 完全贴合这个边界：嵌入式、纯 Rust、无外部 daemon、部署时每 shard 一个 `.redb` 文件。故障面小，CI 与本地开发一致。
+
+Blob/keyframe stores 不承担 replay authority，只承担加速和 rich audit。WasmModuleArtifact 是对象存储中的执行输入，包含 WASM binary、manifest 和 compiled execution artifact；丢失时暂停受影响玩家模块并提交 empty commands。RichTraceBlob、ReplayArtifact 和 Keyframe Snapshot 丢失只降低审计、调试或 replay 加速能力，世界继续推进。
 
 ---
 
@@ -127,7 +133,7 @@ NATS 是唯一的额外基础设施组件（非 Rust）。两个职责：(1) tic
 
 NATS queue-group 是唯一不需要独立 coordinator 就能做到"多个 producer（Engine per shard）、多个 consumer（worker）、自动负载均衡、超时就当空指令"的方案。gRPC/ZMQ 需要自己写 dispatcher。
 
-部署为 NATS cluster——每节点一个实例，单节点部署即为单节点 cluster。
+部署为 NATS cluster——每节点一个实例，单节点部署即为单节点 cluster。所有环境使用相同 NATS path，保持 sandbox 调度语义一致。
 
 ---
 
@@ -179,7 +185,9 @@ Blake3 覆盖哈希和 PRNG 后：(1) 依赖栈减少一个 crate（ChaCha）；
 
 ### 选择: IDL codegen 驱动，初始四种语言
 
-`game_api.idl` 是单一事实源 → codegen 生成所有语言的类型定义 + host function 绑定。新增语言 = 新增 codegen 模板。初始四种：TS + Rust + Go + C/C++。
+`game_api.idl` 是 codec 和 SDK 的生成输入 -> codegen 生成所有语言的类型定义 + host function 绑定。新增语言 = 新增 codegen 模板。初始四种：TS + Rust + Go + C/C++。
+
+ABI v2 是立即 breaking cutover：snapshots、`TickResult`、`HostResult` 和 host boundary payload 全部使用 IDL-generated Swarm binary codec，不保留 v1 JSON/bincode 兼容路径。Engine、Sandbox、Gateway、SDK 运行时必须匹配同一个 ABI v2 schema hash。
 
 ---
 
